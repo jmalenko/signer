@@ -29,6 +29,28 @@
         "cwd": "${workspaceFolder}"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "Build signer.exe (onefile)",
+      "type": "shell",
+      "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "PyInstaller",
+        "--noconfirm",
+        "--log-level",
+        "INFO",
+        "--onefile",
+        "--windowed",
+        "--name",
+        "signer",
+        "main.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
     }
   ]
 }
