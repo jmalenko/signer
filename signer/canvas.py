@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 from PIL import Image
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
@@ -41,8 +39,8 @@ class DocumentCanvas(QWidget):
         self._hdrag_anchor_doc: QPointF = QPointF()
         self._hdrag_anchor_fx: float = 0.0
         self._hdrag_anchor_fy: float = 0.0
-        self._hdrag_start_dist: float = 1.0
-        self._hdrag_start_scale: float = 1.0
+        self._hdrag_start_w: float = 1.0
+        self._hdrag_start_h: float = 1.0
 
         self._fit_scale: float = 1.0
         self._doc_offset_x: float = 0.0
@@ -77,6 +75,7 @@ class DocumentCanvas(QWidget):
         self._selected = None
         self._recompute_fit()
         self.pageChanged.emit(0, len(self._pages))
+        self.objectChanged.emit()
         self.update()
 
     def goto_page(self, page: int) -> None:
@@ -89,6 +88,7 @@ class DocumentCanvas(QWidget):
         self._current_page = page
         self._recompute_fit()
         self.pageChanged.emit(self._current_page, len(self._pages))
+        self.objectChanged.emit()
         self.update()
 
     # ---------------------------------------------------------------- object API
@@ -149,7 +149,15 @@ class DocumentCanvas(QWidget):
         self._doc_offset_y = (vh - dh * self._fit_scale) / 2
 
     def default_position_for(self, obj: CanvasObject) -> tuple[float, float]:
-        """Return default doc-coords: centered, 80% from top."""
+        """Default for annotations: center of current page."""
+        if not self._pages:
+            return 0.0, 0.0
+        pw, ph = self._pages[self._current_page].size
+        x = max(0.0, (pw - obj.scaled_width) / 2)
+        y = max(0.0, (ph - obj.scaled_height) / 2)
+        return x, y
+
+    def default_signature_position_for(self, obj: CanvasObject) -> tuple[float, float]:
         if not self._pages:
             return 0.0, 0.0
         pw, ph = self._pages[self._current_page].size
@@ -210,16 +218,21 @@ class DocumentCanvas(QWidget):
         for obj in reversed(objects):
             r = self._object_view_rect(obj)
             if r.contains(pt):
+                prev_selected = self._selected
                 self._selected = obj
                 self._dragging = True
                 self._drag_handle = -1
                 doc_pt = self._view_to_doc(pt)
                 self._drag_doc_offset_x = doc_pt.x() - obj.x
                 self._drag_doc_offset_y = doc_pt.y() - obj.y
+                if prev_selected is not obj:
+                    self.objectChanged.emit()
                 self.update()
                 return
 
-        self._selected = None
+        if self._selected is not None:
+            self._selected = None
+            self.objectChanged.emit()
         self.update()
 
     def _start_handle_drag(self, h_idx: int, pt: QPointF) -> None:
@@ -231,9 +244,8 @@ class DocumentCanvas(QWidget):
         self._hdrag_anchor_doc = QPointF(ax, ay)
         self._hdrag_anchor_fx = HANDLE_FX[anchor_h]
         self._hdrag_anchor_fy = HANDLE_FY[anchor_h]
-        self._hdrag_start_scale = obj.scale
-        doc_pt = self._view_to_doc(pt)
-        self._hdrag_start_dist = max(1.0, math.hypot(doc_pt.x() - ax, doc_pt.y() - ay))
+        self._hdrag_start_w = obj.scaled_width
+        self._hdrag_start_h = obj.scaled_height
         self._dragging = True
         self._drag_handle = h_idx
 
@@ -249,10 +261,33 @@ class DocumentCanvas(QWidget):
                 doc_pt = self._view_to_doc(pt)
                 ax = self._hdrag_anchor_doc.x()
                 ay = self._hdrag_anchor_doc.y()
-                dist = max(1.0, math.hypot(doc_pt.x() - ax, doc_pt.y() - ay))
-                factor = dist / self._hdrag_start_dist
-                new_scale = max(0.05, min(10.0, self._hdrag_start_scale * factor))
-                self._selected.scale = new_scale
+                h = self._drag_handle
+                fx = HANDLE_FX[h]
+                fy = HANDLE_FY[h]
+
+                if fx != self._hdrag_anchor_fx:
+                    new_w = abs(doc_pt.x() - ax) / abs(fx - self._hdrag_anchor_fx)
+                else:
+                    new_w = self._hdrag_start_w
+                if fy != self._hdrag_anchor_fy:
+                    new_h = abs(doc_pt.y() - ay) / abs(fy - self._hdrag_anchor_fy)
+                else:
+                    new_h = self._hdrag_start_h
+
+                if not self._selected.supports_free_resize():
+                    sx = new_w / max(1.0, self._hdrag_start_w)
+                    sy = new_h / max(1.0, self._hdrag_start_h)
+                    if fx == self._hdrag_anchor_fx:
+                        factor = sy
+                    elif fy == self._hdrag_anchor_fy:
+                        factor = sx
+                    else:
+                        factor = max(sx, sy)
+                    factor = max(0.05, min(10.0, factor))
+                    new_w = self._hdrag_start_w * factor
+                    new_h = self._hdrag_start_h * factor
+
+                self._selected.set_scaled_size(new_w, new_h)
                 self._selected.x = ax - self._hdrag_anchor_fx * self._selected.scaled_width
                 self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
 

@@ -66,7 +66,7 @@ HANDLE_SIZE = 10.0
 class CanvasObject:
     """Base class for all objects placed on the canvas (document-space coordinates)."""
 
-    DEFAULT_BASE_SIZE: float = 300.0
+    DEFAULT_BASE_SIZE: float = 100.0
 
     def __init__(self, x: float, y: float, width: float, height: float, page: int = 0) -> None:
         self.x = x
@@ -105,6 +105,23 @@ class CanvasObject:
             QRectF(vx + fx * vw - hs / 2, vy + fy * vh - hs / 2, hs, hs)
             for fx, fy in zip(HANDLE_FX, HANDLE_FY)
         ]
+
+    def supports_free_resize(self) -> bool:
+        return False
+
+    def set_scaled_size(self, width: float, height: float) -> None:
+        """Resize object in document-space units."""
+        width = max(8.0, width)
+        height = max(8.0, height)
+        if self.supports_free_resize():
+            self._base_width = width
+            self._base_height = height
+            self.scale = 1.0
+            return
+
+        sx = width / max(1.0, self._base_width)
+        sy = height / max(1.0, self._base_height)
+        self.scale = max(0.05, min(10.0, max(sx, sy)))
 
     def hit_test_handle(self, vx: float, vy: float, vw: float, vh: float, pt: QPointF) -> int:
         """Return handle index 0-7 if pt is over a handle, else -1."""
@@ -166,10 +183,16 @@ class VectorAnnotation(CanvasObject):
         page: int = 0,
         text: str = "",
     ) -> None:
-        base = self.DEFAULT_BASE_SIZE
-        super().__init__(x, y, base, base, page)
+        if ann_type == AnnotationType.TEXT:
+            super().__init__(x, y, 180.0, 36.0, page)
+        else:
+            base = self.DEFAULT_BASE_SIZE
+            super().__init__(x, y, base, base, page)
         self.ann_type = ann_type
         self.text = text
+
+    def supports_free_resize(self) -> bool:
+        return self.ann_type == AnnotationType.TEXT
 
     # ------------------------------------------------------------------ drawing
 
@@ -206,16 +229,11 @@ class VectorAnnotation(CanvasObject):
             painter.drawLine(QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m))
 
         elif t == AnnotationType.TEXT:
-            font_sz = max(8, int(min(vw, vh) * 0.30))
-            font = QFont("Arial", font_sz)
+            font = QFont("Arial", 12)
             painter.setFont(font)
             painter.setPen(self.color)
             painter.setBrush(Qt.NoBrush)
-            painter.drawText(
-                QRectF(vx + m, vy + m, vw - 2 * m, vh - 2 * m),
-                Qt.AlignCenter | Qt.TextWordWrap,
-                self.text or "?",
-            )
+            painter.drawText(QRectF(vx + m, vy + m, vw - 2 * m, vh - 2 * m), Qt.AlignLeft | Qt.AlignTop, self.text or "")
 
         elif t in ARROW_TYPES:
             angle_rad = math.radians(ARROW_ANGLES[t])

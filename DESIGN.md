@@ -11,7 +11,7 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 
 ## 2. Scope (v1)
 - Open a PDF document.
-- Open/select a signature image (PNG preferred for transparency).
+- Open/select a signature image from annotation submenu (PNG preferred for transparency).
 - Show document and signature overlay in one canvas.
 - Drag signature to final position.
 - Resize signature (scale up/down) before saving by dragging boundary handles.
@@ -22,13 +22,14 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 - If signature is not provided, reuse last signature file.
 - Default output file name: `<documentname>-signed.jpg`.
 - Document view fits window (no zoom controls in v1).
-- Default signature position: 80% from top, horizontally centered.
+- Default position for new annotations: centered in the visible page.
 - Support multi-page PDFs: place objects on any page.
 - Add paging controls in toolbar and keyboard support (`PageUp`, `PageDown`, `Home`, `End`).
 - Show blue boundary around selected signature/annotation while editing.
 - Change mouse cursor to move arrows when hovering draggable objects.
 - Use toolbar-first UI with large action buttons instead of hierarchical menu for primary actions.
 - Support annotations (checkmark, cross, 8-direction arrows, text) with color + move + scale.
+- Remove top-level "Open Signature" button from toolbar; signature insertion is done via annotation menu.
 
 ## 3. Non-Goals (v1)
 - Digital certificate signing.
@@ -41,8 +42,8 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 ### Main Window
 - Top toolbar (large buttons):
   - Open Document
-  - Open Signature
-  - Save JPG
+  - Add Annotation (2nd position)
+  - Save JPG (3rd position, same workflow group)
   - Previous Page / Next Page
   - Annotation picker (dropdown):
     - Checkmark
@@ -64,11 +65,12 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 ### Typical Flow
 1. Start app.
 2. Open document (or auto-load from `-document`).
-3. Auto-load signature from `-signature` or last used signature.
-4. Navigate to page (toolbar or keyboard shortcuts).
-5. Drag/scale signature to desired location.
-6. Optionally add and adjust annotation objects.
-7. Save active page to JPG.
+3. If `-signature` is provided, add signature annotation immediately after document load.
+4. If `-signature` is not provided, do not auto-add any annotation on open.
+5. Navigate to page (toolbar or keyboard shortcuts).
+6. Drag/scale signature to desired location.
+7. Optionally add and adjust annotation objects.
+8. Save active page to JPG.
 
 ## 5. Functional Design
 ### 5.1 Input Handling
@@ -97,14 +99,16 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
   - `End`: last page
 
 ### 5.4 Default Placement
-- `x = (page_width - signature_width) / 2`
-- `y = 0.8 * page_height - signature_height / 2`
+- `x = (page_width - object_width) / 2`
+- `y = (page_height - object_height) / 2`
 - Clamp to page bounds.
 
 ### 5.5 Object Interaction
 - Hover on draggable object: cursor changes to move arrows.
 - Selected object shows blue boundary.
 - Scale method: dragging object boundary handles.
+- For non-text annotations, boundary scaling preserves aspect ratio.
+- For free text annotations, boundary scaling supports non-proportional resize.
 
 ### 5.6 Annotations
 - Supported types:
@@ -124,6 +128,11 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
   - Move
   - Scale
   - Duplicate (creates a copy preserving size and color)
+- Visual default size for symbol annotations is reduced to ~1/3 of previous prototype size.
+- Free text behavior:
+  - default text size: 12pt
+  - no wrapping
+  - newline entry via Ctrl+Enter in text editor dialog
 
 ### 5.7 Persistence
 Use a lightweight local config file (JSON) in user profile (e.g., `%APPDATA%/Signer/config.json`) storing:
@@ -135,7 +144,8 @@ Use a lightweight local config file (JSON) in user profile (e.g., `%APPDATA%/Sig
 ### 5.8 CLI Parameters
 - `-document <path>`: initial document to load.
 - `-signature <path>`: initial signature to load.
-- If only `-document` is provided, use `lastSignaturePath`.
+- If `-signature` is provided with `-document`, add signature annotation immediately after load.
+- If `-signature` is omitted, do not auto-add annotations on document open.
 
 Example startup:
 - `Signer.exe -document examples/document.pdf -signature examples/signature.png`
@@ -147,9 +157,15 @@ Default save name:
 
 ## 6. Error Handling
 - Missing/unreadable PDF: block canvas interaction, show clear message.
-- Missing signature: allow document load, prompt to open signature before save.
+- Missing signature annotation: allow document load, prompt user to add a signature annotation before save.
 - Corrupt image/PDF: show validation error and keep app responsive.
 - Save failure (permissions/locked file): show retryable error.
+
+## 6.1 Selection-Dependent Toolbar Actions
+- Duplicate/Delete actions are enabled only when an annotation is selected.
+- Color action behavior:
+  - when annotation selected: change selected annotation color
+  - when none selected: set default color for next new annotation
 
 ## 7. Architecture
 ### Modules
@@ -226,6 +242,7 @@ Use **Option A** for v1 due to shortest implementation path and low risk for req
 - Open and render current PDF page in < 1 second for common office documents.
 - Drag/scale objects with smooth interaction (no visible lag).
 - Export quality suitable for typical print/email workflows.
+- Window aspect ratio should adapt to document aspect ratio while keeping the full toolbar visible.
 
 ## 11. Test Strategy (Design-Level)
 - Unit tests:
@@ -241,6 +258,12 @@ Use **Option A** for v1 due to shortest implementation path and low risk for req
   - verify per-page object persistence when switching pages,
   - verify cursor change on hover and blue boundary on selection,
   - verify boundary-handle scaling behavior,
+  - verify text annotation allows non-proportional resize,
+  - verify text default is 12pt, no wrapping, and Ctrl+Enter creates newline,
+  - verify toolbar order: Open Document, Add Annotation, Save JPG,
+  - verify no top-level Open Signature toolbar button,
+  - verify duplicate/delete enabled only when selection exists,
+  - verify color behavior for selected vs non-selected state,
   - verify annotation insertion and color/move/scale for all supported types,
   - verify annotation duplication (size and color preserved),
   - verify text annotation date/time/datetime insertion uses system locale,

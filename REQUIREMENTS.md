@@ -56,6 +56,29 @@ I'm now doing that in GIMP, but it has too many manual steps. Recommend how to m
     3. In the Toolbar, add a button that expands to a list from which the annotation type is selected and then placed on the current page.
 16. Make the resulting application a single-file executable (that can be distributed to other users).
 
+Feedback after implementation:
+- Remove the add signature button (signature can be added from the annotations).
+- Move the annotation menu to 2nd position, just after Open document.
+- Move the "Save JPG" item to the 3rd position. Put it into same group as the previous buttons (they belong to the same workflow).
+- Make the annotation symbols one third of the current (so it can be used on a dicument with 12pt font immediately).
+- Bug: I like that the resizing always respects aspect ratio. That should not be the case for free text. Make default text size 12pt; no wrapping. New line is created by pressing Ctrl+Enter. Resizing should be possible.
+- Clarified terminology: signatury is a kind of annotation.
+- Default position of the annotations is in the middle of the screen.
+- Bug: Having annotaion buttons in the toolbar is ok, but enable those buttons only when an annotation is selected.
+- Bug: Changing the color. When an annotation is selected, then change the color of the annotation. (Maintain current functionality: If none annotation is selected, set the color of the next new annoation.)
+- Window size. Respect the size of the document (like change windows aspect ratio to match the document aspect ratio). But also ensure that the entire toolbar is visible.
+- Clarification: If -signature parameter is used, then add the signature annotation immediately after opening the document. Otherwise, do not add anything (on open).
+
+Feedback after implementation, round 2:
+- The "Add annotation" button in toolbar does nothing. I must click the doen arrow next to it. Make the entire button open the menu.
+- I just noticed that text is edited in a new dialog window. I'm changing my mind, revert to standard behavior: Enter adds a new line, Ctrl+Enter closes the dialog.
+- Annotation sizes are good. Do the following:
+  - The arrows are too small. Make it twise bigger.
+  - The text boundary is small, hiding most of the text. Workaround is to resize it properly. Do this boundry resizing (fit the content) automatically.
+- In text annotations, make the margin zero. (Resizin by right-bottom corner moves the text.)
+- Make the window width even smalled (there are still dark borders on the sides of an A4 document).
+
+
 # Assumptions
 1. Signature has a transparent background.
 1. Signature is a PNG file.

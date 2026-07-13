@@ -6,18 +6,21 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QColor, QKeySequence
+from PySide6.QtGui import QAction, QColor, QKeyEvent
 from PySide6.QtWidgets import (
     QColorDialog,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
-    QInputDialog,
     QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPushButton,
+    QTextEdit,
     QToolBar,
     QToolButton,
+    QVBoxLayout,
 )
 
 from .canvas import DocumentCanvas
@@ -37,6 +40,45 @@ ARROW_DIRECTIONS = [
     ("West", AnnotationType.ARROW_W),
     ("North-West", AnnotationType.ARROW_NW),
 ]
+
+
+class _TextInputDialog(QDialog):
+    class _CtrlEnterTextEdit(QTextEdit):
+        def __init__(self, on_submit, parent=None) -> None:
+            super().__init__(parent)
+            self._on_submit = on_submit
+
+        def keyPressEvent(self, event: QKeyEvent) -> None:
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                if event.modifiers() & Qt.ControlModifier:
+                    self.insertPlainText("\n")
+                    event.accept()
+                    return
+                self._on_submit()
+                event.accept()
+                return
+            super().keyPressEvent(event)
+
+    def __init__(self, parent: QMainWindow, title: str, initial_text: str = "") -> None:
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.resize(480, 220)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Text (Ctrl+Enter = new line, OK to confirm):"))
+
+        self.editor = self._CtrlEnterTextEdit(self.accept, self)
+        self.editor.setAcceptRichText(False)
+        self.editor.setPlainText(initial_text)
+        layout.addWidget(self.editor)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def text(self) -> str:
+        return self.editor.toPlainText()
 
 
 class MainWindow(QMainWindow):
@@ -68,8 +110,6 @@ class MainWindow(QMainWindow):
                 self.open_document(document)
             if signature:
                 self._load_signature_file(signature, at_default_position=True)
-            elif self._settings.last_signature_path:
-                self._load_signature_file(self._settings.last_signature_path, at_default_position=True)
         QTimer.singleShot(0, _load)
 
     # ---------------------------------------------------------------- toolbar
@@ -88,17 +128,8 @@ class MainWindow(QMainWindow):
             return act
 
         big_action("📂 Open Document", lambda: self.open_document())
-        big_action("✍ Open Signature", lambda: self.open_signature())
-        tb.addSeparator()
 
-        # Page navigation
-        big_action("◀ Prev", lambda: self.canvas.goto_page(self.canvas.current_page - 1))
-        self.page_label = QLabel("  Page — / —  ")
-        tb.addWidget(self.page_label)
-        big_action("Next ▶", lambda: self.canvas.goto_page(self.canvas.current_page + 1))
-        tb.addSeparator()
-
-        # Annotation picker
+        # Annotation picker (2nd)
         ann_btn = QToolButton(self)
         ann_btn.setText("➕ Add Annotation")
         ann_btn.setPopupMode(QToolButton.MenuButtonPopup)
@@ -122,13 +153,23 @@ class MainWindow(QMainWindow):
         self._rebuild_sig_ann_menu()
 
         ann_btn.setMenu(ann_menu)
-        ann_btn.clicked.connect(ann_menu.exec_)
         tb.addWidget(ann_btn)
+
+        # Save action (3rd, same workflow group)
+        big_action("💾 Save JPG", self.save_signed_document)
 
         tb.addSeparator()
 
-        big_action("❏ Duplicate", lambda: self.canvas.duplicate_selected())
-        big_action("🗑 Delete", lambda: self.canvas.remove_selected())
+        # Page navigation
+        big_action("◀ Prev", lambda: self.canvas.goto_page(self.canvas.current_page - 1))
+        self.page_label = QLabel("  Page — / —  ")
+        tb.addWidget(self.page_label)
+        big_action("Next ▶", lambda: self.canvas.goto_page(self.canvas.current_page + 1))
+
+        tb.addSeparator()
+
+        self._dup_action = big_action("❏ Duplicate", lambda: self.canvas.duplicate_selected())
+        self._del_action = big_action("🗑 Delete", lambda: self.canvas.remove_selected())
 
         tb.addSeparator()
 
@@ -139,9 +180,7 @@ class MainWindow(QMainWindow):
         self._color_btn.clicked.connect(self._pick_color)
         self._update_color_btn()
         tb.addWidget(self._color_btn)
-
-        tb.addSeparator()
-        big_action("💾 Save JPG", self.save_signed_document)
+        self._update_annotation_action_state()
 
     def _rebuild_sig_ann_menu(self) -> None:
         if self._sig_ann_menu is None:
@@ -175,6 +214,14 @@ class MainWindow(QMainWindow):
             x = int(round(obj.x))
             y = int(round(obj.y))
             self.obj_status.setText(f"x={x} y={y}  {sw}×{sh} px")
+        self._update_annotation_action_state()
+        self._update_color_btn()
+
+    def _update_annotation_action_state(self) -> None:
+        selected = self.canvas.selected is not None
+        self._dup_action.setEnabled(selected)
+        self._del_action.setEnabled(selected)
+        self._color_btn.setEnabled(True)
 
     def _on_page_changed(self, current: int, total: int) -> None:
         if total > 0:
@@ -187,26 +234,31 @@ class MainWindow(QMainWindow):
         if not isinstance(obj, CanvasObject):
             return
         if isinstance(obj, VectorAnnotation) and obj.ann_type == AnnotationType.TEXT:
-            new_text, ok = QInputDialog.getText(self, "Edit Text", "Text:", text=obj.text)
-            if ok:
+            dlg = _TextInputDialog(self, "Edit Text", obj.text)
+            if dlg.exec() == QDialog.Accepted:
+                new_text = dlg.text()
                 obj.text = new_text
                 self.canvas.update()
-        color = QColorDialog.getColor(obj.color, self, "Object color")
-        if color.isValid():
-            obj.color = color
-            self.canvas.update()
 
     # ---------------------------------------------------------------- color
 
     def _pick_color(self) -> None:
-        color = QColorDialog.getColor(self._current_color, self, "Annotation color")
+        selected = self.canvas.selected
+        initial = selected.color if selected is not None else self._current_color
+        color = QColorDialog.getColor(initial, self, "Annotation color")
         if color.isValid():
-            self._current_color = color
+            if selected is not None:
+                selected.color = color
+                self.canvas.update()
+            else:
+                self._current_color = color
             self._update_color_btn()
 
     def _update_color_btn(self) -> None:
-        c = self._current_color.name()
-        self._color_btn.setStyleSheet(f"background-color: {c}; color: {'#fff' if self._current_color.lightness() < 128 else '#000'};")
+        selected = self.canvas.selected
+        color = selected.color if selected is not None else self._current_color
+        c = color.name()
+        self._color_btn.setStyleSheet(f"background-color: {c}; color: {'#fff' if color.lightness() < 128 else '#000'};")
 
     # ---------------------------------------------------------------- date/time helpers
 
@@ -251,10 +303,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "No document", "Open a document first.")
             return
         if preset_text == "":
-            text, ok = QInputDialog.getText(self, "Text Annotation", "Enter text:")
-            if not ok or not text.strip():
+            dlg = _TextInputDialog(self, "Text Annotation")
+            if dlg.exec() != QDialog.Accepted:
                 return
-            preset_text = text.strip()
+            text = dlg.text()
+            if not text.strip():
+                return
+            preset_text = text
         obj = VectorAnnotation(AnnotationType.TEXT, 0, 0, self.canvas.current_page, preset_text)
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)
@@ -303,6 +358,8 @@ class MainWindow(QMainWindow):
         self.document_path = str(p)
         self._settings.last_open_document_path = str(p)
         self._save_settings_safe()
+        if pages:
+            self._adjust_window_to_document(pages[0].size[0], pages[0].size[1])
         self.doc_status.setText(f"Document: {p.name}")
         self._update_title()
         return True
@@ -417,6 +474,27 @@ class MainWindow(QMainWindow):
             self._settings_store.save(self._settings)
         except Exception:
             pass
+
+    def _adjust_window_to_document(self, doc_w: int, doc_h: int) -> None:
+        if doc_w <= 0 or doc_h <= 0:
+            return
+        toolbar_hint_w = self.findChildren(QToolBar)[0].sizeHint().width() if self.findChildren(QToolBar) else 0
+        chrome_h = max(120, self.height() - self.canvas.height())
+
+        screen = self.screen()
+        if screen is None:
+            return
+        avail = screen.availableGeometry()
+
+        target_canvas_h = min(max(520, self.canvas.height()), max(520, avail.height() - chrome_h - 60))
+        target_canvas_w = int(target_canvas_h * (doc_w / doc_h))
+
+        target_w = max(920, target_canvas_w, toolbar_hint_w + 32)
+        target_h = target_canvas_h + chrome_h
+
+        target_w = min(target_w, avail.width() - 20)
+        target_h = min(target_h, avail.height() - 20)
+        self.resize(target_w, target_h)
 
     def _update_title(self) -> None:
         doc_name = Path(self.document_path).name if self.document_path else "(no document)"
