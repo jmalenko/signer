@@ -5,8 +5,7 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 
 ## 1.1 Example Assets (Current Workspace)
 - `examples/document.pdf` (sample one-page input document)
-- `examples/signature.jpg` (sample signature image)
-- `examples/signature.xcf` (GIMP source; not directly supported for import in v1)
+- `examples/signature.png` (sample signature image)
 
 ## 2. Scope (v1)
 - Open a PDF document.
@@ -55,7 +54,7 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 ### 5.1 Input Handling
 - Validate file existence and extensions.
 - PDF input: assume one-page PDFs in v1.
-- Signature input: PNG/JPG; PNG strongly recommended for transparency.
+- Signature input: PNG (for transparency).
 - Unsupported signature formats (e.g., `.xcf`) should trigger a clear validation message.
 
 ### 5.2 Rendering Pipeline
@@ -85,12 +84,11 @@ Use a lightweight local config file (JSON) in user profile (e.g., `%APPDATA%/Sig
 - If only `-document` is provided, use `lastSignaturePath`.
 
 Example startup:
-- `Signer.exe -document examples/document.pdf -signature examples/signature.jpg`
+- `Signer.exe -document examples/document.pdf -signature examples/signature.png`
 
 ### 5.6 File Naming
 Default save name:
-- Input `contract.pdf` => `contract-signed.jpg`
-- Input `examples/document.pdf` => `document-signed.jpg`
+- Input `document.pdf` => `document-signed.jpg`
 - If conflict exists, append numeric suffix (`-signed-1.jpg`, etc.)
 
 ## 6. Error Handling
@@ -178,7 +176,7 @@ Use **Option A** for v1 due to shortest implementation path and low risk for req
   - settings persistence behavior.
 - Manual functional tests:
   - startup with/without CLI args,
-  - startup using sample assets (`examples/document.pdf` + `examples/signature.jpg`),
+  - startup using sample assets (`examples/document.pdf` + `examples/signature.png`),
   - verify unsupported format handling using `examples/signature.xcf`,
   - load invalid files,
   - drag and save accuracy,
