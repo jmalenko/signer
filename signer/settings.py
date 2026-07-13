@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 
-@dataclass(slots=True)
+@dataclass
 class AppSettings:
     last_signature_path: str | None = None
     last_open_document_path: str | None = None
     last_save_directory: str | None = None
+    recent_signature_paths: list[str] = field(default_factory=list)
 
 
 class SettingsStore:
@@ -34,6 +35,7 @@ class SettingsStore:
                 last_signature_path=data.get("last_signature_path"),
                 last_open_document_path=data.get("last_open_document_path"),
                 last_save_directory=data.get("last_save_directory"),
+                recent_signature_paths=data.get("recent_signature_paths", []),
             )
         except Exception:
             return AppSettings()

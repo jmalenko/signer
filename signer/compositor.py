@@ -4,16 +4,20 @@ from pathlib import Path
 
 from PIL import Image
 
+from .objects import CanvasObject
 
-def build_default_output_path(document_path: str | Path, preferred_directory: str | None = None) -> Path:
+
+def build_default_output_path(
+    document_path: str | Path,
+    page_index: int,
+    preferred_directory: str | None = None,
+) -> Path:
     doc = Path(document_path)
     directory = Path(preferred_directory) if preferred_directory else doc.parent
-    base = f"{doc.stem}-signed"
+    base = f"{doc.stem}-p{page_index + 1}-signed"
     candidate = directory / f"{base}.jpg"
-
     if not candidate.exists():
         return candidate
-
     i = 1
     while True:
         candidate = directory / f"{base}-{i}.jpg"
@@ -22,24 +26,26 @@ def build_default_output_path(document_path: str | Path, preferred_directory: st
         i += 1
 
 
-def composite_signature_to_jpg(
-    document_image: Image.Image,
-    signature_image: Image.Image,
-    signature_x: float,
-    signature_y: float,
-    signature_scale: float,
+def composite_objects_to_jpg(
+    page_image: Image.Image,
+    objects: list[CanvasObject],
     output_path: str | Path,
     jpg_quality: int = 95,
 ) -> None:
-    doc_rgba = document_image.convert("RGBA")
+    """Composite all objects over the page image and save as JPEG."""
+    base = page_image.convert("RGBA")
+    pw, ph = base.size
 
-    target_w = max(1, int(round(signature_image.width * signature_scale)))
-    target_h = max(1, int(round(signature_image.height * signature_scale)))
-    sig = signature_image.convert("RGBA").resize((target_w, target_h), Image.Resampling.LANCZOS)
+    for obj in objects:
+        try:
+            overlay = obj.render_to_pil().convert("RGBA")
+        except Exception:
+            continue
+        x = int(round(obj.x))
+        y = int(round(obj.y))
+        # Clamp destination to avoid out-of-bounds
+        x = max(0, min(x, pw - 1))
+        y = max(0, min(y, ph - 1))
+        base.alpha_composite(overlay, dest=(x, y))
 
-    x = int(round(signature_x))
-    y = int(round(signature_y))
-    doc_rgba.alpha_composite(sig, dest=(x, y))
-
-    out_rgb = doc_rgba.convert("RGB")
-    out_rgb.save(str(output_path), format="JPEG", quality=jpg_quality, optimize=True)
+    base.convert("RGB").save(str(output_path), format="JPEG", quality=jpg_quality, optimize=True)

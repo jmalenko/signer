@@ -1,275 +1,311 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
 
 from PIL import Image
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPixmap, QWheelEvent
+from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QWidget
 
-
-@dataclass(slots=True)
-class SignatureState:
-    path: str | None = None
-    image: Image.Image | None = None
-    scale: float = 1.0
-    x: float = 0.0
-    y: float = 0.0
+from .objects import (
+    ANCHOR_HANDLE,
+    HANDLE_FX,
+    HANDLE_FY,
+    CanvasObject,
+)
 
 
 class DocumentCanvas(QWidget):
-    signatureChanged = Signal()
+    objectChanged = Signal()        # emitted on move/scale/add/remove
+    pageChanged = Signal(int, int)  # (current_page_0indexed, total_pages)
+    editRequested = Signal(object)  # CanvasObject — double-click
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.StrongFocus)
 
-        self._doc_image: Image.Image | None = None
-        self._doc_pixmap: QPixmap | None = None
-        self._signature = SignatureState()
-        self._signature_pixmap_cache: QPixmap | None = None
-        self._signature_cache_scale: float | None = None
+        self._pages: list[Image.Image] = []
+        self._page_pixmaps: list[QPixmap] = []
+        self._current_page: int = 0
+        self._page_objects: dict[int, list[CanvasObject]] = {}
+
+        self._selected: CanvasObject | None = None
+        self._dragging: bool = False
+        self._drag_handle: int = -1
+
+        self._drag_doc_offset_x: float = 0.0
+        self._drag_doc_offset_y: float = 0.0
+
+        self._hdrag_anchor_doc: QPointF = QPointF()
+        self._hdrag_anchor_fx: float = 0.0
+        self._hdrag_anchor_fy: float = 0.0
+        self._hdrag_start_dist: float = 1.0
+        self._hdrag_start_scale: float = 1.0
 
         self._fit_scale: float = 1.0
         self._doc_offset_x: float = 0.0
         self._doc_offset_y: float = 0.0
 
-        self._dragging = False
-        self._drag_offset_x = 0.0
-        self._drag_offset_y = 0.0
+    # ---------------------------------------------------------------- document API
 
     @property
     def has_document(self) -> bool:
-        return self._doc_image is not None
+        return bool(self._pages)
 
     @property
-    def has_signature(self) -> bool:
-        return self._signature.image is not None
+    def page_count(self) -> int:
+        return len(self._pages)
 
     @property
-    def document_size(self) -> tuple[int, int] | None:
-        if self._doc_image is None:
-            return None
-        return self._doc_image.size
+    def current_page(self) -> int:
+        return self._current_page
 
     @property
-    def document_image(self) -> Image.Image | None:
-        return self._doc_image
+    def current_page_image(self) -> Image.Image | None:
+        return self._pages[self._current_page] if self._pages else None
 
-    def set_document_image(self, image: Image.Image) -> None:
-        self._doc_image = image.convert("RGB")
-        self._doc_pixmap = self._pil_to_qpixmap(self._doc_image)
+    def current_page_objects(self) -> list[CanvasObject]:
+        return self._page_objects.get(self._current_page, [])
+
+    def set_pages(self, pages: list[Image.Image]) -> None:
+        self._pages = [p.convert("RGB") for p in pages]
+        self._page_pixmaps = [QPixmap.fromImage(ImageQt(p)) for p in self._pages]
+        self._current_page = 0
+        self._page_objects = {}
+        self._selected = None
         self._recompute_fit()
-
-        if self.has_signature:
-            self.reset_signature_default_position()
-
+        self.pageChanged.emit(0, len(self._pages))
         self.update()
 
-    def set_signature_image(self, image: Image.Image, path: str | None = None) -> None:
-        self._signature.image = image.convert("RGBA")
-        self._signature.path = path
-        self._signature.scale = 1.0
-        self._signature_pixmap_cache = None
-        self._signature_cache_scale = None
-
-        if self.has_document:
-            self.reset_signature_default_position()
-
-        self.signatureChanged.emit()
-        self.update()
-
-    def set_signature_scale(self, scale: float) -> None:
-        if not self.has_signature:
+    def goto_page(self, page: int) -> None:
+        if not self._pages:
             return
-        scale = max(0.2, min(3.0, scale))
-        if abs(scale - self._signature.scale) < 1e-6:
+        page = max(0, min(page, len(self._pages) - 1))
+        if page == self._current_page:
             return
-
-        old_w, old_h = self.signature_size_doc()
-        cx = self._signature.x + old_w / 2
-        cy = self._signature.y + old_h / 2
-
-        self._signature.scale = scale
-        self._signature_pixmap_cache = None
-        self._signature_cache_scale = None
-
-        new_w, new_h = self.signature_size_doc()
-        self._signature.x = cx - new_w / 2
-        self._signature.y = cy - new_h / 2
-        self._clamp_signature_position()
-        self.signatureChanged.emit()
+        self._selected = None
+        self._current_page = page
+        self._recompute_fit()
+        self.pageChanged.emit(self._current_page, len(self._pages))
         self.update()
 
-    def signature_scale(self) -> float:
-        return self._signature.scale
+    # ---------------------------------------------------------------- object API
 
-    def signature_size_doc(self) -> tuple[float, float]:
-        if not self.has_signature or self._signature.image is None:
+    @property
+    def selected(self) -> CanvasObject | None:
+        return self._selected
+
+    def add_object(self, obj: CanvasObject) -> None:
+        self._page_objects.setdefault(self._current_page, []).append(obj)
+        self._selected = obj
+        self.objectChanged.emit()
+        self.update()
+
+    def remove_selected(self) -> None:
+        if self._selected is None:
+            return
+        objs = self._page_objects.get(self._current_page, [])
+        if self._selected in objs:
+            objs.remove(self._selected)
+        self._selected = None
+        self.objectChanged.emit()
+        self.update()
+
+    def duplicate_selected(self) -> None:
+        if self._selected is None:
+            return
+        dup = self._selected.duplicate()
+        dup.page = self._current_page
+        self.add_object(dup)
+
+    # ---------------------------------------------------------------- coordinate helpers
+
+    def _object_view_rect(self, obj: CanvasObject) -> QRectF:
+        return QRectF(
+            self._doc_offset_x + obj.x * self._fit_scale,
+            self._doc_offset_y + obj.y * self._fit_scale,
+            obj.scaled_width * self._fit_scale,
+            obj.scaled_height * self._fit_scale,
+        )
+
+    def _view_to_doc(self, pt: QPointF) -> QPointF:
+        return QPointF(
+            (pt.x() - self._doc_offset_x) / self._fit_scale,
+            (pt.y() - self._doc_offset_y) / self._fit_scale,
+        )
+
+    def _recompute_fit(self) -> None:
+        if not self._pages:
+            self._fit_scale = 1.0
+            self._doc_offset_x = 0.0
+            self._doc_offset_y = 0.0
+            return
+        dw, dh = self._pages[self._current_page].size
+        vw, vh = max(1, self.width()), max(1, self.height())
+        self._fit_scale = min(vw / dw, vh / dh)
+        self._doc_offset_x = (vw - dw * self._fit_scale) / 2
+        self._doc_offset_y = (vh - dh * self._fit_scale) / 2
+
+    def default_position_for(self, obj: CanvasObject) -> tuple[float, float]:
+        """Return default doc-coords: centered, 80% from top."""
+        if not self._pages:
             return 0.0, 0.0
-        w, h = self._signature.image.size
-        return w * self._signature.scale, h * self._signature.scale
+        pw, ph = self._pages[self._current_page].size
+        x = max(0.0, (pw - obj.scaled_width) / 2)
+        y = max(0.0, 0.8 * ph - obj.scaled_height / 2)
+        return x, y
 
-    def signature_state_for_save(self) -> tuple[Image.Image, float, float, float] | None:
-        if not self.has_signature or self._signature.image is None:
-            return None
-        return self._signature.image, self._signature.x, self._signature.y, self._signature.scale
+    # ---------------------------------------------------------------- paint
 
-    def signature_info(self) -> tuple[float, float, float, float, float] | None:
-        if not self.has_signature:
-            return None
-        w, h = self.signature_size_doc()
-        return self._signature.x, self._signature.y, w, h, self._signature.scale
-
-    def reset_signature_default_position(self) -> None:
-        if not self.has_document or not self.has_signature:
-            return
-        doc_w, doc_h = self._doc_image.size  # type: ignore[union-attr]
-        sig_w, sig_h = self.signature_size_doc()
-        self._signature.x = (doc_w - sig_w) / 2
-        self._signature.y = 0.8 * doc_h - sig_h / 2
-        self._clamp_signature_position()
-        self.signatureChanged.emit()
-        self.update()
-
-    def _clamp_signature_position(self) -> None:
-        if not self.has_document or not self.has_signature:
-            return
-        doc_w, doc_h = self._doc_image.size  # type: ignore[union-attr]
-        sig_w, sig_h = self.signature_size_doc()
-
-        max_x = max(0.0, doc_w - sig_w)
-        max_y = max(0.0, doc_h - sig_h)
-        self._signature.x = max(0.0, min(self._signature.x, max_x))
-        self._signature.y = max(0.0, min(self._signature.y, max_y))
-
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
+    def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._recompute_fit()
 
-    def _recompute_fit(self) -> None:
-        if self._doc_image is None:
-            self._fit_scale = 1.0
-            self._doc_offset_x = 0.0
-            self._doc_offset_y = 0.0
-            return
-
-        doc_w, doc_h = self._doc_image.size
-        if doc_w <= 0 or doc_h <= 0:
-            self._fit_scale = 1.0
-            self._doc_offset_x = 0.0
-            self._doc_offset_y = 0.0
-            return
-
-        viewport_w = max(1, self.width())
-        viewport_h = max(1, self.height())
-        self._fit_scale = min(viewport_w / doc_w, viewport_h / doc_h)
-
-        draw_w = doc_w * self._fit_scale
-        draw_h = doc_h * self._fit_scale
-        self._doc_offset_x = (viewport_w - draw_w) / 2
-        self._doc_offset_y = (viewport_h - draw_h) / 2
-
-    def paintEvent(self, event) -> None:  # type: ignore[override]
+    def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor("#2f2f2f"))
 
-        if self._doc_pixmap is None or self._doc_image is None:
+        if not self._pages:
             return
 
-        doc_w, doc_h = self._doc_image.size
+        pm = self._page_pixmaps[self._current_page]
+        dw, dh = self._pages[self._current_page].size
         target = QRectF(
-            self._doc_offset_x,
-            self._doc_offset_y,
-            doc_w * self._fit_scale,
-            doc_h * self._fit_scale,
+            self._doc_offset_x, self._doc_offset_y,
+            dw * self._fit_scale, dh * self._fit_scale,
         )
-        painter.drawPixmap(target, self._doc_pixmap, QRectF(0, 0, self._doc_pixmap.width(), self._doc_pixmap.height()))
+        painter.drawPixmap(target, pm, QRectF(pm.rect()))
 
-        if self.has_signature:
-            sig_pm = self._signature_pixmap()
-            sig_w_doc, sig_h_doc = self.signature_size_doc()
-            x = self._doc_offset_x + self._signature.x * self._fit_scale
-            y = self._doc_offset_y + self._signature.y * self._fit_scale
-            w = sig_w_doc * self._fit_scale
-            h = sig_h_doc * self._fit_scale
-            rect = QRectF(x, y, w, h)
-            painter.drawPixmap(rect, sig_pm, QRectF(0, 0, sig_pm.width(), sig_pm.height()))
-            painter.setPen(QColor("#00a2ff"))
-            painter.drawRect(rect)
+        for obj in self.current_page_objects():
+            r = self._object_view_rect(obj)
+            obj.draw_in_viewport(painter, r.x(), r.y(), r.width(), r.height())
 
-    def _signature_pixmap(self) -> QPixmap:
-        assert self._signature.image is not None
-        if self._signature_pixmap_cache is not None and self._signature_cache_scale == self._signature.scale:
-            return self._signature_pixmap_cache
+            if obj is self._selected:
+                painter.save()
+                painter.setPen(QColor("#00a2ff"))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRect(r)
+                for hr in obj.handle_rects_viewport(r.x(), r.y(), r.width(), r.height()):
+                    painter.fillRect(hr, QColor("#00a2ff"))
+                    painter.drawRect(hr)
+                painter.restore()
 
-        base = self._signature.image
-        w = max(1, int(round(base.width * self._signature.scale)))
-        h = max(1, int(round(base.height * self._signature.scale)))
-        resized = base.resize((w, h), Image.Resampling.LANCZOS)
+    # ---------------------------------------------------------------- mouse
 
-        pm = self._pil_to_qpixmap(resized)
-        self._signature_pixmap_cache = pm
-        self._signature_cache_scale = self._signature.scale
-        return pm
-
-    def _view_to_doc(self, pt: QPointF) -> tuple[float, float]:
-        x = (pt.x() - self._doc_offset_x) / self._fit_scale
-        y = (pt.y() - self._doc_offset_y) / self._fit_scale
-        return x, y
-
-    def _signature_rect_view(self) -> QRectF | None:
-        if not self.has_signature:
-            return None
-        sig_w_doc, sig_h_doc = self.signature_size_doc()
-        x = self._doc_offset_x + self._signature.x * self._fit_scale
-        y = self._doc_offset_y + self._signature.y * self._fit_scale
-        return QRectF(x, y, sig_w_doc * self._fit_scale, sig_h_doc * self._fit_scale)
-
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        if event.button() != Qt.LeftButton or not self.has_signature or not self.has_document:
+    def mousePressEvent(self, event) -> None:
+        if event.button() != Qt.LeftButton or not self._pages:
             return
+        pt = event.position()
+        objects = self.current_page_objects()
 
-        rect = self._signature_rect_view()
-        if rect is None or not rect.contains(event.position()):
-            return
+        if self._selected is not None:
+            r = self._object_view_rect(self._selected)
+            h_idx = self._selected.hit_test_handle(r.x(), r.y(), r.width(), r.height(), pt)
+            if h_idx >= 0:
+                self._start_handle_drag(h_idx, pt)
+                return
 
-        doc_x, doc_y = self._view_to_doc(event.position())
-        self._drag_offset_x = doc_x - self._signature.x
-        self._drag_offset_y = doc_y - self._signature.y
-        self._dragging = True
+        for obj in reversed(objects):
+            r = self._object_view_rect(obj)
+            if r.contains(pt):
+                self._selected = obj
+                self._dragging = True
+                self._drag_handle = -1
+                doc_pt = self._view_to_doc(pt)
+                self._drag_doc_offset_x = doc_pt.x() - obj.x
+                self._drag_doc_offset_y = doc_pt.y() - obj.y
+                self.update()
+                return
 
-    def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-        if not self._dragging:
-            return
-
-        doc_x, doc_y = self._view_to_doc(event.position())
-        self._signature.x = doc_x - self._drag_offset_x
-        self._signature.y = doc_y - self._drag_offset_y
-        self._clamp_signature_position()
-        self.signatureChanged.emit()
+        self._selected = None
         self.update()
 
-    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+    def _start_handle_drag(self, h_idx: int, pt: QPointF) -> None:
+        obj = self._selected
+        assert obj is not None
+        anchor_h = ANCHOR_HANDLE[h_idx]
+        ax = obj.x + HANDLE_FX[anchor_h] * obj.scaled_width
+        ay = obj.y + HANDLE_FY[anchor_h] * obj.scaled_height
+        self._hdrag_anchor_doc = QPointF(ax, ay)
+        self._hdrag_anchor_fx = HANDLE_FX[anchor_h]
+        self._hdrag_anchor_fy = HANDLE_FY[anchor_h]
+        self._hdrag_start_scale = obj.scale
+        doc_pt = self._view_to_doc(pt)
+        self._hdrag_start_dist = max(1.0, math.hypot(doc_pt.x() - ax, doc_pt.y() - ay))
+        self._dragging = True
+        self._drag_handle = h_idx
+
+    def mouseMoveEvent(self, event) -> None:
+        pt = event.position()
+
+        if self._dragging and self._selected is not None:
+            if self._drag_handle == -1:
+                doc_pt = self._view_to_doc(pt)
+                self._selected.x = doc_pt.x() - self._drag_doc_offset_x
+                self._selected.y = doc_pt.y() - self._drag_doc_offset_y
+            else:
+                doc_pt = self._view_to_doc(pt)
+                ax = self._hdrag_anchor_doc.x()
+                ay = self._hdrag_anchor_doc.y()
+                dist = max(1.0, math.hypot(doc_pt.x() - ax, doc_pt.y() - ay))
+                factor = dist / self._hdrag_start_dist
+                new_scale = max(0.05, min(10.0, self._hdrag_start_scale * factor))
+                self._selected.scale = new_scale
+                self._selected.x = ax - self._hdrag_anchor_fx * self._selected.scaled_width
+                self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
+
+            if self.current_page_image:
+                pw, ph = self.current_page_image.size
+                self._selected.clamp_to_page(pw, ph)
+            self.objectChanged.emit()
+            self.update()
+            return
+
+        # Cursor hover
+        objects = self.current_page_objects()
+        if self._selected is not None:
+            r = self._object_view_rect(self._selected)
+            h = self._selected.hit_test_handle(r.x(), r.y(), r.width(), r.height(), pt)
+            if h >= 0:
+                cursor_map = {
+                    0: Qt.SizeFDiagCursor, 7: Qt.SizeFDiagCursor,
+                    2: Qt.SizeBDiagCursor, 5: Qt.SizeBDiagCursor,
+                    1: Qt.SizeVerCursor,   6: Qt.SizeVerCursor,
+                    3: Qt.SizeHorCursor,   4: Qt.SizeHorCursor,
+                }
+                self.setCursor(cursor_map.get(h, Qt.SizeAllCursor))
+                return
+
+        for obj in reversed(objects):
+            if self._object_view_rect(obj).contains(pt):
+                self.setCursor(Qt.SizeAllCursor)
+                return
+        self.setCursor(Qt.ArrowCursor)
+
+    def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
             self._dragging = False
+            self._drag_handle = -1
 
-    def wheelEvent(self, event: QWheelEvent) -> None:  # type: ignore[override]
-        if not self.has_signature:
-            return
+    def mouseDoubleClickEvent(self, event) -> None:
+        if event.button() == Qt.LeftButton and self._selected is not None:
+            self.editRequested.emit(self._selected)
 
-        # Ctrl + wheel adjusts signature scale.
-        if event.modifiers() & Qt.ControlModifier:
-            delta_steps = event.angleDelta().y() / 120.0
-            next_scale = self._signature.scale * (1.0 + 0.08 * delta_steps)
-            self.set_signature_scale(next_scale)
-            event.accept()
-            return
+    # ---------------------------------------------------------------- keyboard
 
-        super().wheelEvent(event)
-
-    @staticmethod
-    def _pil_to_qpixmap(image: Image.Image) -> QPixmap:
-        qimage = ImageQt(image)
-        return QPixmap.fromImage(qimage)
+    def keyPressEvent(self, event) -> None:
+        key = event.key()
+        if key == Qt.Key_PageDown:
+            self.goto_page(self._current_page + 1)
+        elif key == Qt.Key_PageUp:
+            self.goto_page(self._current_page - 1)
+        elif key == Qt.Key_Home:
+            self.goto_page(0)
+        elif key == Qt.Key_End:
+            self.goto_page(len(self._pages) - 1)
+        elif key in (Qt.Key_Delete, Qt.Key_Backspace) and self._selected is not None:
+            self.remove_selected()
+        else:
+            super().keyPressEvent(event)

@@ -24,6 +24,25 @@
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "justMyCode": true
+    },
+    {
+      "name": "Signer: Build signer.exe (PyInstaller)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "PyInstaller",
+      "args": [
+        "--noconfirm",
+        "--log-level",
+        "INFO",
+        "--onefile",
+        "--windowed",
+        "--name",
+        "signer",
+        "main.py"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
     }
   ]
 }
