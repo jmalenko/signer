@@ -1,0 +1,32 @@
+# Python caches and artifacts
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+
+# Build and packaging outputs
+build/
+dist/
+*.spec
+
+# Test and tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE/editor
+.vscode/*.log
+
+# Local app/runtime outputs
+*-signed.jpg
+*-signed-*.jpg
+
+# OS files
+.DS_Store
+Thumbs.db
