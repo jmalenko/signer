@@ -7,23 +7,45 @@ from PIL import Image
 from .objects import CanvasObject
 
 
+def _page_suffix(page_index: int, total_pages: int) -> str:
+    if total_pages <= 1:
+        return ""
+    pad = len(str(total_pages))
+    return f"-p{page_index + 1:0{pad}d}"
+
+
 def build_default_output_path(
     document_path: str | Path,
     page_index: int,
     preferred_directory: str | None = None,
+    total_pages: int = 1,
 ) -> Path:
     doc = Path(document_path)
     directory = Path(preferred_directory) if preferred_directory else doc.parent
-    base = f"{doc.stem}-p{page_index + 1}-signed"
-    candidate = directory / f"{base}.jpg"
-    if not candidate.exists():
-        return candidate
-    i = 1
-    while True:
-        candidate = directory / f"{base}-{i}.jpg"
+    if total_pages <= 1:
+        base = f"{doc.stem}-signed"
+        candidate = directory / f"{base}.jpg"
         if not candidate.exists():
             return candidate
-        i += 1
+        i = 1
+        while True:
+            candidate = directory / f"{base}-{i}.jpg"
+            if not candidate.exists():
+                return candidate
+            i += 1
+    else:
+        base = f"{doc.stem}-signed{_page_suffix(page_index, total_pages)}"
+        return directory / f"{base}.jpg"
+
+
+def build_page_output_path(
+    base_stem: str,
+    page_index: int,
+    total_pages: int,
+    directory: str | Path,
+) -> Path:
+    directory = Path(directory)
+    return directory / f"{base_stem}{_page_suffix(page_index, total_pages)}.jpg"
 
 
 def composite_objects_to_jpg(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import locale
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -24,7 +25,11 @@ from PySide6.QtWidgets import (
 )
 
 from .canvas import DocumentCanvas
-from .compositor import build_default_output_path, composite_objects_to_jpg
+from .compositor import (
+    build_default_output_path,
+    build_page_output_path,
+    composite_objects_to_jpg,
+)
 from .objects import AnnotationType, SignatureObject, VectorAnnotation
 from .pdf_utils import render_all_pages
 from .settings import AppSettings, SettingsStore
@@ -51,10 +56,10 @@ class _TextInputDialog(QDialog):
         def keyPressEvent(self, event: QKeyEvent) -> None:
             if event.key() in (Qt.Key_Return, Qt.Key_Enter):
                 if event.modifiers() & Qt.ControlModifier:
-                    self.insertPlainText("\n")
+                    self._on_submit()
                     event.accept()
                     return
-                self._on_submit()
+                self.insertPlainText("\n")
                 event.accept()
                 return
             super().keyPressEvent(event)
@@ -65,7 +70,7 @@ class _TextInputDialog(QDialog):
         self.resize(480, 220)
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Text (Ctrl+Enter = new line, OK to confirm):"))
+        layout.addWidget(QLabel("Text (Enter = new line, Ctrl+Enter = confirm):"))
 
         self.editor = self._CtrlEnterTextEdit(self.accept, self)
         self.editor.setAcceptRichText(False)
@@ -132,9 +137,10 @@ class MainWindow(QMainWindow):
         # Annotation picker (2nd)
         ann_btn = QToolButton(self)
         ann_btn.setText("➕ Add Annotation")
-        ann_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        ann_btn.setPopupMode(QToolButton.InstantPopup)
         ann_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         ann_menu = QMenu(ann_btn)
+        ann_btn.setMenu(ann_menu)
 
         ann_menu.addAction("✔ Checkmark", lambda: self._add_vector(AnnotationType.CHECKMARK))
         ann_menu.addAction("✖ Cross", lambda: self._add_vector(AnnotationType.CROSS))
@@ -238,6 +244,8 @@ class MainWindow(QMainWindow):
             if dlg.exec() == QDialog.Accepted:
                 new_text = dlg.text()
                 obj.text = new_text
+                if hasattr(obj, "fit_text_box"):
+                    obj.fit_text_box()
                 self.canvas.update()
 
     # ---------------------------------------------------------------- color
@@ -430,16 +438,22 @@ class MainWindow(QMainWindow):
         if not self.canvas.has_document:
             QMessageBox.warning(self, "Missing document", "Open a document first.")
             return False
-        if not self.canvas.current_page_objects():
-            QMessageBox.warning(self, "Nothing to save", "Add a signature or annotation to the page first.")
-            return False
         if not self.document_path:
             QMessageBox.warning(self, "Missing document path", "Document path is unavailable.")
             return False
 
+        total = self.canvas.page_count
+        if total == 0:
+            return False
+
+        any_objects = any(self.canvas.page_objects_at(i) for i in range(total))
+        if not any_objects:
+            QMessageBox.warning(self, "Nothing to save", "Add a signature or annotation to the document first.")
+            return False
+
         page_idx = self.canvas.current_page
         default_path = build_default_output_path(
-            self.document_path, page_idx, self._settings.last_save_directory
+            self.document_path, page_idx, self._settings.last_save_directory, total
         )
         chosen, _ = QFileDialog.getSaveFileName(
             self, "Save Document with Signature", str(default_path),
@@ -451,20 +465,33 @@ class MainWindow(QMainWindow):
         if output.suffix.lower() not in {".jpg", ".jpeg"}:
             output = output.with_suffix(".jpg")
 
-        page_image = self.canvas.current_page_image
-        objects = self.canvas.current_page_objects()
-        if page_image is None or not objects:
+        # Derive the base stem: strip any trailing -pNN the user may have kept.
+        stem = output.stem
+        m = re.match(r"^(.*)-p(\d+)$", stem)
+        base_stem = m.group(1) if m else stem
+        directory = output.parent
+
+        saved = 0
+        for idx in range(total):
+            page_image = self.canvas.page_image_at(idx)
+            objects = self.canvas.page_objects_at(idx)
+            if page_image is None:
+                continue
+            out_path = build_page_output_path(base_stem, idx, total, directory)
+            try:
+                composite_objects_to_jpg(page_image, objects, out_path)
+            except Exception as exc:
+                QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                return False
+            saved += 1
+
+        if saved == 0:
+            QMessageBox.warning(self, "Nothing to save", "No pages could be saved.")
             return False
 
-        try:
-            composite_objects_to_jpg(page_image, objects, output)
-        except Exception as exc:
-            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
-            return False
-
-        self._settings.last_save_directory = str(output.parent)
+        self._settings.last_save_directory = str(directory)
         self._save_settings_safe()
-        QMessageBox.information(self, "Saved", f"Saved:\n{output}")
+        QMessageBox.information(self, "Saved", f"Saved {saved} page(s) to:\n{directory}")
         return True
 
     # ---------------------------------------------------------------- helpers
@@ -489,7 +516,7 @@ class MainWindow(QMainWindow):
         target_canvas_h = min(max(520, self.canvas.height()), max(520, avail.height() - chrome_h - 60))
         target_canvas_w = int(target_canvas_h * (doc_w / doc_h))
 
-        target_w = max(920, target_canvas_w, toolbar_hint_w + 32)
+        target_w = max(640, target_canvas_w, toolbar_hint_w + 32)
         target_h = target_canvas_h + chrome_h
 
         target_w = min(target_w, avail.width() - 20)

@@ -1,4 +1,3 @@
-
 # Need
 I need a simple tool that allows me to use two files: one with a PDF and one with my scanned signature. It should allow me to position the signature on the PDF and then save the combined image to a JPG file.
 
@@ -70,14 +69,18 @@ Feedback after implementation:
 - Clarification: If -signature parameter is used, then add the signature annotation immediately after opening the document. Otherwise, do not add anything (on open).
 
 Feedback after implementation, round 2:
-- The "Add annotation" button in toolbar does nothing. I must click the doen arrow next to it. Make the entire button open the menu.
+- The "Add annotation" button in toolbar does nothing. I must click the down arrow next to it. Make the entire button open the menu.
 - I just noticed that text is edited in a new dialog window. I'm changing my mind, revert to standard behavior: Enter adds a new line, Ctrl+Enter closes the dialog.
 - Annotation sizes are good. Do the following:
-  - The arrows are too small. Make it twise bigger.
+  - The arrows are too small. Make it twice bigger.
   - The text boundary is small, hiding most of the text. Workaround is to resize it properly. Do this boundry resizing (fit the content) automatically.
-- In text annotations, make the margin zero. (Resizin by right-bottom corner moves the text.)
-- Make the window width even smalled (there are still dark borders on the sides of an A4 document).
+- In text annotations, make the margin zero. (Resizing by right-bottom corner moves the text.)
+- Bug: When saving JPG, the text is unreadably small. Id does not match what the user sees in the application.
+- Make the window width even smaller (there are still dark borders on the sides of an A4 document).
 
+Feedback after implementation, round 3:
+- When saving JPG, the default filename shall have no page number when the document+as one page. If the document has more pages, it should have -p1 suffix when the4ser is on page 1; all the pages shoulde saved; the page-umber should be padded by zeroes.
+- Resizing the text annotation just changes boundary and the text size remains the same. Make the font size adjust according to|he bounding box. Keep aspect ratio of the text.
 
 # Assumptions
 1. Signature has a transparent background.

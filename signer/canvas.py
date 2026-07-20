@@ -67,6 +67,14 @@ class DocumentCanvas(QWidget):
     def current_page_objects(self) -> list[CanvasObject]:
         return self._page_objects.get(self._current_page, [])
 
+    def page_image_at(self, index: int) -> Image.Image | None:
+        if 0 <= index < len(self._pages):
+            return self._pages[index]
+        return None
+
+    def page_objects_at(self, index: int) -> list[CanvasObject]:
+        return self._page_objects.get(index, [])
+
     def set_pages(self, pages: list[Image.Image]) -> None:
         self._pages = [p.convert("RGB") for p in pages]
         self._page_pixmaps = [QPixmap.fromImage(ImageQt(p)) for p in self._pages]
@@ -188,7 +196,7 @@ class DocumentCanvas(QWidget):
 
         for obj in self.current_page_objects():
             r = self._object_view_rect(obj)
-            obj.draw_in_viewport(painter, r.x(), r.y(), r.width(), r.height())
+            obj.draw_in_viewport(painter, r.x(), r.y(), r.width(), r.height(), self._fit_scale)
 
             if obj is self._selected:
                 painter.save()
@@ -265,16 +273,29 @@ class DocumentCanvas(QWidget):
                 fx = HANDLE_FX[h]
                 fy = HANDLE_FY[h]
 
-                if fx != self._hdrag_anchor_fx:
-                    new_w = abs(doc_pt.x() - ax) / abs(fx - self._hdrag_anchor_fx)
+                if self._selected.supports_free_resize():
+                    # Signed extents from the fixed anchor; clamp to keep the
+                    # box on the correct side (no inversion past the anchor).
+                    if fx != self._hdrag_anchor_fx:
+                        new_w = (doc_pt.x() - ax) if fx > self._hdrag_anchor_fx else (ax - doc_pt.x())
+                    else:
+                        new_w = self._hdrag_start_w
+                    if fy != self._hdrag_anchor_fy:
+                        new_h = (doc_pt.y() - ay) if fy > self._hdrag_anchor_fy else (ay - doc_pt.y())
+                    else:
+                        new_h = self._hdrag_start_h
+                    new_w = max(8.0, new_w)
+                    new_h = max(8.0, new_h)
                 else:
-                    new_w = self._hdrag_start_w
-                if fy != self._hdrag_anchor_fy:
-                    new_h = abs(doc_pt.y() - ay) / abs(fy - self._hdrag_anchor_fy)
-                else:
-                    new_h = self._hdrag_start_h
+                    if fx != self._hdrag_anchor_fx:
+                        new_w = abs(doc_pt.x() - ax) / abs(fx - self._hdrag_anchor_fx)
+                    else:
+                        new_w = self._hdrag_start_w
+                    if fy != self._hdrag_anchor_fy:
+                        new_h = abs(doc_pt.y() - ay) / abs(fy - self._hdrag_anchor_fy)
+                    else:
+                        new_h = self._hdrag_start_h
 
-                if not self._selected.supports_free_resize():
                     sx = new_w / max(1.0, self._hdrag_start_w)
                     sy = new_h / max(1.0, self._hdrag_start_h)
                     if fx == self._hdrag_anchor_fx:
@@ -291,7 +312,7 @@ class DocumentCanvas(QWidget):
                 self._selected.x = ax - self._hdrag_anchor_fx * self._selected.scaled_width
                 self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
 
-            if self.current_page_image:
+            if self.current_page_image and not self._selected.supports_free_resize():
                 pw, ph = self.current_page_image.size
                 self._selected.clamp_to_page(pw, ph)
             self.objectChanged.emit()

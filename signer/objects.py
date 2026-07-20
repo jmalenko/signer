@@ -10,6 +10,7 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QFontMetricsF,
     QImage,
     QPainter,
     QPainterPath,
@@ -17,6 +18,9 @@ from PySide6.QtGui import (
     QPixmap,
     QPolygonF,
 )
+
+
+DEFAULT_TEXT_FONT_PX: int = 48
 
 
 class AnnotationType(Enum):
@@ -89,7 +93,7 @@ class CanvasObject:
         self.x = max(0.0, min(self.x, max(0.0, pw - self.scaled_width)))
         self.y = max(0.0, min(self.y, max(0.0, ph - self.scaled_height)))
 
-    def draw_in_viewport(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float) -> None:
+    def draw_in_viewport(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float = 1.0) -> None:
         raise NotImplementedError
 
     def render_to_pil(self) -> Image.Image:
@@ -156,7 +160,7 @@ class SignatureObject(CanvasObject):
         self._pixmap_scale = self.scale
         return self._pixmap_cache
 
-    def draw_in_viewport(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float) -> None:
+    def draw_in_viewport(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float = 1.0) -> None:
         pm = self._get_pixmap()
         painter.drawPixmap(QRectF(vx, vy, vw, vh), pm, QRectF(pm.rect()))
 
@@ -183,23 +187,52 @@ class VectorAnnotation(CanvasObject):
         page: int = 0,
         text: str = "",
     ) -> None:
+        self._font_px = DEFAULT_TEXT_FONT_PX
+        self._natural_width: float = 180.0
+        self._natural_height: float = 36.0
         if ann_type == AnnotationType.TEXT:
             super().__init__(x, y, 180.0, 36.0, page)
+            self.ann_type = ann_type
+            self.text = text
+            self.fit_text_box()
         else:
-            base = self.DEFAULT_BASE_SIZE
+            base = 200.0 if ann_type in ARROW_TYPES else self.DEFAULT_BASE_SIZE
             super().__init__(x, y, base, base, page)
-        self.ann_type = ann_type
-        self.text = text
+            self.ann_type = ann_type
+            self.text = text
 
     def supports_free_resize(self) -> bool:
         return self.ann_type == AnnotationType.TEXT
 
+    # ------------------------------------------------------------------ text fitting
+
+    def _make_font(self) -> QFont:
+        f = QFont("Arial")
+        f.setPixelSize(int(round(self._font_px)))
+        return f
+
+    def fit_text_box(self) -> None:
+        """Resize the bounding box so it exactly fits the current text at the set font size."""
+        if self.ann_type != AnnotationType.TEXT:
+            return
+        fm = QFontMetricsF(self._make_font())
+        lines = (self.text or "").split("\n")
+        widest = 0.0
+        for line in lines:
+            widest = max(widest, fm.horizontalAdvance(line))
+        line_h = fm.height()
+        self._base_width = max(8.0, widest)
+        self._base_height = max(8.0, line_h * len(lines))
+        self._natural_width = self._base_width
+        self._natural_height = self._base_height
+        self.scale = 1.0
+
     # ------------------------------------------------------------------ drawing
 
-    def draw_in_viewport(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float) -> None:
+    def draw_in_viewport(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float = 1.0) -> None:
         painter.save()
         painter.setRenderHint(QPainter.Antialiasing)
-        self._draw_symbol(painter, vx, vy, vw, vh)
+        self._draw_symbol(painter, vx, vy, vw, vh, doc_scale)
         painter.restore()
 
     def _pen(self, vw: float, vh: float) -> QPen:
@@ -209,7 +242,7 @@ class VectorAnnotation(CanvasObject):
         pen.setJoinStyle(Qt.RoundJoin)
         return pen
 
-    def _draw_symbol(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float) -> None:
+    def _draw_symbol(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float = 1.0) -> None:
         m = min(vw, vh) * 0.12
         t = self.ann_type
 
@@ -229,11 +262,16 @@ class VectorAnnotation(CanvasObject):
             painter.drawLine(QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m))
 
         elif t == AnnotationType.TEXT:
-            font = QFont("Arial", 12)
+            factor = min(
+                self.scaled_width / max(1.0, self._natural_width),
+                self.scaled_height / max(1.0, self._natural_height),
+            )
+            font = self._make_font()
+            font.setPixelSize(max(1, int(round(self._font_px * factor * doc_scale))))
             painter.setFont(font)
             painter.setPen(self.color)
             painter.setBrush(Qt.NoBrush)
-            painter.drawText(QRectF(vx + m, vy + m, vw - 2 * m, vh - 2 * m), Qt.AlignLeft | Qt.AlignTop, self.text or "")
+            painter.drawText(QRectF(vx, vy, vw, vh), Qt.AlignLeft | Qt.AlignTop, self.text or "")
 
         elif t in ARROW_TYPES:
             angle_rad = math.radians(ARROW_ANGLES[t])
@@ -266,7 +304,7 @@ class VectorAnnotation(CanvasObject):
         qimage.fill(Qt.transparent)
         painter = QPainter(qimage)
         painter.setRenderHint(QPainter.Antialiasing)
-        self._draw_symbol(painter, 0.0, 0.0, float(w), float(h))
+        self._draw_symbol(painter, 0.0, 0.0, float(w), float(h), doc_scale=1.0)
         painter.end()
         qimage = qimage.convertToFormat(QImage.Format_RGBA8888)
         ptr = qimage.bits()
