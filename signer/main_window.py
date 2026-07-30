@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
-from PySide6.QtCore import QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QColor, QKeyEvent
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeyEvent
 from PySide6.QtWidgets import (
     QColorDialog,
     QDialog,
@@ -18,10 +18,12 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QTextEdit,
     QToolBar,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from .canvas import DocumentCanvas
@@ -187,6 +189,61 @@ class MainWindow(QMainWindow):
         self._update_color_btn()
         tb.addWidget(self._color_btn)
         self._update_annotation_action_state()
+
+        # Add stretch to push hamburger menu to the right
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        tb.addWidget(spacer)
+
+        # Hamburger menu (right end)
+        hamburger = QToolButton(self)
+        hamburger.setText("☰")
+        hamburger.setPopupMode(QToolButton.InstantPopup)
+        hamburger.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        hamburger.setToolTip("Menu")
+        hamburger_menu = QMenu(hamburger)
+        hamburger.setMenu(hamburger_menu)
+
+        # File menu
+        file_menu = hamburger_menu.addMenu("File")
+        file_menu.addAction("Open Document", self.open_document)
+        file_menu.addAction("Recent Documents")  # placeholder for future
+        file_menu.addAction("Save JPG", self.save_signed_document)
+        file_menu.addSeparator()
+        file_menu.addAction("Exit", self.close)
+
+        # Edit menu
+        edit_menu = hamburger_menu.addMenu("Edit")
+        edit_menu.addAction("Undo")  # placeholder for future
+        edit_menu.addAction("Redo")  # placeholder for future
+        edit_menu.addSeparator()
+        edit_menu.addAction("Cut")  # placeholder
+        edit_menu.addAction("Copy")  # placeholder
+        edit_menu.addAction("Paste")  # placeholder
+        edit_menu.addAction("Duplicate", self.canvas.duplicate_selected)
+        edit_menu.addSeparator()
+        edit_menu.addAction("Select All")  # placeholder
+        edit_menu.addAction("Delete", self.canvas.remove_selected)
+
+        # Annotations menu
+        annotations_menu = hamburger_menu.addMenu("Annotations")
+        annotations_menu.addAction("Checkmark", lambda: self._add_vector(AnnotationType.CHECKMARK))
+        annotations_menu.addAction("Cross", lambda: self._add_vector(AnnotationType.CROSS))
+        arrow_submenu = annotations_menu.addMenu("Arrow")
+        for name, atype in ARROW_DIRECTIONS:
+            arrow_submenu.addAction(name, lambda checked=False, t=atype: self._add_vector(t))
+        text_submenu = annotations_menu.addMenu("Text")
+        text_submenu.addAction("Free text…", lambda: self._add_text_annotation(""))
+        text_submenu.addAction("Current date", lambda: self._add_text_annotation(self._locale_date()))
+        text_submenu.addAction("Current time", lambda: self._add_text_annotation(self._locale_time()))
+        text_submenu.addAction("Current date & time", lambda: self._add_text_annotation(self._locale_datetime()))
+        annotations_menu.addAction("Signature / Image", self._add_signature_from_file)
+
+        # Help menu
+        help_menu = hamburger_menu.addMenu("Help")
+        help_menu.addAction("Homepage", lambda: QDesktopServices.openUrl(QUrl("https://github.com/jmalenko/signer")))
+
+        tb.addWidget(hamburger)
 
     def _rebuild_sig_ann_menu(self) -> None:
         if self._sig_ann_menu is None:

@@ -82,6 +82,16 @@ Feedback after implementation, round 3:
 - When saving JPG, the default filename shall have no page number when the document+as one page. If the document has more pages, it should have -p1 suffix when the4ser is on page 1; all the pages shoulde saved; the page-umber should be padded by zeroes.
 - Resizing the text annotation just changes boundary and the text size remains the same. Make the font size adjust according to|he bounding box. Keep aspect ratio of the text.
 
+## Version 1.2.0 - Hamburger menu
+
+1. The application shall provide a hamburger menu on the right end of the toolbar. The menu shall be vertical and hierarchical, containing typical main menu items.
+
+2. The hamburger menu shall contain the following structure:
+    - File: Open Document, Recent Documents, Save JPG, Exit
+    - Edit: Undo, Redo, Cut, Copy, Paste, Duplicate, Select All, Delete
+    - Annotations: List of all annotation types
+    - Help: Homepage (on GitHub, http://www.github.com/jmalenko/signer)
+
 # Assumptions
 1. Signature has a transparent background.
 1. Signature is a PNG file.
