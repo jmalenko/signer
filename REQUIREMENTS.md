@@ -92,6 +92,10 @@ Feedback after implementation, round 3:
     - Annotations: List of all annotation types
     - Help: Homepage (on GitHub, http://www.github.com/jmalenko/signer)
 
+## Version 1.2.1 - Remove status bar
+
+1. The status bar shall be removed. (Document name is shown in the window title; coordinates are unnecessary for this application.)
+
 # Assumptions
 1. Signature has a transparent background.
 1. Signature is a PNG file.

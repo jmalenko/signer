@@ -105,7 +105,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.canvas)
 
         self._build_toolbar()
-        self._build_statusbar()
 
         self.canvas.objectChanged.connect(self._on_object_changed)
         self.canvas.pageChanged.connect(self._on_page_changed)
@@ -259,24 +258,7 @@ class MainWindow(QMainWindow):
                     lambda checked=False, path=p: self._load_signature_file(path, at_default_position=False),
                 )
 
-    # ---------------------------------------------------------------- statusbar
-
-    def _build_statusbar(self) -> None:
-        self.doc_status = QLabel("Document: (none)")
-        self.obj_status = QLabel("No object selected")
-        self.statusBar().addWidget(self.doc_status, 2)
-        self.statusBar().addPermanentWidget(self.obj_status)
-
     def _on_object_changed(self) -> None:
-        obj = self.canvas.selected
-        if obj is None:
-            self.obj_status.setText("No object selected")
-        else:
-            sw = int(round(obj.scaled_width))
-            sh = int(round(obj.scaled_height))
-            x = int(round(obj.x))
-            y = int(round(obj.y))
-            self.obj_status.setText(f"x={x} y={y}  {sw}×{sh} px")
         self._update_annotation_action_state()
         self._update_color_btn()
 
@@ -425,7 +407,6 @@ class MainWindow(QMainWindow):
         self._save_settings_safe()
         if pages:
             self._adjust_window_to_document(pages[0].size[0], pages[0].size[1])
-        self.doc_status.setText(f"Document: {p.name}")
         self._update_title()
         return True
 
