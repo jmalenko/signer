@@ -12,6 +12,8 @@ class AppSettings:
     last_open_document_path: str | None = None
     last_save_directory: str | None = None
     recent_signature_paths: list[str] = field(default_factory=list)
+    recent_text_strings: list[str] = field(default_factory=list)
+    recent_document_paths: list[str] = field(default_factory=list)
 
 
 class SettingsStore:
@@ -36,6 +38,8 @@ class SettingsStore:
                 last_open_document_path=data.get("last_open_document_path"),
                 last_save_directory=data.get("last_save_directory"),
                 recent_signature_paths=data.get("recent_signature_paths", []),
+                recent_text_strings=data.get("recent_text_strings", []),
+                recent_document_paths=data.get("recent_document_paths", []),
             )
         except Exception:
             return AppSettings()

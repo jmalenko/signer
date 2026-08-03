@@ -138,8 +138,16 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 Use a lightweight local config file (JSON) in user profile (e.g., `%APPDATA%/Signer/config.json`) storing:
 - `lastSignaturePath`
 - `recentSignaturePaths` (up to 10, ordered by LRU)
+- `recentTextStrings` (up to 10, ordered by LRU, excludes predefined date/time strings)
+- `recentDocumentPaths` (up to 10, ordered by LRU)
 - `lastOpenDocumentPath` (optional)
 - `lastSaveDirectory` (optional)
+
+Recent items appear in relevant menus:
+- **File menu**: Recent documents at top level after static items, separated by horizontal rule
+- **Annotations → Text submenu**: Recent texts at top level after static items, separated by horizontal rule
+- **Signature submenu**: Recent signatures with separator (existing)
+- **Toolbar "Open Document" dropdown**: Recent documents submenu
 
 ### 5.8 CLI Parameters
 - `-document <path>`: initial document to load.

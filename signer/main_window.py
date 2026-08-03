@@ -98,6 +98,8 @@ class MainWindow(QMainWindow):
         self._settings = settings
         self._current_color = QColor("#cc0000")
         self._sig_ann_menu: QMenu | None = None
+        self._hamburger_file_menu: QMenu | None = None
+        self._hamburger_text_submenu: QMenu | None = None
 
         self.document_path: str | None = None
 
@@ -133,7 +135,19 @@ class MainWindow(QMainWindow):
             tb.addAction(act)
             return act
 
-        big_action("📂 Open Document", lambda: self.open_document())
+        # Open Document with recent documents dropdown
+        open_doc_btn = QToolButton(self)
+        open_doc_btn.setText("📂 Open Document")
+        open_doc_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        open_doc_btn.setPopupMode(QToolButton.InstantPopup)
+        open_doc_menu = QMenu(open_doc_btn)
+        open_doc_btn.setMenu(open_doc_menu)
+        
+        open_doc_menu.addAction("Open Document…", lambda: self.open_document())
+        self._recent_docs_menu = open_doc_menu.addMenu("Recent Documents")
+        self._rebuild_recent_documents_menu()
+        
+        tb.addWidget(open_doc_btn)
 
         # Annotation picker (2nd)
         ann_btn = QToolButton(self)
@@ -150,11 +164,14 @@ class MainWindow(QMainWindow):
         for name, atype in ARROW_DIRECTIONS:
             arrow_menu.addAction(name, lambda checked=False, t=atype: self._add_vector(t))
 
-        text_menu = ann_menu.addMenu("📝 Text")
-        text_menu.addAction("Free text…", lambda: self._add_text_annotation(""))
-        text_menu.addAction("Current date", lambda: self._add_text_annotation(self._locale_date()))
-        text_menu.addAction("Current time", lambda: self._add_text_annotation(self._locale_time()))
-        text_menu.addAction("Current date & time", lambda: self._add_text_annotation(self._locale_datetime()))
+        self._toolbar_text_menu = ann_menu.addMenu("📝 Text")
+        self._toolbar_text_menu.addAction("Free text…", lambda: self._add_text_annotation(""))
+        self._toolbar_text_menu.addAction("Current date", lambda: self._add_text_annotation(self._locale_date()))
+        self._toolbar_text_menu.addAction("Current time", lambda: self._add_text_annotation(self._locale_time()))
+        self._toolbar_text_menu.addAction("Current date & time", lambda: self._add_text_annotation(self._locale_datetime()))
+        self._toolbar_text_menu.addSeparator()
+        self._toolbar_recent_text_actions = []
+        self._rebuild_toolbar_recent_texts()
 
         self._sig_ann_menu = ann_menu.addMenu("🖊 Signature")
         self._rebuild_sig_ann_menu()
@@ -204,12 +221,14 @@ class MainWindow(QMainWindow):
         hamburger.setMenu(hamburger_menu)
 
         # File menu
-        file_menu = hamburger_menu.addMenu("File")
-        file_menu.addAction("Open Document", self.open_document)
-        file_menu.addAction("Recent Documents")  # placeholder for future
-        file_menu.addAction("Save JPG", self.save_signed_document)
-        file_menu.addSeparator()
-        file_menu.addAction("Exit", self.close)
+        self._hamburger_file_menu = hamburger_menu.addMenu("File")
+        self._hamburger_file_menu.addAction("Open Document", self.open_document)
+        self._hamburger_file_menu.addAction("Save JPG", self.save_signed_document)
+        self._hamburger_file_menu.addSeparator()
+        self._file_recent_docs_actions = []  # Track recent doc actions for rebuilding
+        self._rebuild_file_recent_documents_top_level(self._hamburger_file_menu)
+        self._hamburger_file_menu.addSeparator()
+        self._hamburger_file_menu.addAction("Exit", self.close)
 
         # Edit menu
         edit_menu = hamburger_menu.addMenu("Edit")
@@ -231,11 +250,14 @@ class MainWindow(QMainWindow):
         arrow_submenu = annotations_menu.addMenu("Arrow")
         for name, atype in ARROW_DIRECTIONS:
             arrow_submenu.addAction(name, lambda checked=False, t=atype: self._add_vector(t))
-        text_submenu = annotations_menu.addMenu("Text")
-        text_submenu.addAction("Free text…", lambda: self._add_text_annotation(""))
-        text_submenu.addAction("Current date", lambda: self._add_text_annotation(self._locale_date()))
-        text_submenu.addAction("Current time", lambda: self._add_text_annotation(self._locale_time()))
-        text_submenu.addAction("Current date & time", lambda: self._add_text_annotation(self._locale_datetime()))
+        self._hamburger_text_submenu = annotations_menu.addMenu("Text")
+        self._hamburger_text_submenu.addAction("Free text…", lambda: self._add_text_annotation(""))
+        self._hamburger_text_submenu.addAction("Current date", lambda: self._add_text_annotation(self._locale_date()))
+        self._hamburger_text_submenu.addAction("Current time", lambda: self._add_text_annotation(self._locale_time()))
+        self._hamburger_text_submenu.addAction("Current date & time", lambda: self._add_text_annotation(self._locale_datetime()))
+        self._hamburger_text_submenu.addSeparator()
+        self._annotations_recent_text_actions = []  # Track recent text actions for rebuilding
+        self._rebuild_recent_texts_top_level(self._hamburger_text_submenu)
         annotations_menu.addAction("Signature / Image", self._add_signature_from_file)
 
         # Help menu
@@ -243,6 +265,9 @@ class MainWindow(QMainWindow):
         help_menu.addAction("Homepage", lambda: QDesktopServices.openUrl(QUrl("https://github.com/jmalenko/signer")))
 
         tb.addWidget(hamburger)
+        
+        # Initial rebuild of recent menus
+        self._rebuild_recent_menus()
 
     def _rebuild_sig_ann_menu(self) -> None:
         if self._sig_ann_menu is None:
@@ -257,6 +282,110 @@ class MainWindow(QMainWindow):
                     Path(p).name,
                     lambda checked=False, path=p: self._load_signature_file(path, at_default_position=False),
                 )
+
+    def _rebuild_recent_documents_menu(self) -> None:
+        """Rebuild the recent documents menu in the toolbar."""
+        if not hasattr(self, '_recent_docs_menu') or self._recent_docs_menu is None:
+            return
+        self._recent_docs_menu.clear()
+        paths = self._settings.recent_document_paths
+        if paths:
+            for p in paths:
+                self._recent_docs_menu.addAction(
+                    Path(p).name,
+                    lambda checked=False, path=p: self.open_document(path),
+                )
+        else:
+            act = self._recent_docs_menu.addAction("(none)")
+            act.setEnabled(False)
+
+    def _rebuild_file_recent_documents_menu(self) -> None:
+        """Rebuild the recent documents menu in the File menu (hamburger)."""
+        if not hasattr(self, '_file_recent_docs_menu') or self._file_recent_docs_menu is None:
+            return
+        self._file_recent_docs_menu.clear()
+        paths = self._settings.recent_document_paths
+        if paths:
+            for p in paths:
+                self._file_recent_docs_menu.addAction(
+                    Path(p).name,
+                    lambda checked=False, path=p: self.open_document(path),
+                )
+        else:
+            act = self._file_recent_docs_menu.addAction("(none)")
+            act.setEnabled(False)
+
+    def _rebuild_file_recent_documents_top_level(self, file_menu: QMenu) -> None:
+        """Rebuild recent documents at the top level of File menu, after static items, separated by a horizontal rule."""
+        # Remove old recent document actions
+        for act in self._file_recent_docs_actions:
+            file_menu.removeAction(act)
+        self._file_recent_docs_actions.clear()
+        
+        paths = self._settings.recent_document_paths
+        if paths:
+            # Add separator before recent items
+            sep = file_menu.addSeparator()
+            self._file_recent_docs_actions.append(sep)
+            for p in paths:
+                act = file_menu.addAction(
+                    Path(p).name,
+                    lambda checked=False, path=p: self.open_document(path),
+                )
+                self._file_recent_docs_actions.append(act)
+
+    def _rebuild_recent_texts_top_level(self, text_submenu: QMenu) -> None:
+        """Rebuild recent texts at the top level of Text submenu, after static items, separated by a horizontal rule."""
+        # Remove old recent text actions
+        for act in self._annotations_recent_text_actions:
+            text_submenu.removeAction(act)
+        self._annotations_recent_text_actions.clear()
+        
+        texts = self._settings.recent_text_strings
+        if texts:
+            # Add separator before recent items
+            sep = text_submenu.addSeparator()
+            self._annotations_recent_text_actions.append(sep)
+            for text in texts:
+                # Truncate long text for display
+                display_text = text[:50] + "…" if len(text) > 50 else text
+                act = text_submenu.addAction(
+                    display_text,
+                    lambda checked=False, t=text: self._add_text_annotation(t),
+                )
+                self._annotations_recent_text_actions.append(act)
+
+    def _rebuild_toolbar_recent_texts(self) -> None:
+        """Rebuild recent texts in the toolbar's Text menu."""
+        if not hasattr(self, '_toolbar_text_menu') or self._toolbar_text_menu is None:
+            return
+        # Remove old recent text actions
+        for act in self._toolbar_recent_text_actions:
+            self._toolbar_text_menu.removeAction(act)
+        self._toolbar_recent_text_actions.clear()
+        
+        texts = self._settings.recent_text_strings
+        if texts:
+            for text in texts:
+                # Truncate long text for display
+                display_text = text[:50] + "…" if len(text) > 50 else text
+                act = self._toolbar_text_menu.addAction(
+                    display_text,
+                    lambda checked=False, t=text: self._add_text_annotation(t),
+                )
+                self._toolbar_recent_text_actions.append(act)
+
+    def _rebuild_recent_menus(self) -> None:
+        """Rebuild all recent items menus."""
+        self._rebuild_recent_documents_menu()
+        self._rebuild_file_recent_documents_menu()
+        self._rebuild_sig_ann_menu()
+        self._rebuild_toolbar_recent_texts()
+        # Rebuild top-level recent items in hamburger menus
+        if self._hamburger_file_menu is not None:
+            self._rebuild_file_recent_documents_top_level(self._hamburger_file_menu)
+        if self._hamburger_text_submenu is not None:
+            self._rebuild_recent_texts_top_level(self._hamburger_text_submenu)
 
     def _on_object_changed(self) -> None:
         self._update_annotation_action_state()
@@ -357,6 +486,9 @@ class MainWindow(QMainWindow):
             if not text.strip():
                 return
             preset_text = text
+        # Track recent text strings (excluding predefined date/time)
+        self._update_recent_text_strings(preset_text)
+        self._save_settings_safe()
         obj = VectorAnnotation(AnnotationType.TEXT, 0, 0, self.canvas.current_page, preset_text)
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)
@@ -404,10 +536,12 @@ class MainWindow(QMainWindow):
         self.canvas.set_pages(pages)
         self.document_path = str(p)
         self._settings.last_open_document_path = str(p)
+        self._update_recent_documents(str(p))
         self._save_settings_safe()
         if pages:
             self._adjust_window_to_document(pages[0].size[0], pages[0].size[1])
         self._update_title()
+        self._rebuild_recent_menus()
         return True
 
     def open_signature(self, path: str | None = None) -> bool:
@@ -471,6 +605,28 @@ class MainWindow(QMainWindow):
             paths.remove(path)
         paths.insert(0, path)
         self._settings.recent_signature_paths = paths[:10]
+
+    def _update_recent_text_strings(self, text: str) -> None:
+        """Add a text string to recent texts (LRU, max 10). Excludes predefined date/time strings."""
+        if not text or not text.strip():
+            return
+        # Exclude predefined date/time strings
+        predefined = {self._locale_date(), self._locale_time(), self._locale_datetime()}
+        if text in predefined:
+            return
+        texts = self._settings.recent_text_strings
+        if text in texts:
+            texts.remove(text)
+        texts.insert(0, text)
+        self._settings.recent_text_strings = texts[:10]
+
+    def _update_recent_documents(self, path: str) -> None:
+        """Add a document path to recent documents (LRU, max 10)."""
+        paths = self._settings.recent_document_paths
+        if path in paths:
+            paths.remove(path)
+        paths.insert(0, path)
+        self._settings.recent_document_paths = paths[:10]
 
     def save_signed_document(self) -> bool:
         if not self.canvas.has_document:

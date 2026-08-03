@@ -28,7 +28,7 @@ I'm now doing that in GIMP, but it has too many manual steps. Recommend how to m
 8. Default position for the signature is 80% from top, centered horizontally.
 9. Document with signature has 300 DPI.
 
-(Version 1.1)
+# Version 1.1
 
 10. Support multi-page documents; signature can be placed on any page. Put paging controls in the Toolbar. Also support `Page Up`, `Page Down`, `Home`, and `End` keys.
 11. The signature is displayed (in the app only) with a blue boundary.
@@ -50,7 +50,7 @@ I'm now doing that in GIMP, but it has too many manual steps. Recommend how to m
             - Current time
             - Current date and time
         5. Signature - has a submenu with items:
-            - From file... - opens a "Open file" dialog and puts the signature from the selected file. 
+            - From file... - opens a "Open file" dialog and puts the signature from the selected file.
             - List of 10 recent signature files used, order by LRU.
     3. In the Toolbar, add a button that expands to a list from which the annotation type is selected and then placed on the current page.
 16. Make the resulting application a single-file executable (that can be distributed to other users).
@@ -95,6 +95,20 @@ Feedback after implementation, round 3:
 ## Version 1.2.1 - Remove status bar
 
 1. The status bar shall be removed. (Document name is shown in the window title; coordinates are unnecessary for this application.)
+
+## Version 1.2.2 - Recent entries and documents
+
+1. Recent items shall appear at the top level of their respective menus, after the static items, separated by a horizontal rule from static items.
+
+2. The application shall maintain LRU lists (maximum 10 items each) for:
+    - Recently used signature/image files
+    - Recently used text strings (except the predefined strings with date and time)
+    - Recently opened documents
+
+3. Next to "Open Document", a small arrow shall open a list of recent documents.
+
+4. Recent items shall persist across application sessions and appear in relevant menus with a separator preceding them.
+
 
 # Assumptions
 1. Signature has a transparent background.
