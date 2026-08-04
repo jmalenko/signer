@@ -112,4 +112,3 @@ Feedback after implementation, round 3:
 
 # Assumptions
 1. Signature has a transparent background.
-1. Signature is a PNG file.
