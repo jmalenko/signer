@@ -32,7 +32,14 @@ from .compositor import (
     build_page_output_path,
     composite_objects_to_jpg,
 )
-from .objects import AnnotationType, SignatureObject, VectorAnnotation
+from .objects import (
+    AnnotationType,
+    DEFAULT_FONT_FAMILY,
+    DEFAULT_LINE_WIDTH_FACTOR,
+    DEFAULT_TEXT_FONT_PX,
+    SignatureObject,
+    VectorAnnotation,
+)
 from .pdf_utils import render_all_pages
 from .settings import AppSettings, SettingsStore
 
@@ -92,11 +99,14 @@ class MainWindow(QMainWindow):
     def __init__(self, settings_store: SettingsStore, settings: AppSettings) -> None:
         super().__init__()
         self.setWindowTitle("Signer")
-        self.resize(1280, 900)
-
+        
+        # Initialize from settings
         self._settings_store = settings_store
         self._settings = settings
-        self._current_color = QColor("#cc0000")
+        
+        # Initialize current color from settings
+        self._current_color = QColor(settings.recent_color)
+        
         self._sig_ann_menu: QMenu | None = None
         self._hamburger_file_menu: QMenu | None = None
         self._hamburger_text_submenu: QMenu | None = None
@@ -111,6 +121,10 @@ class MainWindow(QMainWindow):
         self.canvas.objectChanged.connect(self._on_object_changed)
         self.canvas.pageChanged.connect(self._on_page_changed)
         self.canvas.editRequested.connect(self._on_edit_requested)
+
+        # Ensure color button reflects the persisted color after full initialization
+        # Use QTimer to ensure the widget is fully initialized and shown
+        QTimer.singleShot(0, self._update_color_btn)
 
     def run_startup_load(self, document: str | None, signature: str | None) -> None:
         def _load() -> None:
@@ -425,10 +439,14 @@ class MainWindow(QMainWindow):
         if color.isValid():
             if selected is not None:
                 selected.color = color
+                self._current_color = color
+                self._settings.recent_color = color.name()
                 self.canvas.update()
             else:
                 self._current_color = color
+                self._settings.recent_color = color.name()
             self._update_color_btn()
+            self._save_settings_safe()
 
     def _update_color_btn(self) -> None:
         selected = self.canvas.selected
@@ -468,7 +486,12 @@ class MainWindow(QMainWindow):
         if not self.canvas.has_document:
             QMessageBox.warning(self, "No document", "Open a document first.")
             return
-        obj = VectorAnnotation(ann_type, 0, 0, self.canvas.current_page)
+        obj = VectorAnnotation(
+            ann_type, 0, 0, self.canvas.current_page,
+            font_family=self._settings.recent_font_family,
+            font_size_px=self._settings.recent_font_size_px,
+            line_width_factor=self._settings.recent_line_width,
+        )
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)
         obj.x, obj.y = x, y
@@ -489,7 +512,12 @@ class MainWindow(QMainWindow):
         # Track recent text strings (excluding predefined date/time)
         self._update_recent_text_strings(preset_text)
         self._save_settings_safe()
-        obj = VectorAnnotation(AnnotationType.TEXT, 0, 0, self.canvas.current_page, preset_text)
+        obj = VectorAnnotation(
+            AnnotationType.TEXT, 0, 0, self.canvas.current_page, preset_text,
+            font_family=self._settings.recent_font_family,
+            font_size_px=self._settings.recent_font_size_px,
+            line_width_factor=self._settings.recent_line_width,
+        )
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)
         obj.x, obj.y = x, y
@@ -584,6 +612,7 @@ class MainWindow(QMainWindow):
             return False
 
         obj = SignatureObject(loaded, str(p), 0, 0, self.canvas.current_page)
+        obj.color = QColor(self._current_color)
         if at_default_position or not self.canvas.has_document:
             x, y = self.canvas.default_position_for(obj)
         else:

@@ -109,6 +109,30 @@ Feedback after implementation, round 3:
 
 4. Recent items shall persist across application sessions and appear in relevant menus with a separator preceding them.
 
+## Version 1.2.3 - Settings persistence
+
+1. The application shall store user preferences in a configuration file (shared with recent documents and texts). The following preferences shall be persisted:
+    - Recent color
+    - Recent line width
+    - Recent font family and size
+    - Recent lists (documents, texts and signature annotations)
+
+### Details added by AI
+
+2. The configuration file shall be stored at:
+    - Windows: `%APPDATA%\Signer\config.json`
+    - Unix/Linux: `~/.signer/config.json`
+
+3. Color persistence behavior:
+    - When no annotation is selected, the color picker sets the default color for new annotations
+    - When an annotation is selected, the color picker changes the selected annotation's color AND updates the default color for future annotations
+    - The toolbar color indicator always reflects the current default color (or selected annotation's color when one is selected)
+    - Color changes are persisted immediately to the configuration file
+
+4. Font and line width persistence:
+    - Font family and size are used when creating new text annotations
+    - Line width factor is used when creating new vector annotations (checkmark, cross, arrows)
+    - These settings are applied immediately when creating new annotations
 
 # Assumptions
 1. Signature has a transparent background.

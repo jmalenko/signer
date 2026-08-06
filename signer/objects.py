@@ -21,6 +21,8 @@ from PySide6.QtGui import (
 
 
 DEFAULT_TEXT_FONT_PX: int = 48
+DEFAULT_FONT_FAMILY: str = "Arial"
+DEFAULT_LINE_WIDTH_FACTOR: float = 0.07
 
 
 class AnnotationType(Enum):
@@ -186,8 +188,13 @@ class VectorAnnotation(CanvasObject):
         y: float,
         page: int = 0,
         text: str = "",
+        font_family: str = DEFAULT_FONT_FAMILY,
+        font_size_px: int = DEFAULT_TEXT_FONT_PX,
+        line_width_factor: float = DEFAULT_LINE_WIDTH_FACTOR,
     ) -> None:
-        self._font_px = DEFAULT_TEXT_FONT_PX
+        self._font_family = font_family
+        self._font_size_px = font_size_px
+        self._line_width_factor = line_width_factor
         self._natural_width: float = 180.0
         self._natural_height: float = 36.0
         if ann_type == AnnotationType.TEXT:
@@ -207,8 +214,8 @@ class VectorAnnotation(CanvasObject):
     # ------------------------------------------------------------------ text fitting
 
     def _make_font(self) -> QFont:
-        f = QFont("Arial")
-        f.setPixelSize(int(round(self._font_px)))
+        f = QFont(self._font_family)
+        f.setPixelSize(int(round(self._font_size_px)))
         return f
 
     def fit_text_box(self) -> None:
@@ -237,7 +244,7 @@ class VectorAnnotation(CanvasObject):
 
     def _pen(self, vw: float, vh: float) -> QPen:
         pen = QPen(self.color)
-        pen.setWidthF(max(1.5, min(vw, vh) * 0.07))
+        pen.setWidthF(max(1.5, min(vw, vh) * self._line_width_factor))
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
         return pen
@@ -267,7 +274,7 @@ class VectorAnnotation(CanvasObject):
                 self.scaled_height / max(1.0, self._natural_height),
             )
             font = self._make_font()
-            font.setPixelSize(max(1, int(round(self._font_px * factor * doc_scale))))
+            font.setPixelSize(max(1, int(round(self._font_size_px * factor * doc_scale))))
             painter.setFont(font)
             painter.setPen(self.color)
             painter.setBrush(Qt.NoBrush)
@@ -319,7 +326,12 @@ class VectorAnnotation(CanvasObject):
     # ------------------------------------------------------------------ duplicate
 
     def duplicate(self) -> "VectorAnnotation":
-        obj = VectorAnnotation(self.ann_type, self.x + 20, self.y + 20, self.page, self.text)
+        obj = VectorAnnotation(
+            self.ann_type, self.x + 20, self.y + 20, self.page, self.text,
+            font_family=self._font_family,
+            font_size_px=self._font_size_px,
+            line_width_factor=self._line_width_factor,
+        )
         obj.scale = self.scale
         obj.color = QColor(self.color)
         return obj

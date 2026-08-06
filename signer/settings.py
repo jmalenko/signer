@@ -8,6 +8,17 @@ from pathlib import Path
 
 @dataclass
 class AppSettings:
+    # Recent color
+    recent_color: str = "#cc0000"
+    
+    # Recent line width (for vector annotations)
+    recent_line_width: float = 1.5
+    
+    # Recent font family and size
+    recent_font_family: str = "Arial"
+    recent_font_size_px: int = 48
+    
+    # Signature/document paths
     last_signature_path: str | None = None
     last_open_document_path: str | None = None
     last_save_directory: str | None = None
@@ -34,6 +45,14 @@ class SettingsStore:
                 return AppSettings()
             data = json.loads(self._settings_path.read_text(encoding="utf-8"))
             return AppSettings(
+                # Recent color
+                recent_color=data.get("recent_color", "#cc0000"),
+                # Recent line width
+                recent_line_width=data.get("recent_line_width", 1.5),
+                # Recent font
+                recent_font_family=data.get("recent_font_family", "Arial"),
+                recent_font_size_px=data.get("recent_font_size_px", 48),
+                # Signature/document paths
                 last_signature_path=data.get("last_signature_path"),
                 last_open_document_path=data.get("last_open_document_path"),
                 last_save_directory=data.get("last_save_directory"),
