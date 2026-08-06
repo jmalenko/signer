@@ -134,5 +134,16 @@ Feedback after implementation, round 3:
     - Line width factor is used when creating new vector annotations (checkmark, cross, arrows)
     - These settings are applied immediately when creating new annotations
 
+## Version 1.2.4 - Window size and position
+
+1. The application shall automatically size the window to fit the document:
+    - Window aspect ratio matches the document aspect ratio
+    - Document is scaled to fit within available screen space while maintaining aspect ratio
+    - Minimum canvas size of 520x640 pixels
+    - Maximum scale of 100% (no upscaling beyond original document size)
+    - Entire toolbar must remain visible
+
+2. The window shall be centered on the screen when a document is opened to ensure the entire window is visible.
+
 # Assumptions
 1. Signature has a transparent background.

@@ -736,15 +736,34 @@ class MainWindow(QMainWindow):
             return
         avail = screen.availableGeometry()
 
-        target_canvas_h = min(max(520, self.canvas.height()), max(520, avail.height() - chrome_h - 60))
-        target_canvas_w = int(target_canvas_h * (doc_w / doc_h))
+        # Calculate the maximum canvas size that fits on screen
+        max_canvas_h = avail.height() - chrome_h - 60
+        max_canvas_w = avail.width() - 20 - 32  # account for toolbar and margins
 
-        target_w = max(640, target_canvas_w, toolbar_hint_w + 32)
+        # Scale document to fit within max canvas size while maintaining aspect ratio
+        scale_h = max_canvas_h / doc_h
+        scale_w = max_canvas_w / doc_w
+        scale = min(scale_h, scale_w, 1.0)  # Don't upscale beyond 100%
+
+        target_canvas_h = int(doc_h * scale)
+        target_canvas_w = int(doc_w * scale)
+
+        # Ensure minimum canvas size
+        target_canvas_h = max(520, target_canvas_h)
+        target_canvas_w = max(640, target_canvas_w)
+
+        target_w = max(target_canvas_w, toolbar_hint_w + 32)
         target_h = target_canvas_h + chrome_h
 
         target_w = min(target_w, avail.width() - 20)
         target_h = min(target_h, avail.height() - 20)
         self.resize(target_w, target_h)
+
+        # Center the window on screen to ensure it's fully visible
+        self.move(
+            avail.x() + (avail.width() - target_w) // 2,
+            avail.y() + (avail.height() - target_h) // 2
+        )
 
     def _update_title(self) -> None:
         doc_name = Path(self.document_path).name if self.document_path else "(no document)"
