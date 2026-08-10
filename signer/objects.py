@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
 from enum import Enum
+from typing import Any
 
 from PIL import Image
 from PIL.ImageQt import ImageQt
@@ -136,6 +138,26 @@ class CanvasObject:
                 return i
         return -1
 
+    # ------------------------------------------------------------------ serialization
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize object to a dictionary."""
+        return {
+            "type": self.__class__.__name__,
+            "x": self.x,
+            "y": self.y,
+            "base_width": self._base_width,
+            "base_height": self._base_height,
+            "scale": self.scale,
+            "page": self.page,
+            "color": self.color.name(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CanvasObject":
+        """Deserialize object from a dictionary."""
+        raise NotImplementedError("Subclasses must implement from_dict")
+
 
 class SignatureObject(CanvasObject):
     """A PNG image overlay (signature or image annotation)."""
@@ -177,6 +199,32 @@ class SignatureObject(CanvasObject):
         obj.color = QColor(self.color)
         return obj
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize object to a dictionary."""
+        data = super().to_dict()
+        data["path"] = self.path
+        # Store image as base64
+        import base64
+        from io import BytesIO
+        buf = BytesIO()
+        self._image.save(buf, format="PNG")
+        data["image_data"] = base64.b64encode(buf.getvalue()).decode("ascii")
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SignatureObject":
+        """Deserialize object from a dictionary."""
+        import base64
+        from io import BytesIO
+        img_data = base64.b64decode(data["image_data"])
+        img = Image.open(BytesIO(img_data)).convert("RGBA")
+        obj = cls(img, data["path"], data["x"], data["y"], data["page"])
+        obj._base_width = data["base_width"]
+        obj._base_height = data["base_height"]
+        obj.scale = data["scale"]
+        obj.color = QColor(data["color"])
+        return obj
+
 
 class VectorAnnotation(CanvasObject):
     """Checkmark, cross, arrow, or text annotation drawn as vector graphics."""
@@ -195,8 +243,6 @@ class VectorAnnotation(CanvasObject):
         self._font_family = font_family
         self._font_size_px = font_size_px
         self._line_width_factor = line_width_factor
-        self._natural_width: float = 180.0
-        self._natural_height: float = 36.0
         if ann_type == AnnotationType.TEXT:
             super().__init__(x, y, 180.0, 36.0, page)
             self.ann_type = ann_type
@@ -207,6 +253,8 @@ class VectorAnnotation(CanvasObject):
             super().__init__(x, y, base, base, page)
             self.ann_type = ann_type
             self.text = text
+            self._natural_width = float(base)
+            self._natural_height = float(base)
 
     def supports_free_resize(self) -> bool:
         return self.ann_type == AnnotationType.TEXT
@@ -334,4 +382,38 @@ class VectorAnnotation(CanvasObject):
         )
         obj.scale = self.scale
         obj.color = QColor(self.color)
+        return obj
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize object to a dictionary."""
+        data = super().to_dict()
+        data["ann_type"] = self.ann_type.value
+        data["text"] = self.text
+        data["font_family"] = self._font_family
+        data["font_size_px"] = self._font_size_px
+        data["line_width_factor"] = self._line_width_factor
+        data["natural_width"] = self._natural_width
+        data["natural_height"] = self._natural_height
+        return data
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "VectorAnnotation":
+        """Deserialize object from a dictionary."""
+        ann_type = AnnotationType(data["ann_type"])
+        obj = cls(
+            ann_type,
+            data["x"],
+            data["y"],
+            data["page"],
+            data.get("text", ""),
+            font_family=data.get("font_family", DEFAULT_FONT_FAMILY),
+            font_size_px=data.get("font_size_px", DEFAULT_TEXT_FONT_PX),
+            line_width_factor=data.get("line_width_factor", DEFAULT_LINE_WIDTH_FACTOR),
+        )
+        obj._base_width = data["base_width"]
+        obj._base_height = data["base_height"]
+        obj.scale = data["scale"]
+        obj.color = QColor(data["color"])
+        obj._natural_width = data.get("natural_width", obj._natural_width)
+        obj._natural_height = data.get("natural_height", obj._natural_height)
         return obj

@@ -145,5 +145,27 @@ Feedback after implementation, round 3:
 
 2. The window shall be centered on the screen when a document is opened to ensure the entire window is visible.
 
+## Version 1.2.5 - Tests
+
+1. The application shall include automated unit tests and feature tests.
+
+2. Automated feature test: Open document1.pdf, add signature, add checkmark, move and resize each item, save JPG, compare pixel-perfect to a reference image (document1-signed-expected.jpg).
+
+3. Automated feature test: document.pdf - add annotations on different pages, export all pages, verify each page.
+
+4. Automated feature test: Undo/redo - add annotation, move it, undo, verify position; redo, verify position. (To be implemented later.)
+
+5. Automated feature test: Copy/paste between pages and documents. (To be implemented later.)
+
+6. Unit tests shall cover: coordinate transformations, bounding box calculations, annotation serialization.
+
+7. How the automated feature tests shall be created: I as a developer want to record the actions (move, scale, add text, add checkmark) by using the application. Update the code that captures these actions. You will then use the record output to write the test case. Then the code may be disabled; it will be used only in development later to create feature tests.
+
+--
+
+Feedback after implementation
+
+8. I noticed that the tests run the application. That's ok, but the application remains open and I (user) have to close it manually so the tests continues. Thus happens when a dialog (saved 3 pages) was open. Make the test such that tey do not require user interaction.
+
 # Assumptions
 1. Signature has a transparent background.
