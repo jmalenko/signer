@@ -11,10 +11,10 @@ This test verifies:
 
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
-from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from signer.main_window import MainWindow
 from signer.objects import AnnotationType, VectorAnnotation
@@ -135,8 +135,9 @@ class TestMultipageAnnotations:
         base_output = output_dir / "document-signed.jpg"
         
         with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(base_output), "JPEG files (*.jpg *.jpeg)")):
-            result = main_window.save_signed_document()
-            assert result is True
+            with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
+                result = main_window.save_signed_document()
+                assert result is True
         
         # 4. Verify each page was exported
         for page_idx in range(total_pages):

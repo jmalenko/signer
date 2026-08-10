@@ -163,9 +163,9 @@ Feedback after implementation, round 3:
 
 --
 
-Feedback after implementation
+Feedback after implementation:
 
-8. I noticed that the tests run the application. That's ok, but the application remains open and I (user) have to close it manually so the tests continues. Thus happens when a dialog (saved 3 pages) was open. Make the test such that tey do not require user interaction.
+1. I noticed that the tests run the application. That's ok, but the application remains open and I (user) have to close it manually so the tests continues. Thus happens when a dialog (saved 3 pages) was open. Make the test such that tey do not require user interaction.
 
 # Assumptions
 1. Signature has a transparent background.

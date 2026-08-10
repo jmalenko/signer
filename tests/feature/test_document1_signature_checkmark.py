@@ -19,12 +19,13 @@ To create the reference image:
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor
 from PySide6.QtTest import QSignalSpy
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from signer.canvas import DocumentCanvas
 from signer.main_window import MainWindow
@@ -129,8 +130,9 @@ class TestDocument1SignatureCheckmark:
         from PySide6.QtWidgets import QFileDialog
         
         with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(output_path), "JPEG files (*.jpg *.jpeg)")):
-            result = main_window.save_signed_document()
-            assert result is True
+            with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
+                result = main_window.save_signed_document()
+                assert result is True
         
         # 9. Compare with reference image (pixel-perfect)
         assert_images_equal(output_path, reference_image, tolerance=0, diff_output_path=diff_path)
