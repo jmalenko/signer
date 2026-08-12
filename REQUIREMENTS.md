@@ -167,5 +167,9 @@ Feedback after implementation:
 
 1. I noticed that the tests run the application. That's ok, but the application remains open and I (user) have to close it manually so the tests continues. Thus happens when a dialog (saved 3 pages) was open. Make the test such that tey do not require user interaction.
 
+## Version 1.2.6 - Application icon
+
+1. The application icon shall depict a document with a pen writing a blue cursive signature. The pencil tip should touch the signature line to indicate active writing.
+
 # Assumptions
 1. Signature has a transparent background.
