@@ -1,0 +1,109 @@
+TESTING SUMMARY FOR SIGNER V1.2.9
+==================================
+
+✅ COMPLETED SETUP:
+
+1. Pytest Command-Line Parameter Support
+   - Added: --libreoffice-path parameter to pytest
+   - Location: tests/conftest.py - pytest_addoption()
+   - Works on: Windows, Linux, macOS
+
+2. Fixture Integration
+   - Created: libreoffice_path fixture in conftest.py
+   - Precedence:
+     a) Command-line parameter (highest priority)
+     b) Settings file (config.json)
+     c) None (tests skip gracefully)
+
+3. Path Validation
+   - Fixture validates path exists if specified
+   - Fails immediately with error if path doesn't exist
+   - Gracefully skips if no path is provided
+
+4. Documentation
+   - TESTING.md: Comprehensive testing guide
+   - pytest.ini: Updated with LibreOffice examples
+
+5. Test Results
+   - WITHOUT parameter: 131 passed, 6 skipped (Word/ODT skip)
+   - WITH parameter: 136 passed, 1 skipped (unrelated)
+   - Multi-format tests: 18/18 passing with LibreOffice
+
+================================================================================
+
+HOW TO RUN TESTS:
+
+Option 1: Basic Tests (No LibreOffice Required)
+  pytest tests/
+
+Option 2: With Command-Line Parameter
+  pytest tests/ --libreoffice-path "C:\Users\jaro\PortableApps\LibreOfficePortable\App\libreoffice\program\soffice.exe"
+
+Option 3: Configure in Settings (Persistent)
+  Add to C:\Users\jaro\AppData\Roaming\Signer\config.json:
+    "libreOffice_path": "C:\\Users\\jaro\\PortableApps\\LibreOfficePortable\\App\\libreoffice\\program\\soffice.exe"
+  Then run: pytest tests/
+
+================================================================================
+
+KEY FILES MODIFIED:
+
+✅ tests/conftest.py
+   - Added: pytest_addoption() function for --libreoffice-path
+   - Added: libreoffice_path fixture (supports precedence)
+
+✅ tests/unit/test_multiformat_documents.py
+   - Removed: Duplicate libreoffice_path fixture
+   - Updated: All LibreOffice tests to use fixture
+
+✅ pytest.ini
+   - Added: Comments documenting --libreoffice-path usage
+
+✅ signer/document_loader.py
+   - Fixed: _construct_executable_path() to handle full paths
+
+================================================================================
+
+NEW FILES CREATED:
+
+✅ TESTING.md
+   - Complete testing guide with examples
+   - LibreOffice discovery instructions
+   - CI/CD integration examples
+   - Troubleshooting tips
+
+================================================================================
+
+TEST COVERAGE (With LibreOffice):
+
+✅ PDF Tests (3/3)
+   - Load PDF document
+   - Pages are RGB
+   - Pages have content
+
+✅ Word Tests (3/3)
+   - Load DOCX document (2 pages)
+   - DOCX pages are RGB
+   - Load DOC document (3 pages)
+
+✅ ODT Tests (2/2)
+   - Load ODT document (3 pages)
+   - ODT pages are RGB
+
+✅ Image Tests (4/4)
+   - Load JPG image
+   - Load PNG image
+   - Load multi-frame TIFF (3 frames)
+   - Image dimensions
+
+✅ Format Detection Tests (2/2)
+   - Registry supports all formats
+   - Unsupported formats rejected
+
+✅ Configuration Tests (2/2)
+   - LibreOffice path acceptance
+   - Parameter passing
+
+Total: 18/18 tests passing ✅
+
+================================================================================

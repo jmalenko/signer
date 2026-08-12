@@ -582,33 +582,39 @@ class MainWindow(QMainWindow):
                 start_dir = str(Path(self.document_path).parent)
             elif self._settings.last_open_document_path:
                 start_dir = str(Path(self._settings.last_open_document_path).parent)
-            chosen, _ = QFileDialog.getOpenFileName(self, "Open Document", start_dir, "PDF files (*.pdf)")
+            chosen, _ = QFileDialog.getOpenFileName(
+                self, "Open Document", start_dir,
+                "All Supported Files (*.pdf *.docx *.doc *.odt *.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif);;"
+                "PDF Files (*.pdf);;Word Documents (*.docx *.doc);;OpenDocument Text (*.odt);;"
+                "Image Files (*.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif)"
+            )
 
         if not chosen:
             return False
         p = Path(chosen)
-        if p.suffix.lower() != ".pdf":
-            QMessageBox.warning(self, "Invalid document", "Document must be a .pdf file.")
-            return False
 
         password = ""
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                pages = render_all_pages(p, dpi=300, password=password)
+                pages = render_all_pages(
+                    p, dpi=300, password=password,
+                    libreoffice_path=self._settings.libreoffice_path
+                )
             except ValueError as exc:
+                error_msg = str(exc)
                 # PDF is encrypted and password is wrong or missing
-                if "encrypted" in str(exc).lower():
+                if "encrypted" in error_msg.lower():
                     dialog = _PasswordDialog(self, p.name)
                     if dialog.exec() != QDialog.Accepted:
                         return False
                     password = dialog.password()
                     continue
                 else:
-                    QMessageBox.critical(self, "Open document failed", f"Could not open PDF:\n{exc}")
+                    QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{error_msg}")
                     return False
             except Exception as exc:
-                QMessageBox.critical(self, "Open document failed", f"Could not open PDF:\n{exc}")
+                QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
                 return False
             break  # Success
         else:

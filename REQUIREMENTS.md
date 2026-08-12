@@ -181,5 +181,93 @@ Feedback after implementation:
 
 2. Also create examples\document-encrypted.pdf with same content AS document.pdf, but encrypted with key "key123".
 
+## Version 1.2.9 - Supported Document Formats
+
+### Supported Document Formats
+The application shall support opening and editing documents in the following formats:
+
+1. **PDF** (existing) — via PyMuPDF (fitz)
+   - Multi-page support with page navigation
+   - Encrypted PDF support with password prompt
+
+2. **Word** — via headless LibreOffice conversion
+   - Formats: `.docx` (Microsoft Word 2007+), `.doc` (Microsoft Word 97-2003)
+   - Converted to temporary PDF, then rendered
+   - Page-per-page support with navigation
+   - Requires LibreOffice installed on system (or portable version bundled)
+
+3. **ODT** (OpenDocument Text) — via headless LibreOffice conversion
+   - Converted to temporary PDF, then rendered
+   - Page-per-page support with navigation
+   - Requires LibreOffice installed on system (or portable version bundled)
+
+4. **Image Formats** — via Pillow
+   - Single-page image formats: JPG, PNG, BMP, WEBP, GIF (first frame), ICO
+   - Multi-page image format: TIFF (multi-frame)
+   - Loaded directly as single or multi-page document
+   - No scaling; image is displayed at native resolution (or zoomed to fit window)
+
+### User Interface Changes
+
+1. **Open Document Button/Menu**
+   - Clicking the "Open Document" button in toolbar opens a file dialog with all supported formats
+   - File dialog filter: "All Supported Files (*.pdf; *.docx; *.doc; *.odt; *.jpg; *.jpeg; *.png; *.bmp; *.webp; *.gif; *.ico; *.tiff; *.tif)"
+   - Also show individual format filters for clarity (e.g., "PDF Files (*.pdf)", "Word Documents (*.docx; *.doc)", "ODT Files (*.odt)", etc.)
+
+### Implementation Details
+
+1. **Format Detection**
+   - Use file extension (case-insensitive) to determine handler
+   - Display error if file type not supported
+
+2. **Page Handling**
+   - All formats normalize to a list of PIL Image objects
+   - PDF/ODT/TIFF support multiple pages with toolbar/keyboard navigation
+   - Single-image formats (JPG, PNG, etc.) are treated as 1-page documents
+
+3. **LibreOffice Integration for Word and ODT**
+   - LibreOffice path resolution (priority order):
+     1. Try LibreOffice path from settings file (new field: `libreOfficePath`, manually edited by user)
+     2. Try LibreOffice from system PATH
+     3. If neither found, show error dialog
+   - Convert Word (.docx, .doc) and ODT to temporary PDF using: `<libreoffice_path> --headless --convert-to pdf <file>`
+   - Clean up temporary PDF after loading
+   - Show error if LibreOffice not found or conversion fails
+
+### Test Coverage
+
+1. Add test assets:
+   - `examples/document.docx` — sample Word document with multiple pages and formatting
+   - `examples/document.odt` — sample ODT with multiple pages and formatting
+   - `examples/document1.jpg` — sample JPG image document
+
+2. Automated tests shall verify:
+   - Open Word document (.docx) with multiple pages; navigate all pages
+   - Open ODT document with multiple pages; navigate all pages
+   - Open JPG image; verify rendering at correct aspect ratio
+   - Open multi-frame TIFF; verify all frames accessible via page navigation
+   - Unsupported format shows error dialog
+   - File dialog correctly filters all supported formats
+   - Save exported JPG from each format type
+
+### Error Handling
+
+- **Missing LibreOffice** (required for Word and ODT): Show clear message: "LibreOffice is required to open Word and ODT documents. Please either install LibreOffice, configure the LibreOffice path in the settings file (`%APPDATA%\Signer\config.json`, field `libreOfficePath`), or use a PDF or image file instead."
+- **Unsupported format**: Show error: "File format not supported. Please choose a PDF, Word document, ODT, or image file (JPG, PNG, BMP, WEBP, GIF, TIFF)."
+- **Corrupt image/document**: Show validation error and keep app responsive
+
+### Backward Compatibility (What Remains Unchanged)
+
+1. **Recent Documents**
+   - Recent documents dropdown (via small arrow) remains available, showing all recently opened formats
+
+2. **Rendering Pipeline**
+   - All pages are rendered to 300 DPI internally (same as PDF)
+   - Image-only formats scaled to fit window while preserving aspect ratio
+
+3. **CLI Parameters**
+   - `-document <path>` now accepts any supported format (not just PDF)
+   - `-signature <path>` remains image-only (PNG preferred) 
+
 # Assumptions
 1. Signature has a transparent background.

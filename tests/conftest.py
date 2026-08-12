@@ -67,6 +67,35 @@ def app_settings():
 
 
 @pytest.fixture
+def libreoffice_path(request):
+    """Get LibreOffice path from command line or settings.
+    
+    Can be provided via:
+    - Command line: pytest --libreoffice-path <path>
+    - Settings: config.json libreOffice_path field
+    
+    If a path is specified (either via CLI or settings), it must exist.
+    If the path does not exist, the test fails.
+    """
+    # First, check command line parameter
+    cli_path = request.config.getoption("--libreoffice-path")
+    if cli_path:
+        if not Path(cli_path).exists():
+            pytest.fail(f"LibreOffice executable not found at: {cli_path}")
+        return cli_path
+    
+    # Fall back to settings
+    store = SettingsStore()
+    settings = store.load()
+    if settings.libreoffice_path:
+        if not Path(settings.libreoffice_path).exists():
+            pytest.fail(f"LibreOffice executable not found at: {settings.libreoffice_path}")
+        return settings.libreoffice_path
+    
+    return None
+
+
+@pytest.fixture
 def canvas(qapp):
     """Create a DocumentCanvas instance."""
     canvas = DocumentCanvas()
@@ -115,11 +144,21 @@ EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 
 
 def pytest_configure(config):
-    """Configure pytest with custom markers."""
+    """Configure pytest with custom markers and options."""
     config.addinivalue_line("markers", "unit: Unit tests")
     config.addinivalue_line("markers", "feature: Feature tests")
     config.addinivalue_line("markers", "slow: Slow tests")
     config.addinivalue_line("markers", "gui: Tests requiring GUI")
+
+
+def pytest_addoption(parser):
+    """Add custom command-line options for pytest."""
+    parser.addoption(
+        "--libreoffice-path",
+        action="store",
+        default=None,
+        help="Path to LibreOffice soffice executable for testing Word/ODT formats",
+    )
 
 
 def pytest_collection_modifyitems(config, items):

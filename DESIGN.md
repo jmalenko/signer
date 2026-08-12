@@ -4,26 +4,34 @@
 Build a small Windows desktop app to place a scanned signature (transparent image) on top of a PDF page and export the result as a JPG, with minimal manual steps.
 
 ## 1.1 Example Assets (Current Workspace)
+- `examples/document.odt` (sample OpenDocument Text document; master file, other examples are derived from this)
 - `examples/document.pdf` (sample one-page input document)
+- `examples/document.doc` (sample Word document)
+- `examples/document.docx` (sample Word document)
+- `examples/document1.pdf` (sample multi-page input document, 1st page of master document)
+- `examples/document1.jpg` (sample image document)
 - `examples/signature.png` (sample signature image)
 - `examples/signature.xcf` (GIMP source; not directly supported for import)
-- `examples/document.odt` (non-PDF sample; expected validation failure)
 
 ## 2. Scope (v1)
-- Open a PDF document.
+- Open a document in one of the supported formats: PDF, Word (.docx/.doc), ODT, or images (JPG, PNG, BMP, WEBP, GIF, TIFF).
+- Multi-format support via format-agnostic document loader:
+  - PDF: rendered directly via PyMuPDF
+  - Word/ODT: converted to temporary PDF via LibreOffice, then rendered
+  - Images: loaded directly via Pillow
 - Open/select a signature image from annotation submenu (PNG preferred for transparency).
 - Show document and signature overlay in one canvas.
 - Drag signature to final position.
 - Resize signature (scale up/down) before saving by dragging boundary handles.
 - Save merged output as JPG.
 - Support startup parameters:
-  - `-document <path>`
-  - `-signature <path>`
+  - `-document <path>` (any supported document format)
+  - `-signature <path>` (image file, PNG preferred)
 - If signature is not provided, reuse last signature file.
 - Default output file name: `<documentname>-signed.jpg`.
 - Document view fits window (no zoom controls in v1).
 - Default position for new annotations: centered in the visible page.
-- Support multi-page PDFs: place objects on any page.
+- Support multi-page documents: place objects on any page.
 - Add paging controls in toolbar and keyboard support (`PageUp`, `PageDown`, `Home`, `End`).
 - Show blue boundary around selected signature/annotation while editing.
 - Change mouse cursor to move arrows when hovering draggable objects.
@@ -75,16 +83,23 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 ## 5. Functional Design
 ### 5.1 Input Handling
 - Validate file existence and extensions.
-- PDF input: support multi-page PDFs.
-- Signature input: PNG (for transparency).
-- Unsupported signature formats (e.g., `.xcf`) should trigger a clear validation message.
+- Supported document formats:
+  - **PDF** input: support multi-page PDFs via PyMuPDF
+  - **Word** (.docx, .doc): convert to PDF via LibreOffice, then render
+  - **ODT**: convert to PDF via LibreOffice, then render
+  - **Images** (JPG, PNG, BMP, WEBP, GIF, TIFF): load directly via Pillow
+- Signature input: PNG (for transparency) or other image formats supported by Pillow.
+- Unsupported format (e.g., `.xcf`, unsupported file types) should trigger a clear validation message.
 
 ### 5.2 Rendering Pipeline
-1. Render active PDF page to bitmap at fixed internal DPI: **300 DPI**.
-2. Scale page bitmap to fit viewport while preserving aspect ratio.
-3. Render object layer for active page (signature + annotations) in viewport coordinates.
-4. Support object move and scale (boundary-handle drag).
-5. On save (active page):
+1. For PDF documents: render active PDF page to bitmap at fixed internal DPI via PyMuPDF.
+2. For Word/ODT documents: convert to temporary PDF via LibreOffice subprocess, then render via PyMuPDF.
+3. For image documents: load directly via Pillow.
+4. All document pages normalized to `List[PIL.Image]` at fixed internal DPI: **300 DPI**.
+5. Scale page bitmap to fit viewport while preserving aspect ratio.
+6. Render object layer for active page (signature + annotations) in viewport coordinates.
+7. Support object move and scale (boundary-handle drag).
+8. On save (active page):
    - Convert object viewport coordinates to source bitmap coordinates.
    - Composite signature and annotations in z-order over active page bitmap.
    - Export JPG.
@@ -150,13 +165,14 @@ Recent items appear in relevant menus:
 - **Toolbar "Open Document" dropdown**: Recent documents submenu
 
 ### 5.8 CLI Parameters
-- `-document <path>`: initial document to load.
-- `-signature <path>`: initial signature to load.
+- `-document <path>`: initial document to load (any supported format: PDF, Word, ODT, or image).
+- `-signature <path>`: initial signature to load (image file, PNG preferred).
 - If `-signature` is provided with `-document`, add signature annotation immediately after load.
 - If `-signature` is omitted, do not auto-add annotations on document open.
 
 Example startup:
 - `Signer.exe -document examples/document.pdf -signature examples/signature.png`
+- `Signer.exe -document examples/document.docx -signature examples/signature.png`
 
 ### 5.9 File Naming
 Default save name:
@@ -193,7 +209,18 @@ Default save name:
 
 ## 8. Tool Analysis
 
-## Option A (Recommended): Python + PySide6 + PyMuPDF + Pillow
+### Multi-Format Document Support (v1.2.9)
+For Word and ODT support, the app integrates with LibreOffice:
+- **LibreOffice** (headless): Converts Word and ODT to temporary PDF for rendering
+- **PyMuPDF (fitz)**: Renders PDF pages (including converted docs) to images
+- **Pillow**: Handles direct image loading and JPG export
+
+Path resolution for LibreOffice:
+1. Check settings file (`libreOfficePath` field in config.json)
+2. Search system PATH
+3. Show error if not found
+
+## Option A (Recommended): Python + PySide6 + PyMuPDF + Pillow + LibreOffice
 - **PySide6**: native-feeling desktop UI on Windows, quick iteration.
 - **PyMuPDF (fitz)**: reliable PDF page rendering to image.
 - **Pillow**: robust compositing and JPG export.
@@ -260,8 +287,10 @@ Use **Option A** for v1 due to shortest implementation path and low risk for req
 - Manual functional tests:
   - startup with/without CLI args,
   - startup using sample assets (`examples/document.pdf` + `examples/signature.png`),
-  - verify unsupported format handling using `examples/signature.xcf`,
-  - verify invalid document handling using `examples/document.odt`,
+  - **verify Word document (.docx) opens and renders correctly,**
+  - **verify ODT document opens and renders correctly,**
+  - **verify image document (.jpg) opens and renders correctly,**
+  - **verify unsupported format shows error dialog,**
   - verify page navigation via toolbar and keys (`PageUp`, `PageDown`, `Home`, `End`),
   - verify per-page object persistence when switching pages,
   - verify cursor change on hover and blue boundary on selection,

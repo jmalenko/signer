@@ -18,6 +18,9 @@ class AppSettings:
     recent_font_family: str = "Arial"
     recent_font_size_px: int = 48
     
+    # LibreOffice path (for Word/ODT support)
+    libreoffice_path: str | None = None
+    
     # Signature/document paths
     last_signature_path: str | None = None
     last_open_document_path: str | None = None
@@ -52,6 +55,8 @@ class SettingsStore:
                 # Recent font
                 recent_font_family=data.get("recent_font_family", "Arial"),
                 recent_font_size_px=data.get("recent_font_size_px", 48),
+                # LibreOffice path
+                libreoffice_path=data.get("libreoffice_path"),
                 # Signature/document paths
                 last_signature_path=data.get("last_signature_path"),
                 last_open_document_path=data.get("last_open_document_path"),
