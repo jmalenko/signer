@@ -171,5 +171,9 @@ Feedback after implementation:
 
 1. The application icon shall depict a document with a pen writing a blue cursive signature. The pencil tip should touch the signature line to indicate active writing.
 
+## Version 1.2.7 - Save dialog on document close
+
+1. When a documnet has some changes (any annotations changed since the last save) and it's closed (on application exit or when another document is opened), show a dialog informing user about the changes. Offer to forget changes or save the document. 
+
 # Assumptions
 1. Signature has a transparent background.
