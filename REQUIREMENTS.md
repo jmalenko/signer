@@ -175,5 +175,11 @@ Feedback after implementation:
 
 1. When a documnet has some changes (any annotations changed since the last save) and it's closed (on application exit or when another document is opened), show a dialog informing user about the changes. Offer to forget changes or save the document. 
 
+## Version 1.2.8 - Open Encrypted PDF documnets
+
+1. When opening a PDF, if the document is enrypted, ask user for key.
+
+2. Also create examples\document-encrypted.pdf with same content AS document.pdf, but encrypted with key "key123".
+
 # Assumptions
 1. Signature has a transparent background.

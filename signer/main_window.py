@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import fitz
 from PIL import Image, UnidentifiedImageError
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeyEvent
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMenu,
     QMessageBox,
@@ -94,6 +96,32 @@ class _TextInputDialog(QDialog):
 
     def text(self) -> str:
         return self.editor.toPlainText()
+
+
+class _PasswordDialog(QDialog):
+    """Dialog to prompt for PDF password."""
+    def __init__(self, parent: QMainWindow, pdf_filename: str) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Password Required")
+        self.resize(350, 150)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(f'The file "{pdf_filename}" is encrypted.\nPlease enter the password:'))
+
+        self.password_input = QLineEdit(self)
+        self.password_input.setEchoMode(QLineEdit.Password)
+        layout.addWidget(self.password_input)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+        # Focus on password input for convenience
+        self.password_input.setFocus()
+
+    def password(self) -> str:
+        return self.password_input.text()
 
 
 class MainWindow(QMainWindow):
@@ -563,10 +591,29 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Invalid document", "Document must be a .pdf file.")
             return False
 
-        try:
-            pages = render_all_pages(p, dpi=300)
-        except Exception as exc:
-            QMessageBox.critical(self, "Open document failed", f"Could not open PDF:\n{exc}")
+        password = ""
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                pages = render_all_pages(p, dpi=300, password=password)
+            except ValueError as exc:
+                # PDF is encrypted and password is wrong or missing
+                if "encrypted" in str(exc).lower():
+                    dialog = _PasswordDialog(self, p.name)
+                    if dialog.exec() != QDialog.Accepted:
+                        return False
+                    password = dialog.password()
+                    continue
+                else:
+                    QMessageBox.critical(self, "Open document failed", f"Could not open PDF:\n{exc}")
+                    return False
+            except Exception as exc:
+                QMessageBox.critical(self, "Open document failed", f"Could not open PDF:\n{exc}")
+                return False
+            break  # Success
+        else:
+            # Max attempts exceeded
+            QMessageBox.critical(self, "Open document failed", "Incorrect password or maximum attempts exceeded.")
             return False
 
         self.canvas.set_pages(pages)
