@@ -12,6 +12,7 @@ venv/
 build/
 dist/
 *.spec
+!signer.spec
 
 # Test and tooling caches
 .pytest_cache/
