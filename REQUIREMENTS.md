@@ -420,5 +420,291 @@ Replace the blocking post-export dialog with a non-intrusive notification that a
 - Errors should be modal dialogs to ensure user sees and acknowledges them
 - Success notifications should be non-intrusive (toast) to allow continued workflow
 
+## Version 1.2.12 - Improve Export Dialog: Dynamic Page Number Placeholder
+
+### Overview
+Enhance user experience for multi-page document exports by showing dynamic page number placeholders in the save dialog. When users change file extensions, the dialog automatically updates filenames to match format requirements while preserving the custom filename stem they've typed.
+
+### Behavior
+
+1. **Placeholder Format**
+   - For multi-page documents (JPG/PNG/BMP formats), display a single hash symbol (`#`) as a page number placeholder in the filename
+   - When exporting, replace `#` with the actual page number, zero-padded to match the document's page count
+   - Number of digits = number of digits required to represent the highest page number
+
+2. **Real-Time Format Switching**
+   - As user types filename in save dialog, dialog monitors input in real-time
+   - When user changes file extension (e.g., `.pdf` → `.jpg`), format change is detected automatically
+   - Dialog automatically updates filename to match new format requirements:
+     - **PDF/TIFF → JPG/PNG/BMP**: Adds placeholder if multi-page (preserves custom stem)
+       - User types: `my-report.pdf` → changes to JPG for 50-page doc → becomes `my-report-p#.jpg`
+     - **JPG/PNG/BMP → PDF/TIFF**: Removes placeholder (preserves custom stem)
+       - User types: `my-report-p#.jpg` → changes to PDF → becomes `my-report.pdf`
+   - User's custom filename stem is always preserved through format changes
+   - No dialog interruption; changes appear in real-time in filename field
+
+3. **Smart Filename Validation**
+   - **For single-file formats (PDF/TIFF)**: Accept any filename with correct extension
+     - `report.pdf`, `my-document.pdf`, `final-contract.pdf` all valid ✅
+     - No special naming pattern required
+   - **For multi-file formats (JPG/PNG/BMP)**: 
+     - Single-page documents: Any name OK (e.g., `report.jpg`)
+     - Multi-page documents: Filename must include `#` placeholder
+       - `document-p#.jpg` valid ✅ (generates `document-p01.jpg`, `document-p02.jpg`, etc.)
+       - `document.jpg` invalid ❌ for multi-page (requires placeholder for proper page numbering)
+   - If validation fails, show info dialog with expected format, allow user to retry
+
+### Implementation Details
+
+1. **Non-Native Dialog for Real-Time Monitoring**
+   - Uses Qt-rendered file dialog instead of Windows native dialog (via `DontUseNativeDialog`)
+   - Enables access to underlying QLineEdit widget for real-time filename capture
+   - Trades Windows native dialog appearance for powerful auto-correction and filename preservation
+   - Result: Qt styling appears as Windows 95-style dialog (classic look)
+   - **Trade-off rationale**: Modern Windows native dialog doesn't expose text input field, preventing real-time monitoring
+
+2. **Dialog Filename Suggestion Logic**
+   - When opening Save As dialog, suggest filename based on document and format:
+     - If single-page document: `{name}-signed.{ext}` (no placeholder)
+     - If single-file format (PDF/TIFF): `{name}-signed.{ext}` (no placeholder)
+     - If multi-page + multi-file format (JPG/PNG/BMP): `{name}-signed-p#.{ext}` (single # as placeholder)
+   - User can edit the filename; custom stem is captured as they type
+   - File extension change triggers format detection and updates filename automatically
+   - File type filter selection in dropdown also triggers format detection
+   - If user has edited filename (custom stem detected), stem is preserved in new format
+   - If user hasn't edited (using system suggestion), new system suggestion is applied
+
+### Edge Cases
+
+1. **User removes or changes placeholder**
+   - If user removes `#` from multi-page JPG/PNG/BMP filename:
+   - On save, validation catches mismatch and shows info dialog
+   - User can edit filename and retry saving
+   - Returns to save dialog (not closed) so user can fix
+
+2. **Multiple format switches**
+   - User custom stem preserved across all switches:
+     - Types `report.pdf` (single-file)
+     - Switches to JPG 50-page → `report-p#.jpg` (custom stem `report` preserved)
+     - Switches to PNG → `report-p#.png` (custom stem preserved)
+     - Switches back to PDF → `report.pdf` (custom stem preserved)
+
+3. **Very long filenames with placeholder**
+   - Dialog display and validation still works correctly
+   - Placeholder properly replaced even in long filenames
+   - Test coverage: 41 passing tests (see TESTING.md for details)
+   - Implementation notes: see DESIGN.md section 9.4 for trade-off rationale
+
+## Version 1.2.13 - Enhanced Overwrite Confirmation Notifications
+
+### Overview
+Provide detailed overwrite confirmations that list affected files when users export, with smart detection of older page files and optional cleanup via checkbox.
+
+### File Existence and Cleanup Detection
+
+1. **Pre-save Validation**
+   - Before export, check if any target file(s) will overwrite existing files
+   - For multi-page exports: check all generated filenames
+   - For single-file exports: check the single target filename
+   - **Detect older files**: If the generated filename pattern matches previous exports, detect "older" page files that extend beyond the new export range
+     - Example: Exporting a 20-page document when 50 older pages exist → detect `document-signed-p21.jpg` through `document-signed-p50.jpg` as candidates for cleanup
+
+2. **Overwrite Notification Dialog** (replaces or augments existing confirmation)
+   - Triggered when target file(s) already exist
+   - Display format depends on number of files affected
+   - **If older files detected**: Show separate lists with checkbox to include them in cleanup
+
+#### Notification Format
+
+##### Scenario A: Single File (Single-page document or PDF/TIFF format)
+```
+Title: "File Already Exists"
+Message: "The file 'document-signed.jpg' already exists.
+
+Do you want to replace it?"
+
+Buttons: [Replace] [Cancel]
+```
+
+##### Scenario B: Multiple Files (Multi-page JPG/PNG/BMP with few overwrites)
+```
+Title: "Some Files Already Exist"
+Message: "The following files will be overwritten:
+
+• document-signed-p01.jpg
+• document-signed-p02.jpg
+• document-signed-p03.jpg
+
+Do you want to replace them?"
+
+Buttons: [Replace] [Cancel]
+```
+
+##### Scenario C: All Files Will Be Overwritten (Multi-page, all files exist)
+- **Optimized message** for common case where user is re-exporting same document:
+```
+Title: "All Files Will Be Overwritten"
+Message: "All 25 pages of 'document-signed-p#.jpg' will be overwritten.
+
+Do you want to replace them?"
+
+Buttons: [Replace] [Cancel]
+```
+
+##### Scenario D: Large Number of Files (More than 10 files affected)
+- **Summarized message** to avoid overwhelming the user:
+```
+Title: "Files Already Exist"
+Message: "25 file(s) will be overwritten:
+
+• document-signed-p01.jpg
+• document-signed-p02.jpg
+• document-signed-p03.jpg
+• ... (22 more files)
+
+Do you want to replace them?"
+
+Buttons: [Replace] [Cancel]
+```
+
+##### Scenario E: Older Page Files Detected (Multi-page export, fewer pages than before)
+- **When**: New export has fewer pages than previous export AND file pattern exactly matches (same prefix/format)
+- **Example**: Exporting 20 pages when 50 previous pages exist
+```
+Title: "Replace Files and Clean Up Old Pages?"
+Message: "These files will be overwritten:
+
+• document-signed-p01.jpg
+• document-signed-p02.jpg
+• ... (18 more files)
+
+And these older page files can be deleted:
+
+• document-signed-p21.jpg
+• document-signed-p22.jpg
+• ... (30 more files)
+
+[✓] Delete older page files
+[  ] Keep older page files
+
+Do you want to proceed?"
+
+Buttons: [Replace] [Cancel]
+```
+
+### Dialog Decision Logic
+
+```python
+IF single_file_export AND file_exists:
+    Show Scenario A
+ELSE IF multi_file_export:
+    existing_files = [f for f in generated_filenames if f exists]
+    older_files = detect_older_page_files(filename_pattern, total_pages)
+    
+    IF len(existing_files) == 0 AND len(older_files) == 0:
+        // No confirmation needed, proceed with export
+    ELSE IF len(older_files) > 0 AND pattern_matches_exactly:
+        Show Scenario E (with cleanup checkbox)
+    ELSE IF len(existing_files) == total_files AND placeholder_unchanged:
+        Show Scenario C (optimized "all files" message)
+    ELSE IF len(existing_files) <= 10:
+        Show Scenario B (list all files)
+    ELSE:
+        Show Scenario D (list first 3, show "... (N more files)" summary)
+```
+   ```
+
+2. **Detect Older Files Logic**
+   - Pattern detection: Extract prefix and suffix from the generated filename (e.g., `document-signed-p#` pattern)
+   - Search directory for files matching pattern
+   - Identify files with page numbers > total_pages (these are "older" files from previous exports)
+   - Only show cleanup option if:
+     - File pattern exactly matches current export pattern (same prefix/suffix)
+     - At least one older file exists beyond the new page range
+     - Pattern is unambiguous (e.g., no other similarly named exports with different prefixes)
+
+3. **Cleanup Execution**
+   - If user checks the cleanup checkbox and clicks Replace: delete older files along with overwriting current-range files
+   - If user unchecks the checkbox: only overwrite files in the current export range
+   - If older files fail to delete: show warning but proceed with export of current files
+   - Log deleted files for debuggings: [Replace] [Cancel]
+```
+- Checkbox is **unchecked by default** (user must explicitly opt-in to delete)
+- Only shown if pattern exactly matches current naming scheme and older files are outside the new rangeyou want to replace them?"
+
+Buttons: [Replace] [Cancel]
+```
+
+### Dialog Decision Logic
+
+1. **Detect overwrite scenario**
+   ```
+   IF single_file_export AND file_exists:
+       Show Scenario A
+   ELSE IF multi_file_export:
+       existing_files = [f for f in generated_filenames if f exists]
+       IF len(existing_files) == 0:
+           // No confirmation needed, proceed with export
+       ELSE IF len(existing_files) == total_files AND placeholder_unchanged:
+     older files are detected, user has control via checkbox: opt-in to delete, or proceed with export only
+- If user clicks Cancel: return to Save As dialog without closing it
+- If user clicks Replace: proceed with export (and cleanup if checkbox was checked)
+- After successful export: show notification as per Version 1.2.11 (non-intrusive toast)
+- **Safety first**: Cleanup is never automatic; user must explicitly check the checkbox and confirm Replace
+       ELSE:
+           Show Scenario D (list first 3, show "... (N more files)" summary)
+   ```
+
+2. **File List Formatting**
+   - List filenames relative to export directory (not full paths) for readability
+   - Sort alphabetically by filename
+   - Show file extension to clarify format (e.g., `.jpg`, `.png`)
+
+3. **Placeholder Preservation in Message**
+   - When listing existing files, use the actual filenames (not placeholder format)
+   - Example: Show `document-signed-p01.jpg` (not `document-signed-p#.jpg`)
+
+#### User Experience
+
+- Confirmation dialog blocks export until user decides
+- If user clicks Cancel: return to Save As dialog without closing it
+   - Older page files detected → show Scenario E with cleanup checkbox
+
+4. **Older File Detection and Cleanup**
+   - Test pattern matching: detect when new export has fewer pages than previous
+   - Test checkbox state: verify cleanup only happens if explicitly checked
+   - Test filename patterns across different document names and page counts
+   - Verify cleanup doesn't affect unrelated files with similar names
+   - Test error handling: if cleanup fails on some files, export still succeeds
+- If user clicks Replace: proceed with export (overwrite files)
+- After successful export: show notification as per Version 1.2.11 (non-intrusive toast)
+
+### Test Coverage
+
+1. **File Existence Detection**
+   - Single file exists → show Scenario A dialog
+   - Multiple files exist → appropriate scenario based on count
+
+2. **Overwrite Scenarios**
+   - No existing files → proceed without confirmation
+   - All multi-page files exist → show Scenario C optimized message
+   - Subset of files exist → show Scenario B with file list
+   - Large number (>10) of files exist → show Scenario D with summary
+
+3. **Older File Detection and Cleanup**
+   - Test pattern matching: detect when new export has fewer pages than previous
+   - Test checkbox state: verify cleanup only happens if explicitly checked
+   - Test filename patterns across different document names and page counts
+   - Verify cleanup doesn't affect unrelated files with similar names
+   - Test error handling: if cleanup fails on some files, export still succeeds
+
+### Implementation Notes
+
+- File existence checks should happen before showing confirmation
+- Pattern detection: Extract prefix and suffix from generated filename
+- Only show cleanup checkbox when pattern exactly matches and older files exist beyond new range
+- If cleanup fails on some files: show warning but proceed with export of current files
+- Log deleted files for debugging
+
 # Assumptions
 1. Signature has a transparent background.

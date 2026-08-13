@@ -165,6 +165,42 @@ test:
     - pytest tests/ --libreoffice-path "/usr/bin/soffice"
 ```
 
+## Version 1.2.12 - Export Dialog Placeholder Tests
+
+### Test Coverage (41 passing tests for Version 1.2.12 features)
+
+#### Placeholder Calculation Tests
+- Correct digit padding: 1-9 pages (1 digit), 10-99 (2 digits), 100-999 (3 digits), 1000+ (4 digits)
+- Single-page documents show no placeholder
+- Placeholder replacement with correct zero-padding
+
+#### Format Switching Detection Tests
+- Detection of format change via file extension
+- Detection of format change via filter dropdown
+- Auto-correction when user hasn't edited filename
+- Preservation when user has custom stem
+
+#### Filename Preservation Tests
+- Custom stem extracted and preserved across format switches
+- Multiple format switches maintain same stem
+- Placeholder added/removed correctly for each format
+
+#### Validation Tests
+- Single-file format (PDF/TIFF): Custom names accepted with correct extension
+- Multi-file single-page: No placeholder required
+- Multi-file multi-page: Placeholder validation enforced
+- Extension validation for all formats
+
+#### Edge Case Tests
+- User removes placeholder → validation catches and shows info dialog
+- User changes format after filename was set → filename updates correctly
+- Very long filenames with placeholder → dialog remains readable
+- Multiple format switches preserve custom stem across all transitions
+
+### Test Files
+- **test_format_switching.py**: Format change detection and filename auto-correction (17 tests)
+- **test_placeholder_dialog.py**: Placeholder validation and calculation (24 tests)
+
 ## Related Files
 
 - **conftest.py**: Pytest configuration and fixtures

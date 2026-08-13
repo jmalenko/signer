@@ -312,6 +312,27 @@ Path resolution for LibreOffice:
 - Multi-page PDFs are supported with toolbar + keyboard navigation.
 - Save behavior exports the active page to JPG.
 
+### Dialog Implementation Trade-off (Version 1.2.12)
+- **Native Windows file dialog** (default Qt behavior) does NOT expose underlying text input widget (QLineEdit)
+- **Smart filename handling** requires real-time monitoring of user input as they type to:
+  - Preserve custom filename stem across format changes
+  - Auto-update filename when user changes file extension
+  - Capture user intent without dialog blocking
+- **Trade-off decision**: Use **non-native Qt dialog** (DontUseNativeDialog flag) to access QLineEdit
+  - Pros: Enables powerful auto-correction, filename preservation, real-time format detection
+  - Cons: Older UI appearance (Windows 95-style classic Qt theme instead of modern Windows Aero)
+- **Rationale**: Functional capability takes priority over native UI appearance for this utility
+- **Test coverage**: 41+ tests cover all format switching, placeholder, and validation scenarios
+
+### Version 1.2.12 Implementation Details
+- **Real-time capture**: `QLineEdit.textChanged.connect(self._on_filename_text_changed)`
+- **Non-native dialog**: `QFileDialog.setOption(DontUseNativeDialog, True)` set before `exec()`
+- **Placeholder calculation**: `len(str(total_pages))` gives required digit count
+- **Custom stem extraction**: `Path(filename).stem` gets name without extension
+- **Format detection**: Both `ExportFormat.from_extension()` and `ExportFormat.from_filter_string()`
+- **Smart validation**: Separate paths for single-file vs multi-file formats
+- **User interaction flow**: User types → validation → if invalid, show info dialog → user retries (dialog stays open)
+
 ## Tool Decision
 Use **Option A** for v1 due to shortest implementation path and low risk for required features.
 

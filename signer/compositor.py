@@ -65,6 +65,37 @@ class ExportFormat(Enum):
         """Get Qt file dialog filter for all supported formats."""
         return "Supported Files (*.jpg *.jpeg *.png *.pdf *.tif *.tiff *.bmp);;JPEG files (*.jpg *.jpeg);;PNG files (*.png);;PDF files (*.pdf);;TIFF files (*.tif *.tiff);;BMP files (*.bmp)"
 
+    @staticmethod
+    def from_filter_string(filter_string: str) -> "ExportFormat":
+        """Extract format from a Qt file dialog filter string.
+        
+        Args:
+            filter_string: Filter string like "JPEG files (*.jpg *.jpeg)" or "PDF files (*.pdf)"
+        
+        Returns:
+            Detected ExportFormat, defaults to JPG if not recognized
+        """
+        filter_lower = filter_string.lower()
+        if "jpeg" in filter_lower or "jpg" in filter_lower:
+            return ExportFormat.JPG
+        elif "png" in filter_lower:
+            return ExportFormat.PNG
+        elif "pdf" in filter_lower:
+            return ExportFormat.PDF
+        elif "tiff" in filter_lower or "tif" in filter_lower:
+            return ExportFormat.TIFF
+        elif "bmp" in filter_lower:
+            return ExportFormat.BMP
+        return ExportFormat.JPG
+
+    def is_single_file_format(self) -> bool:
+        """Check if this format stores all pages in a single file."""
+        return self in (ExportFormat.PDF, ExportFormat.TIFF)
+
+    def is_per_file_format(self) -> bool:
+        """Check if this format stores each page in a separate file."""
+        return self in (ExportFormat.JPG, ExportFormat.PNG, ExportFormat.BMP)
+
 
 def _page_suffix(page_index: int, total_pages: int) -> str:
     if total_pages <= 1:
@@ -110,6 +141,83 @@ def build_page_output_path(
     directory = Path(directory)
     ext = export_format.extension()
     return directory / f"{base_stem}{_page_suffix(page_index, total_pages)}{ext}"
+
+
+def build_suggested_filename_for_dialog(
+    document_path: str | Path,
+    total_pages: int,
+    export_format: ExportFormat = ExportFormat.JPG,
+) -> str:
+    """
+    Build suggested filename for Save As dialog with dynamic placeholder.
+    
+    Rules:
+    1. Single-page document → single filename (no placeholder)
+    2. Multi-page capable format (PDF/TIFF) → single filename (no placeholder)
+    3. Multi-page per-file format (JPG/PNG/BMP) → use placeholder format
+    """
+    doc = Path(document_path)
+    ext = export_format.extension()
+    base = f"{doc.stem}-signed"
+    
+    # Rule 1: Single-page document
+    if total_pages <= 1:
+        return f"{base}{ext}"
+    
+    # Rule 2: Single-file format
+    if export_format.is_single_file_format():
+        return f"{base}{ext}"
+    
+    # Rule 3: Multi-page per-file format
+    return f"{base}-p#{ext}"
+
+
+def replace_placeholder_with_page_number(
+    filename: str,
+    page_index: int,
+    total_pages: int,
+) -> str:
+    """
+    Replace '#' placeholder with zero-padded page number.
+    
+    Example: "document-p#.jpg" → "document-p01.jpg" (for 98-page doc, page 0)
+    """
+    if "#" not in filename:
+        return filename
+    
+    pad_width = len(str(total_pages))
+    page_num = f"{page_index + 1:0{pad_width}d}"
+    return filename.replace("#", page_num)
+
+
+def validate_placeholder_for_multipage_export(
+    filename_stem: str,
+    total_pages: int,
+    export_format: ExportFormat,
+) -> tuple[bool, str]:
+    """
+    Validate that placeholder exists when required for multi-page per-file export.
+    
+    Returns: (is_valid, error_message)
+    """
+    # Single-file formats don't need placeholder
+    if export_format.is_single_file_format():
+        return True, ""
+    
+    # Single-page documents don't need placeholder
+    if total_pages <= 1:
+        return True, ""
+    
+    # Multi-page per-file format MUST have placeholder
+    if "#" not in filename_stem:
+        return False, (
+            "File format cannot store multiple pages in one file. "
+            "Each page will be in a separate file. "
+            "You must use the # placeholder for the page number in the file name.\n\n"
+            f"Example: {filename_stem}-p#"
+        )
+    
+    return True, ""
 
 
 def composite_objects_to_jpg(

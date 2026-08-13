@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import locale
+import logging
 import os
 import re
 from datetime import datetime
@@ -34,6 +35,9 @@ from .compositor import (
     ExportFormat,
     build_default_output_path,
     build_page_output_path,
+    build_suggested_filename_for_dialog,
+    replace_placeholder_with_page_number,
+    validate_placeholder_for_multipage_export,
     composite_objects_to_format,
     composite_objects_to_jpg,
     composite_pages_to_pdf,
@@ -62,6 +66,123 @@ ARROW_DIRECTIONS = [
     ("West", AnnotationType.ARROW_W),
     ("North-West", AnnotationType.ARROW_NW),
 ]
+
+
+class _SaveDialogWithFilterDetection(QFileDialog):
+    """Custom file dialog that detects filter changes in real-time."""
+    
+    def __init__(self, parent=None, caption="", directory="", filter=""):
+        super().__init__(parent, caption, directory, filter)
+        self.setFileMode(QFileDialog.AnyFile)
+        self.setAcceptMode(QFileDialog.AcceptSave)
+        # Connect to filter change signal
+        self.filterSelected.connect(self._on_filter_changed)
+        # Listen for file selections (includes text edits and confirmations)
+        self.filesSelected.connect(self._on_files_selected)
+        
+        self.last_format = None
+        self.total_pages = 1
+        self.document_path = None
+        self.last_suggested_filename = None
+        self.user_custom_stem = None
+        self.current_filename_in_field = None
+        self._filename_edit = None
+    
+    def exec(self):
+        """Override exec to connect line edit AFTER dialog is created but before showing."""
+        # Now that the dialog widgets are created, connect to the line edit
+        self._connect_line_edit()
+        # Call the parent exec() which will show the dialog
+        return super().exec()
+    
+    def _connect_line_edit(self):
+        """Find the QLineEdit widget and connect to its textChanged signal for real-time capture."""
+        # Find all QLineEdit widgets in the dialog
+        line_edits = self.findChildren(QLineEdit)
+        
+        if line_edits:
+            # The first line edit is typically the filename field
+            filename_edit = line_edits[0]
+            filename_edit.textChanged.connect(self._on_filename_text_changed)
+            self._filename_edit = filename_edit
+        else:
+            self._filename_edit = None
+    
+    def _on_filename_text_changed(self, text):
+        """Called in real-time as user types in the filename field."""
+        # Extract just the filename without path
+        filename = Path(text).name if text else ""
+        self.current_filename_in_field = filename
+    
+    def _on_files_selected(self, files):
+        """Called when user selects/types a filename (fallback)."""
+        if files:
+            filename = Path(files[0]).name
+            self.current_filename_in_field = filename
+    
+    def _on_filter_changed(self, selected_filter: str):
+        """Called when user changes the 'Save as type' dropdown."""
+        detected_format = ExportFormat.from_filter_string(selected_filter)
+        
+        # Only update if format actually changed
+        if detected_format and detected_format != self.last_format and self.document_path:
+            # Get the current filename - use what was in the field from textChanged signal
+            current_filename = self.current_filename_in_field or ""
+            suggested_for_new_format = build_suggested_filename_for_dialog(
+                self.document_path, self.total_pages, detected_format
+            )
+            
+            # Decide what filename to use
+            # Check if current filename differs from what we last suggested
+            if (current_filename and 
+                current_filename != self.last_suggested_filename and 
+                current_filename != "" and
+                self.last_suggested_filename is not None):
+                # User manually edited the filename - extract and preserve their stem
+                current_path = Path(current_filename)
+                current_stem = current_path.stem
+                
+                # If this is the first manual edit, capture the user's stem
+                if self.user_custom_stem is None:
+                    self.user_custom_stem = current_stem
+                else:
+                    # On subsequent format changes, use the captured custom stem
+                    current_stem = self.user_custom_stem
+            else:
+                # User didn't edit (or first time), use system stem
+                current_stem = None
+            
+            # Build new filename based on whether we have a custom stem
+            if current_stem:
+                # Use user's custom stem with new format rules
+                if detected_format.is_single_file_format():
+                    # Single-file format (PDF, TIFF) - no placeholder
+                    new_filename = f"{current_stem}{detected_format.extension()}"
+                else:
+                    # Multi-file format (JPG, PNG, BMP) - add placeholder
+                    new_filename = f"{current_stem}-p#{detected_format.extension()}"
+            else:
+                # No custom stem, use system suggestion
+                new_filename = suggested_for_new_format
+            
+            # Update the filename in the dialog
+            # Instead of selectFile(full_path) which shows the full path in the text field,
+            # we just update the line edit directly with just the filename
+            current_dir = Path(self.directory().absolutePath())
+            
+            if self._filename_edit:
+                self._filename_edit.setText(new_filename)
+            else:
+                # Fallback: if line edit not available, try selectFile with just filename
+                new_full_path = current_dir / new_filename
+                self.selectFile(str(new_full_path))
+            
+            # Update our tracking after we change it
+            self.current_filename_in_field = new_filename
+            
+            # Remember what we suggested for next comparison
+            self.last_suggested_filename = new_filename
+            self.last_format = detected_format
 
 
 class _TextInputDialog(QDialog):
@@ -763,38 +884,155 @@ class MainWindow(QMainWindow):
         
         last_export_folder = self._settings.last_export_folder or self._settings.last_save_directory
         
-        default_path = build_default_output_path(
-            self.document_path, page_idx, last_export_folder, total, last_export_format
-        )
-        
-        # Create file dialog with all supported formats
-        chosen, selected_filter = QFileDialog.getSaveFileName(
-            self, "Save Document As", str(default_path),
-            ExportFormat.all_formats_filter()
-        )
-        
-        if not chosen:
-            return False
-        
-        output = Path(chosen)
-        # Determine export format from file extension
-        export_format = ExportFormat.from_extension(output.suffix)
-        
-        # Ensure correct extension
-        if output.suffix.lower() != export_format.extension():
-            output = output.with_suffix(export_format.extension())
-        
-        # Derive the base stem: strip any trailing -pNN the user may have kept.
-        stem = output.stem
-        m = re.match(r"^(.*)-p(\d+)$", stem)
-        base_stem = m.group(1) if m else stem
-        directory = output.parent
-        
+        # Loop for file dialog - allows user to retry if validation fails
+        while True:
+            # Build suggested filename with dynamic placeholder based on current format
+            suggested_filename = build_suggested_filename_for_dialog(
+                self.document_path, total, last_export_format
+            )
+            
+            directory = Path(last_export_folder) if last_export_folder else Path(self.document_path).parent
+            default_path = directory / suggested_filename
+            
+            # Get all format filters
+            all_filters_str = ExportFormat.all_formats_filter()
+            
+            # In test mode, use static dialog method (easier to mock)
+            # In normal mode, use custom dialog with real-time filter detection
+            if in_test_mode:
+                chosen, selected_filter = QFileDialog.getSaveFileName(
+                    self, "Save Document As", str(default_path),
+                    all_filters_str, last_export_format.file_filter()
+                )
+                if not chosen:
+                    return False
+            else:
+                # Use custom dialog that detects filter changes in real-time
+                dialog = _SaveDialogWithFilterDetection(
+                    self, "Save Document As", str(default_path),
+                    all_filters_str
+                )
+                # CRITICAL: Disable native dialog mode so Qt widgets (QLineEdit) are accessible
+                # Native Windows file dialog doesn't expose child widgets for us to monitor
+                dialog.setOption(QFileDialog.DontUseNativeDialog, True)
+                
+                dialog.last_format = last_export_format
+                dialog.total_pages = total
+                dialog.document_path = self.document_path
+                dialog.last_suggested_filename = suggested_filename  # Remember what we suggested initially
+                
+                # Set the initial filter to match last_export_format
+                filter_to_select = last_export_format.file_filter()
+                dialog.selectNameFilter(filter_to_select)
+                
+                if dialog.exec() != QFileDialog.Accepted:
+                    return False
+                
+                chosen = dialog.selectedFiles()[0] if dialog.selectedFiles() else None
+                if not chosen:
+                    return False
+                
+                selected_filter = dialog.selectedNameFilter()
+            output = Path(chosen)
+            
+            # DETECT FORMAT FROM USER'S ACTIONS
+            # First, try to detect from the file extension they typed
+            export_format = ExportFormat.from_extension(output.suffix)
+            
+            # Then, check what filter they selected in the dropdown
+            # If they explicitly selected a different format filter, that takes precedence
+            filter_based_format = ExportFormat.from_filter_string(selected_filter)
+            
+            # If file extension and filter don't match, user likely selected a different format in dropdown
+            # The filter selection is explicit user action, so trust that
+            if filter_based_format != export_format and selected_filter and "supported" not in selected_filter.lower():
+                # User selected a specific format filter
+                export_format = filter_based_format
+                # Update the filename extension to match what they selected
+                output = output.with_suffix(export_format.extension())
+            
+            # Ensure correct extension
+            if output.suffix.lower() != export_format.extension():
+                output = output.with_suffix(export_format.extension())
+            
+            # AUTO-CORRECT FILENAME WHEN FORMAT CHANGES VIA FILTER
+            # If the format changed from what we suggested, check if user just selected a different filter
+            if export_format != last_export_format:
+                # Build what the new format would suggest
+                suggested_for_new_format = build_suggested_filename_for_dialog(
+                    self.document_path, total, export_format
+                )
+                
+                # If the user's input EXACTLY matches the OLD suggested format,
+                # it means they just selected a different format filter without editing the filename.
+                # Auto-correct to the new format's requirements.
+                if output.name == suggested_filename:
+                    # Auto-correct: update filename to match new format
+                    output = output.parent / suggested_for_new_format
+                    # Update tracking for next iteration if needed
+                    last_export_format = export_format
+                    last_export_folder = str(output.parent)
+                    # Continue loop to validate the auto-corrected filename
+                    continue
+            
+            # Filename validation - format-aware instead of exact-match
+            # Get filename without extension (may contain placeholder)
+            filename_stem = output.stem
+            directory = output.parent
+            
+            # For single-file formats (PDF, TIFF), any filename with correct extension is valid
+            # For multi-file formats (JPG, PNG, BMP), filename must have # placeholder
+            if export_format.is_single_file_format():
+                # Single-file format - just check extension is correct
+                if output.suffix.lower() == export_format.extension():
+                    # Extension is correct, validation passes
+                    pass  # Continue with export
+                else:
+                    if not in_test_mode:
+                        QMessageBox.information(
+                            self, "Invalid extension",
+                            f"File extension doesn't match the {export_format.value.upper()} format.\n\n"
+                            f"You entered: {output.name}\n"
+                            f"Should end with: {export_format.extension()}\n\n"
+                            f"Please correct the filename.",
+                        )
+                        last_export_format = export_format
+                        last_export_folder = str(output.parent)
+                        continue
+                    else:
+                        return False
+            else:
+                # Multi-file format - must have # placeholder for multi-page documents
+                is_valid, error_msg = validate_placeholder_for_multipage_export(
+                    filename_stem, total, export_format
+                )
+                
+                if not is_valid:
+                    if not in_test_mode:
+                        result = QMessageBox.warning(
+                            self, "Invalid filename",
+                            error_msg + "\n\nDo you want to choose a different filename?",
+                            QMessageBox.Ok | QMessageBox.Cancel
+                        )
+                        if result == QMessageBox.Ok:
+                            last_export_format = export_format
+                            last_export_folder = str(directory)
+                            continue
+                        else:
+                            return False
+                    else:
+                        return False
+                else:
+                    pass  # Multi-file format validation passed
+            
+            # All validation passed, break out of the loop to proceed with export
+            break
         try:
             saved = 0
             exported_files: list[Path] = []
             
             # Handle multi-page PDF and TIFF specially
+
             if export_format == ExportFormat.PDF:
                 # Export all pages as PDF
                 page_images = [self.canvas.page_image_at(idx) for idx in range(total)]
@@ -879,7 +1117,11 @@ class MainWindow(QMainWindow):
                     objects = self.canvas.page_objects_at(idx)
                     if page_image is None:
                         continue
-                    out_path = build_page_output_path(base_stem, idx, total, directory, export_format)
+                    
+                    # Replace placeholder with actual page number if needed
+                    actual_filename = replace_placeholder_with_page_number(filename_stem, idx, total)
+                    out_path = directory / f"{actual_filename}{export_format.extension()}"
+                    
                     try:
                         composite_objects_to_format(page_image, objects, out_path, export_format)
                         exported_files.append(out_path)
@@ -931,8 +1173,8 @@ class MainWindow(QMainWindow):
                     filename = output.name
                     message = f"Exported {filename} to "
                 else:
-                    # Multi-page: show pattern
-                    message = f"Exported {base_stem}-pXX.{export_format.extension()} to "
+                    # Multi-page: show pattern with placeholder
+                    message = f"Exported {filename_stem}{export_format.extension()} to "
                 
                 NotificationToast(self, message, directory, exported_files=exported_files)
             

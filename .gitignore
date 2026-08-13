@@ -25,8 +25,8 @@ htmlcov/
 .vscode/*.log
 
 # Local app/runtime outputs
-*-signed.jpg
-*-signed-*.jpg
+document-signed.*
+document-signed-p*.*
 
 # OS files
 .DS_Store
