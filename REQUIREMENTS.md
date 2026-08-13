@@ -352,5 +352,73 @@ Extend document export functionality beyond JPG. Users can save annotated docume
 - TIFF multi-frame support via Pillow (already in requirements)
 - Maintain 300 DPI for all export formats
 
+## Version 1.2.11 - Auto-dismissing save notification
+
+### Overview
+Replace the blocking post-export dialog with a non-intrusive notification that auto-dismisses. The notification includes a clickable link to open the export directory.
+
+### Behavior
+
+1. **Notification Display**
+   - After successful export, show a notification toast (not a modal dialog)
+   - Position: Bottom-right corner of the main window
+   - Duration: Auto-dismiss after 5 seconds (user can manually close it with an X button)
+   - Message format: "Exported {filename} to [directory link]"
+   - Example: "Exported document-signed-p01.jpg to C:\Users\...\Documents"
+
+2. **Directory Link**
+   - The directory path in the notification is displayed as a clickable hyperlink (underlined, colored differently)
+   - Clicking the link opens the export directory in Windows Explorer
+   - Hovering over the link shows a pointer cursor
+
+3. **Multiple Files**
+   - For multi-page exports (JPG/PNG/BMP), message lists the pattern: "Exported document-signed-pXX.{ext} to [directory link]"
+   - For single-file exports (PDF/TIFF), message shows the filename: "Exported document-signed.{ext} to [directory link]"
+
+### User Experience
+
+- User is not blocked after export; they can immediately continue working
+- Notification appears and fades out automatically
+- User can manually close the notification by clicking the X button if desired
+- Notification does not steal focus from the main window
+
+### Error Handling on Failure
+
+1. **Export Failure (permission denied, disk full, corrupted output, etc.)**
+   - Display an error dialog (modal) instead of a notification
+   - Dialog title: "Export Failed"
+   - Message explains the specific error (e.g., "Permission denied" or "Insufficient disk space")
+   - Show the file path that failed to save
+   - Include suggestions (e.g., "Check folder permissions" or "Free up disk space")
+   - Provide a "Retry" and "Cancel" button
+   - Do not proceed to the notification; remain on error state until resolved or cancelled
+
+2. **Directory Open Failure (if user clicks the link)**
+   - If clicking the export directory link fails (e.g., path no longer exists, network disconnected)
+   - Show a brief error notification: "Unable to open directory"
+   - Log the error for debugging
+   - Do not crash the application
+
+3. **Partial Export Failure (multi-page export)**
+   - If exporting multiple pages and some pages fail:
+   - Stop the export process
+   - Show error dialog listing which pages failed and the reason
+   - Offer option to retry or cancel
+   - Previously exported pages remain on disk
+
+4. **Invalid Export Path**
+   - If the export path contains invalid characters or is too long:
+   - Show error dialog before attempting export
+   - Suggest a corrected path
+   - Allow user to modify the filename/path and retry
+
+### Implementation Notes
+
+- Use a lightweight toast/notification widget (not a QDialog)
+- May reuse existing notification system if available, or implement a custom notification panel
+- Ensure notification text is readable against background (sufficient contrast)
+- Errors should be modal dialogs to ensure user sees and acknowledges them
+- Success notifications should be non-intrusive (toast) to allow continued workflow
+
 # Assumptions
 1. Signature has a transparent background.

@@ -183,6 +183,21 @@ Save As Dialog Behavior:
 - Format is auto-detected from file extension in the filename input
 - User can change format by modifying the extension
 
+### 5.9 Post-Export Notification (v1.2.11)
+After successful export:
+- Display an auto-dismissing notification toast (bottom-right corner)
+- Duration: auto-dismiss after 5 seconds or manual close with X button
+- Message format: "Exported {filename} to [directory link]"
+- Directory link is clickable (underlined, colored) and opens Windows Explorer at that location
+- Notification does not steal focus; user can continue working
+- Notification text is readable with sufficient contrast against background
+
+On export failure:
+- Display a modal error dialog (blocks interaction) instead of notification
+- Dialog shows specific error message, file path, and recovery suggestions
+- Provide "Retry" and "Cancel" buttons
+- Errors demand user acknowledgment; success notifications are non-intrusive
+
 ### 5.9 CLI Parameters
 - `-document <path>`: initial document to load (any supported format: PDF, Word, ODT, or image).
 - `-signature <path>`: initial signature to load (image file, PNG preferred).
@@ -200,10 +215,17 @@ Default save name (applies to all export formats):
 - Version 1.2.10 unifies this across all formats via "Save As" dialog
 
 ## 6. Error Handling
-- Missing/unreadable PDF: block canvas interaction, show clear message.
+- Missing/unreadable document: block canvas interaction, show clear error message.
 - Missing signature annotation: allow document load, prompt user to add a signature annotation before save.
-- Corrupt image/PDF: show validation error and keep app responsive.
-- Save failure (permissions/locked file): show retryable error.
+- Corrupt image/document: show validation error and keep app responsive.
+- Save failure (permissions/locked file/disk full): show modal error dialog with specific cause and recovery suggestions; offer retry or cancel.
+- Invalid export path (bad characters, too long): validate before export and show error with corrected suggestion.
+- Directory link failure (path no longer exists): show brief toast notification "Unable to open directory"; do not crash.
+- Partial export failure (multi-page): stop process, show error listing failed pages and reason, offer retry or cancel.
+
+### Error Dialog vs Notification Toast
+- **Modal error dialogs** (block interaction): export failures, validation errors, missing dependencies
+- **Auto-dismissing toasts** (non-intrusive): success notifications, secondary warnings that don't block workflow
 
 ## 6.1 Selection-Dependent Toolbar Actions
 - Duplicate/Delete actions are enabled only when an annotation is selected.
@@ -317,7 +339,7 @@ Use **Option A** for v1 due to shortest implementation path and low risk for req
   - verify boundary-handle scaling behavior,
   - verify text annotation allows non-proportional resize,
   - verify text default is 12pt, no wrapping, and Ctrl+Enter creates newline,
-  - verify toolbar order: Open Document, Add Annotation, Save JPG,
+  - verify toolbar order: Open Document, Add Annotation, Save As...,
   - verify no top-level Open Signature toolbar button,
   - verify duplicate/delete enabled only when selection exists,
   - verify color behavior for selected vs non-selected state,
@@ -328,7 +350,14 @@ Use **Option A** for v1 due to shortest implementation path and low risk for req
   - verify signature annotation LRU list updates and respects 10-item limit,
   - load invalid files,
   - drag and save accuracy,
-  - transparency preserved in composition before JPG flattening.
+  - transparency preserved in composition before JPG flattening,
+  - **verify export success shows auto-dismissing notification toast with directory link,**
+  - **verify clicking directory link opens Windows Explorer at export location,**
+  - **verify notification auto-dismisses after 5 seconds,**
+  - **verify manual close button (X) on notification works,**
+  - **verify export failure shows modal error dialog with specific error message,**
+  - **verify error dialog includes retry and cancel buttons,**
+  - **verify partial export failure (multi-page) shows error with list of failed pages.**
 
 ## 12. Recommended Workflow Improvements vs GIMP
 - One-step startup with saved signature.

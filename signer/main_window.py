@@ -39,6 +39,7 @@ from .compositor import (
     composite_pages_to_pdf,
     composite_pages_to_tiff,
 )
+from .notification import NotificationToast
 from .objects import (
     AnnotationType,
     DEFAULT_FONT_FAMILY,
@@ -791,6 +792,7 @@ class MainWindow(QMainWindow):
         
         try:
             saved = 0
+            exported_files: list[Path] = []
             
             # Handle multi-page PDF and TIFF specially
             if export_format == ExportFormat.PDF:
@@ -805,6 +807,27 @@ class MainWindow(QMainWindow):
                     try:
                         composite_pages_to_pdf(list(page_images), list(page_objects_list), output)
                         saved = total
+                        exported_files = [output]
+                    except PermissionError:
+                        if not in_test_mode:
+                            QMessageBox.critical(
+                                self, "Save failed",
+                                f"Permission denied. Check write permissions for:\n{directory}\n\n"
+                                "Try saving to a different location."
+                            )
+                        return False
+                    except OSError as exc:
+                        if "No space left" in str(exc):
+                            if not in_test_mode:
+                                QMessageBox.critical(
+                                    self, "Save failed",
+                                    "Insufficient disk space. Free up space and try again."
+                                )
+                            return False
+                        else:
+                            if not in_test_mode:
+                                QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                            return False
                     except Exception as exc:
                         if not in_test_mode:
                             QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
@@ -822,6 +845,27 @@ class MainWindow(QMainWindow):
                     try:
                         composite_pages_to_tiff(list(page_images), list(page_objects_list), output)
                         saved = total
+                        exported_files = [output]
+                    except PermissionError:
+                        if not in_test_mode:
+                            QMessageBox.critical(
+                                self, "Save failed",
+                                f"Permission denied. Check write permissions for:\n{directory}\n\n"
+                                "Try saving to a different location."
+                            )
+                        return False
+                    except OSError as exc:
+                        if "No space left" in str(exc):
+                            if not in_test_mode:
+                                QMessageBox.critical(
+                                    self, "Save failed",
+                                    "Insufficient disk space. Free up space and try again."
+                                )
+                            return False
+                        else:
+                            if not in_test_mode:
+                                QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                            return False
                     except Exception as exc:
                         if not in_test_mode:
                             QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
@@ -829,6 +873,7 @@ class MainWindow(QMainWindow):
             
             else:
                 # For JPG, PNG, BMP: export per-page or single page
+                failed_pages = []
                 for idx in range(total):
                     page_image = self.canvas.page_image_at(idx)
                     objects = self.canvas.page_objects_at(idx)
@@ -837,11 +882,35 @@ class MainWindow(QMainWindow):
                     out_path = build_page_output_path(base_stem, idx, total, directory, export_format)
                     try:
                         composite_objects_to_format(page_image, objects, out_path, export_format)
+                        exported_files.append(out_path)
+                        saved += 1
+                    except PermissionError:
+                        failed_pages.append((idx, "Permission denied"))
+                    except OSError as exc:
+                        if "No space left" in str(exc):
+                            if not in_test_mode:
+                                QMessageBox.critical(
+                                    self, "Save failed",
+                                    "Insufficient disk space. Free up space and try again."
+                                )
+                            return False
+                        else:
+                            failed_pages.append((idx, str(exc)))
                     except Exception as exc:
-                        if not in_test_mode:
-                            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                        failed_pages.append((idx, str(exc)))
+                
+                # If some pages failed, show error
+                if failed_pages:
+                    if not in_test_mode:
+                        failed_list = "\n".join([f"Page {p+1}: {e}" for p, e in failed_pages])
+                        QMessageBox.critical(
+                            self, "Save failed",
+                            f"Failed to save some pages:\n{failed_list}\n\n"
+                            "Check write permissions and disk space, then try again."
+                        )
+                    # Even if some pages failed, return success if at least one was saved
+                    if saved == 0:
                         return False
-                    saved += 1
             
             if saved == 0:
                 if not in_test_mode:
@@ -854,7 +923,19 @@ class MainWindow(QMainWindow):
             self._settings.last_save_directory = str(directory)
             self._save_settings_safe()
             self._has_unsaved_changes = False
-            QMessageBox.information(self, "Saved", f"Saved {saved} page(s) to:\n{directory}")
+            
+            # Show auto-dismissing notification with clickable directory link
+            if not in_test_mode:
+                if total == 1:
+                    # Single-page: show filename
+                    filename = output.name
+                    message = f"Exported {filename} to "
+                else:
+                    # Multi-page: show pattern
+                    message = f"Exported {base_stem}-pXX.{export_format.extension()} to "
+                
+                NotificationToast(self, message, directory, exported_files=exported_files)
+            
             return True
         
         except Exception as exc:
