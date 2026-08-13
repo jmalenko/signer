@@ -47,11 +47,11 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 - Advanced typography controls (font families, rich text editing) for text annotations.
 
 ## 4. UX Design
-### Main Window
+### Main Window (Version 1.2.10 Update)
 - Top toolbar (large buttons):
   - Open Document
   - Add Annotation (2nd position)
-  - Save JPG (3rd position, same workflow group)
+  - Save As... (3rd position, same workflow group, replaces "Save JPG")
   - Previous Page / Next Page
   - Annotation picker (dropdown):
     - Checkmark
@@ -59,16 +59,17 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
     - Arrow N/NE/E/SE/S/SW/W/NW
     - Text ▶ Free text / Current date / Current time / Current date & time
     - Signature ▶ From file… / Recent (up to 10 LRU files)
-- Terminology: primary actions are provided as Toolbar buttons (faster navigation). They may be mirrored in the menu for compatibility.
+- **Hamburger menu** (right end, three horizontal lines ☰):
+  - **File:** Open Document, Recent Documents, Save As..., Exit
+  - **Edit:** Undo, Redo, Cut, Copy, Paste, Duplicate, Select All, Delete
+  - **Annotations:** List of all annotation types with submenus
+  - **Help:** Homepage (on GitHub)
+- Terminology: primary actions are provided as Toolbar buttons (faster navigation). They are also available in the hamburger menu for accessibility.
 - Central canvas:
   - Background: rendered current PDF page (fit-to-window).
   - Foreground: draggable/scalable objects (signature + annotations).
   - Blue boundary for selected object.
-- Status bar:
-  - Current document path.
-  - Current signature path.
-  - Current page number / total pages.
-  - Selected object coordinates/size.
+- Status bar: (removed in version 1.2.1)
 
 ### Typical Flow
 1. Start app.
@@ -78,7 +79,7 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 5. Navigate to page (toolbar or keyboard shortcuts).
 6. Drag/scale signature to desired location.
 7. Optionally add and adjust annotation objects.
-8. Save active page to JPG.
+8. Save document via "Save As..." dialog, selecting desired format (JPG, PNG, PDF, TIFF, BMP).
 
 ## 5. Functional Design
 ### 5.1 Input Handling
@@ -164,7 +165,25 @@ Recent items appear in relevant menus:
 - **Signature submenu**: Recent signatures with separator (existing)
 - **Toolbar "Open Document" dropdown**: Recent documents submenu
 
-### 5.8 CLI Parameters
+### 5.8 Export Formats (Save As)
+Supported export formats for annotated documents:
+- **JPG**: 300 DPI, lossy compression, default format
+- **PNG**: 300 DPI, lossless compression, maintains transparency
+- **PDF**: 300 DPI, raster images (embedded), all pages in single file
+- **TIFF**: 300 DPI, compressed multi-frame, all pages in single file
+- **BMP**: 300 DPI, uncompressed raster
+
+File naming for multi-page export:
+- Single-page: `{name}-signed.{ext}`
+- Multi-page JPG/PNG/BMP: `{name}-signed-p01.{ext}`, `{name}-signed-p02.{ext}`, etc.
+- PDF/TIFF: `{name}-signed.{ext}` (all pages in one file)
+
+Save As Dialog Behavior:
+- Preserves last used export format (extension) from previous save
+- Format is auto-detected from file extension in the filename input
+- User can change format by modifying the extension
+
+### 5.9 CLI Parameters
 - `-document <path>`: initial document to load (any supported format: PDF, Word, ODT, or image).
 - `-signature <path>`: initial signature to load (image file, PNG preferred).
 - If `-signature` is provided with `-document`, add signature annotation immediately after load.
@@ -174,10 +193,11 @@ Example startup:
 - `Signer.exe -document examples/document.pdf -signature examples/signature.png`
 - `Signer.exe -document examples/document.docx -signature examples/signature.png`
 
-### 5.9 File Naming
-Default save name:
-- Input `document.pdf` => `document-p<page>-signed.jpg` for multi-page clarity (example: `document-p3-signed.jpg`)
+### 5.10 File Naming (All Formats)
+Default save name (applies to all export formats):
+- Input `document.pdf` => `document-p<page>-signed.{ext}` for multi-page clarity (example: `document-p3-signed.jpg`)
 - If conflict exists, append numeric suffix (`-signed-1.jpg`, etc.)
+- Version 1.2.10 unifies this across all formats via "Save As" dialog
 
 ## 6. Error Handling
 - Missing/unreadable PDF: block canvas interaction, show clear message.

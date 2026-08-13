@@ -25,6 +25,9 @@ class AppSettings:
     last_signature_path: str | None = None
     last_open_document_path: str | None = None
     last_save_directory: str | None = None
+    last_export_format: str = "jpg"  # Default export format
+    last_export_folder: str | None = None  # Last used export folder
+    
     recent_signature_paths: list[str] = field(default_factory=list)
     recent_text_strings: list[str] = field(default_factory=list)
     recent_document_paths: list[str] = field(default_factory=list)
@@ -61,6 +64,8 @@ class SettingsStore:
                 last_signature_path=data.get("last_signature_path"),
                 last_open_document_path=data.get("last_open_document_path"),
                 last_save_directory=data.get("last_save_directory"),
+                last_export_format=data.get("last_export_format", "jpg"),
+                last_export_folder=data.get("last_export_folder"),
                 recent_signature_paths=data.get("recent_signature_paths", []),
                 recent_text_strings=data.get("recent_text_strings", []),
                 recent_document_paths=data.get("recent_document_paths", []),

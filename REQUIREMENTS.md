@@ -269,5 +269,88 @@ The application shall support opening and editing documents in the following for
    - `-document <path>` now accepts any supported format (not just PDF)
    - `-signature <path>` remains image-only (PNG preferred) 
 
+## Version 1.2.10 - Save Documents in Multiple Formats
+
+### Overview
+Extend document export functionality beyond JPG. Users can save annotated documents in multiple file formats via a unified "Save As..." dialog. The "Save JPG" button is removed in favor of this flexible export interface.
+
+### Supported Export Formats
+
+1. **JPG** — default format, 300 DPI, lossy compression
+2. **PNG** — lossless compression, 300 DPI, maintains transparency of annotations
+3. **PDF** — raster images, all pages in single PDF file, 300 DPI
+4. **TIFF** — compressed multi-page TIFF, all pages in single file, 300 DPI
+5. **BMP** — uncompressed raster, 300 DPI
+
+### User Interface Changes
+
+1. **"Save As..." button in Toolbar** (replaces "Save JPG")
+   - Opens the "Save As..." dialog
+   - Remembers last used export format and applies it as default
+
+2. **"Save As..." in Hamburger Menu**
+   - File menu → Save As...
+   - Same dialog as toolbar button
+
+3. **"Save As..." Dialog**
+   - File name input field (pre-populated with smart default using last export format)
+   - File browser to select destination folder
+   - File extension automatically selected from filename
+   - Format detection: extension determines export format
+   - "Save" and "Cancel" buttons
+   - Confirmation if file already exists (overwrite/rename/cancel)
+
+### Default File Naming
+
+1. **For single-page documents**: `{original_name}-signed.{extension}`
+   - Example: `invoice.pdf` → `invoice-signed.jpg`
+
+2. **For multi-page documents**: 
+   - JPG/PNG/BMP: Separate file per page with page number: `{original_name}-signed-p01.jpg`, `{original_name}-signed-p02.jpg`, etc.
+   - PDF: Single file: `{original_name}-signed.pdf` (contains all pages)
+   - TIFF: Single file: `{original_name}-signed.tif` (contains all pages as frames)
+
+### Export Behavior
+
+1. **JPG/PNG/BMP**: Raster format, one file per page (or single file for single-page documents)
+2. **PDF**: Raster format (embedded as images), all pages in one file
+3. **TIFF**: Compressed multi-frame TIFF, all pages in one file
+
+### Backward Compatibility
+
+1. **CLI behavior**: `-document` parameter unchanged; saved files use format-specific naming convention
+2. **Save behavior**: Exports all pages (for PDF/TIFF) or per-page (for JPG/PNG/BMP)
+
+### Persistence
+
+1. **Recent export format**: Store last-used export format in config.json (field: `lastExportFormat`), default to JPG
+2. **Recent export folder**: Store last used export folder in config.json (field: `lastExportFolder`)
+
+### Error Handling
+
+1. **Unsupported format on save**: Show error dialog (should not occur via UI selection)
+2. **Write permission denied**: Show error dialog with path suggestion
+3. **Disk full**: Show error with available space info
+4. **Invalid filename**: Sanitize and warn user of auto-correction
+
+### Test Coverage
+
+1. Unit tests:
+   - Filename generation for single vs multi-page documents
+   - Format-specific DPI and compression handling
+
+2. Feature tests:
+   - Export single-page document to each format
+   - Export multi-page document to each format; verify all pages saved
+   - Verify exported file quality (DPI, color accuracy)
+   - Overwrite confirmation dialog
+   - Invalid filename handling
+
+### Implementation Notes
+
+- PDF export may require PyMuPDF or reportlab (evaluate existing dependencies)
+- TIFF multi-frame support via Pillow (already in requirements)
+- Maintain 300 DPI for all export formats
+
 # Assumptions
 1. Signature has a transparent background.

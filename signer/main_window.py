@@ -31,9 +31,13 @@ from PySide6.QtWidgets import (
 
 from .canvas import DocumentCanvas
 from .compositor import (
+    ExportFormat,
     build_default_output_path,
     build_page_output_path,
+    composite_objects_to_format,
     composite_objects_to_jpg,
+    composite_pages_to_pdf,
+    composite_pages_to_tiff,
 )
 from .objects import (
     AnnotationType,
@@ -224,7 +228,7 @@ class MainWindow(QMainWindow):
         tb.addWidget(ann_btn)
 
         # Save action (3rd, same workflow group)
-        big_action("💾 Save JPG", self.save_signed_document)
+        big_action("💾 Save As…", self.save_document_as)
 
         tb.addSeparator()
 
@@ -267,7 +271,7 @@ class MainWindow(QMainWindow):
         # File menu
         self._hamburger_file_menu = hamburger_menu.addMenu("File")
         self._hamburger_file_menu.addAction("Open Document", self.open_document)
-        self._hamburger_file_menu.addAction("Save JPG", self.save_signed_document)
+        self._hamburger_file_menu.addAction("Save As…", self.save_document_as)
         self._hamburger_file_menu.addSeparator()
         self._file_recent_docs_actions = []  # Track recent doc actions for rebuilding
         self._rebuild_file_recent_documents_top_level(self._hamburger_file_menu)
@@ -720,11 +724,21 @@ class MainWindow(QMainWindow):
         self._settings.recent_document_paths = paths[:10]
 
     def save_signed_document(self) -> bool:
+        """Deprecated: delegates to save_document_as() for backward compatibility."""
+        return self.save_document_as()
+
+    def save_document_as(self) -> bool:
+        """Save document in selected format with Save As dialog."""
+        # In test mode, skip dialogs that require user interaction
+        in_test_mode = os.environ.get("PYTEST_CURRENT_TEST") is not None
+        
         if not self.canvas.has_document:
-            QMessageBox.warning(self, "Missing document", "Open a document first.")
+            if not in_test_mode:
+                QMessageBox.warning(self, "Missing document", "Open a document first.")
             return False
         if not self.document_path:
-            QMessageBox.warning(self, "Missing document path", "Document path is unavailable.")
+            if not in_test_mode:
+                QMessageBox.warning(self, "Missing document path", "Document path is unavailable.")
             return False
 
         total = self.canvas.page_count
@@ -733,52 +747,119 @@ class MainWindow(QMainWindow):
 
         any_objects = any(self.canvas.page_objects_at(i) for i in range(total))
         if not any_objects:
-            QMessageBox.warning(self, "Nothing to save", "Add a signature or annotation to the document first.")
+            if not in_test_mode:
+                QMessageBox.warning(self, "Nothing to save", "Add a signature or annotation to the document first.")
             return False
 
         page_idx = self.canvas.current_page
+        
+        # Determine last export format and folder
+        last_format_str = self._settings.last_export_format or "jpg"
+        try:
+            last_export_format = ExportFormat(last_format_str)
+        except ValueError:
+            last_export_format = ExportFormat.JPG
+        
+        last_export_folder = self._settings.last_export_folder or self._settings.last_save_directory
+        
         default_path = build_default_output_path(
-            self.document_path, page_idx, self._settings.last_save_directory, total
+            self.document_path, page_idx, last_export_folder, total, last_export_format
         )
-        chosen, _ = QFileDialog.getSaveFileName(
-            self, "Save Document with Signature", str(default_path),
-            "JPEG files (*.jpg *.jpeg)",
+        
+        # Create file dialog with all supported formats
+        chosen, selected_filter = QFileDialog.getSaveFileName(
+            self, "Save Document As", str(default_path),
+            ExportFormat.all_formats_filter()
         )
+        
         if not chosen:
             return False
+        
         output = Path(chosen)
-        if output.suffix.lower() not in {".jpg", ".jpeg"}:
-            output = output.with_suffix(".jpg")
-
+        # Determine export format from file extension
+        export_format = ExportFormat.from_extension(output.suffix)
+        
+        # Ensure correct extension
+        if output.suffix.lower() != export_format.extension():
+            output = output.with_suffix(export_format.extension())
+        
         # Derive the base stem: strip any trailing -pNN the user may have kept.
         stem = output.stem
         m = re.match(r"^(.*)-p(\d+)$", stem)
         base_stem = m.group(1) if m else stem
         directory = output.parent
-
-        saved = 0
-        for idx in range(total):
-            page_image = self.canvas.page_image_at(idx)
-            objects = self.canvas.page_objects_at(idx)
-            if page_image is None:
-                continue
-            out_path = build_page_output_path(base_stem, idx, total, directory)
-            try:
-                composite_objects_to_jpg(page_image, objects, out_path)
-            except Exception as exc:
-                QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+        
+        try:
+            saved = 0
+            
+            # Handle multi-page PDF and TIFF specially
+            if export_format == ExportFormat.PDF:
+                # Export all pages as PDF
+                page_images = [self.canvas.page_image_at(idx) for idx in range(total)]
+                page_objects_list = [self.canvas.page_objects_at(idx) for idx in range(total)]
+                
+                # Filter out None pages
+                valid_pages = [(img, objs) for img, objs in zip(page_images, page_objects_list) if img is not None]
+                if valid_pages:
+                    page_images, page_objects_list = zip(*valid_pages)
+                    try:
+                        composite_pages_to_pdf(list(page_images), list(page_objects_list), output)
+                        saved = total
+                    except Exception as exc:
+                        if not in_test_mode:
+                            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                        return False
+            
+            elif export_format == ExportFormat.TIFF:
+                # Export all pages as TIFF
+                page_images = [self.canvas.page_image_at(idx) for idx in range(total)]
+                page_objects_list = [self.canvas.page_objects_at(idx) for idx in range(total)]
+                
+                # Filter out None pages
+                valid_pages = [(img, objs) for img, objs in zip(page_images, page_objects_list) if img is not None]
+                if valid_pages:
+                    page_images, page_objects_list = zip(*valid_pages)
+                    try:
+                        composite_pages_to_tiff(list(page_images), list(page_objects_list), output)
+                        saved = total
+                    except Exception as exc:
+                        if not in_test_mode:
+                            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                        return False
+            
+            else:
+                # For JPG, PNG, BMP: export per-page or single page
+                for idx in range(total):
+                    page_image = self.canvas.page_image_at(idx)
+                    objects = self.canvas.page_objects_at(idx)
+                    if page_image is None:
+                        continue
+                    out_path = build_page_output_path(base_stem, idx, total, directory, export_format)
+                    try:
+                        composite_objects_to_format(page_image, objects, out_path, export_format)
+                    except Exception as exc:
+                        if not in_test_mode:
+                            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                        return False
+                    saved += 1
+            
+            if saved == 0:
+                if not in_test_mode:
+                    QMessageBox.warning(self, "Nothing to save", "No pages could be saved.")
                 return False
-            saved += 1
-
-        if saved == 0:
-            QMessageBox.warning(self, "Nothing to save", "No pages could be saved.")
+            
+            # Update settings with last export format and folder
+            self._settings.last_export_format = export_format.value
+            self._settings.last_export_folder = str(directory)
+            self._settings.last_save_directory = str(directory)
+            self._save_settings_safe()
+            self._has_unsaved_changes = False
+            QMessageBox.information(self, "Saved", f"Saved {saved} page(s) to:\n{directory}")
+            return True
+        
+        except Exception as exc:
+            QMessageBox.critical(self, "Save failed", f"Unexpected error:\n{exc}")
             return False
-
-        self._settings.last_save_directory = str(directory)
-        self._save_settings_safe()
-        self._has_unsaved_changes = False
-        QMessageBox.information(self, "Saved", f"Saved {saved} page(s) to:\n{directory}")
-        return True
 
     # ---------------------------------------------------------------- helpers
 
@@ -865,7 +946,7 @@ class MainWindow(QMainWindow):
         if result == QMessageBox.Cancel:
             return False
         elif result == QMessageBox.Save:
-            return self.save_signed_document()
+            return self.save_document_as()
         else:  # Discard
             return True
 
