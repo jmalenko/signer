@@ -434,7 +434,7 @@ def composite_objects_to_png(
     objects: list[CanvasObject],
     output_path: str | Path,
 ) -> None:
-    """Composite all objects over the page image and save as PNG."""
+    """Composite all objects over the page image and save as PNG with maximum compression."""
     base = page_image.convert("RGBA")
     pw, ph = base.size
 
@@ -450,7 +450,8 @@ def composite_objects_to_png(
         y = max(0, min(y, ph - 1))
         base.alpha_composite(overlay, dest=(x, y))
 
-    base.save(str(output_path), format="PNG", optimize=True)
+    # Use compress_level=9 for maximum lossless compression
+    base.save(str(output_path), format="PNG", optimize=True, compress_level=9)
 
 
 def composite_objects_to_bmp(
@@ -481,8 +482,16 @@ def composite_pages_to_pdf(
     page_images: list[Image.Image],
     page_objects: list[list[CanvasObject]],
     output_path: str | Path,
+    pdf_quality: int = 95,
 ) -> None:
-    """Composite objects over pages and save as PDF (raster images)."""
+    """Composite objects over pages and save as PDF (raster images).
+    
+    Args:
+        page_images: List of PIL Image objects for each page
+        page_objects: List of object lists for each page
+        output_path: Path to save the PDF
+        pdf_quality: Image quality for PDF (1-100, default 95)
+    """
     composited_images = []
     
     for page_image, objects in zip(page_images, page_objects):
@@ -508,7 +517,8 @@ def composite_pages_to_pdf(
             str(output_path),
             format="PDF",
             save_all=True,
-            append_images=composited_images[1:] if len(composited_images) > 1 else []
+            append_images=composited_images[1:] if len(composited_images) > 1 else [],
+            quality=pdf_quality,
         )
 
 
@@ -553,14 +563,23 @@ def composite_objects_to_format(
     objects: list[CanvasObject],
     output_path: str | Path,
     export_format: ExportFormat,
+    jpg_quality: int = 95,
 ) -> None:
-    """Composite objects to specified format. For single-page export."""
+    """Composite objects to specified format. For single-page export.
+    
+    Args:
+        page_image: PIL Image object for the page
+        objects: List of objects to composite
+        output_path: Path to save the file
+        export_format: Format to export as
+        jpg_quality: Quality for JPG format (1-100, default 95)
+    """
     if export_format == ExportFormat.JPG:
-        composite_objects_to_jpg(page_image, objects, output_path)
+        composite_objects_to_jpg(page_image, objects, output_path, jpg_quality)
     elif export_format == ExportFormat.PNG:
         composite_objects_to_png(page_image, objects, output_path)
     elif export_format == ExportFormat.BMP:
         composite_objects_to_bmp(page_image, objects, output_path)
     else:
         # Default to JPG for unknown formats
-        composite_objects_to_jpg(page_image, objects, output_path)
+        composite_objects_to_jpg(page_image, objects, output_path, jpg_quality)

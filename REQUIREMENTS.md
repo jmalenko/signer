@@ -708,5 +708,69 @@ Buttons: [Replace] [Cancel]
 - If cleanup fails on some files: show warning but proceed with export of current files
 - Log deleted files for debugging
 
+## Version 1.2.14 - Export quality
+
+### Overview
+
+Provide users with optional quality/compression control in the Save As dialog. Standard workflow has no extra steps; users can click "Options" to adjust quality settings if desired. Lossless formats automatically use best-available compression without user interaction.
+
+### Format Categories
+
+**Lossy Formats** (user can adjust quality for file size/quality trade-off):
+- **JPG/JPEG**: Lossy compression; quality is adjustable (1-100, default: 95)
+- **PDF**: Lossy when embedded with rasterized images; quality is adjustable (1-100, default: 95)
+
+**Lossless Formats** (data preserved perfectly; compression is automatic and optimal):
+- **PNG**: Lossless; always uses maximum compression (compress_level=9)
+- **TIFF**: Lossless; always uses LZW compression (industry standard, lossless)
+- **BMP**: Lossless; typically uncompressed in standard BMP format (RLE compression available but not exposed)
+
+### User Interface Changes
+
+1. **"Options" Button in Save As Dialog**
+   - Location: In the Save As dialog (similar to Word/Office "Options" pattern)
+   - Label: "Options..." or "Quality Options..."
+   - **Enabled for**: Lossy formats only (JPG, PDF)
+   - **Disabled/Hidden for**: Lossless formats (PNG, TIFF, BMP) — these use optimal compression automatically
+   - Clicking opens non-modal quality options panel (format-specific)
+   - User can adjust settings before clicking "Save"
+
+2. **Export Quality Options Panel** (opened by "Options" button)
+   - Dialog title: "Export Quality Options"
+   - Subtitle: "Choose quality/compression settings for [format name]:"
+   - Format-specific controls (see Format Details section below)
+   - Buttons: "OK" (apply and close), "Cancel" (discard and close)
+   - If "Cancel": panel closes, returns to Save As dialog; no changes applied
+   - If "OK": saves settings and closes panel; Save As dialog remains open for "Save" click
+
+### Format Details
+
+#### JPG/JPEG (Lossy Format)
+- **Control**: Quality slider (1-100) with numeric value always visible; labels "small file" ← → "large file"
+- **Behavior**: Users can adjust quality to trade file size for image quality
+
+#### PDF (Lossy When Rasterized)
+- **Control**: Quality slider (1-100) with numeric value always visible; labels "small file" ← → "large file"
+- **Behavior**: Quality affects embedded raster image quality and file size
+
+#### PNG, TIFF, BMP (Lossless Formats)
+- **Compression**: Always automatic and optimal (no user control needed)
+  - PNG: compress_level=9 (maximum compression)
+  - TIFF: LZW compression (industry standard)
+  - BMP: Uncompressed (standard format)
+
+### Settings Persistence
+
+1. **Configuration Fields** (stored in `config.json`)
+   - `lastJpegQuality` (integer, 1-100, default: 95)
+   - `lastPdfImageQuality` (integer, 1-100, default: 95)
+   - Note: PNG, TIFF, BMP have no settings (always use optimal automatic values)
+
+2. **Behavior**
+   - Quality options panel pre-populates with last-used values for JPG and PDF only
+   - Settings updated when user clicks "OK" in options panel
+   - Settings persist across application sessions
+   - JPG and PDF maintain independent settings
+
 # Assumptions
 1. Signature has a transparent background.

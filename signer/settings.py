@@ -28,6 +28,10 @@ class AppSettings:
     last_export_format: str = "jpg"  # Default export format
     last_export_folder: str | None = None  # Last used export folder
     
+    # Export quality settings (for lossy formats only)
+    last_jpeg_quality: int = 95  # JPG quality 1-100
+    last_pdf_image_quality: int = 95  # PDF image quality 1-100
+    
     recent_signature_paths: list[str] = field(default_factory=list)
     recent_text_strings: list[str] = field(default_factory=list)
     recent_document_paths: list[str] = field(default_factory=list)
@@ -66,6 +70,9 @@ class SettingsStore:
                 last_save_directory=data.get("last_save_directory"),
                 last_export_format=data.get("last_export_format", "jpg"),
                 last_export_folder=data.get("last_export_folder"),
+                # Export quality settings
+                last_jpeg_quality=data.get("last_jpeg_quality", 95),
+                last_pdf_image_quality=data.get("last_pdf_image_quality", 95),
                 recent_signature_paths=data.get("recent_signature_paths", []),
                 recent_text_strings=data.get("recent_text_strings", []),
                 recent_document_paths=data.get("recent_document_paths", []),

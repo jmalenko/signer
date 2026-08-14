@@ -47,6 +47,7 @@ from .compositor import (
     composite_pages_to_pdf,
     composite_pages_to_tiff,
 )
+from .export_quality_dialog import ExportQualityOptionsPanel
 from .notification import NotificationToast
 from .objects import (
     AnnotationType,
@@ -91,11 +92,17 @@ class _SaveDialogWithFilterDetection(QFileDialog):
         self.user_custom_stem = None
         self.current_filename_in_field = None
         self._filename_edit = None
+        self._options_button = None
+        self.quality_panel = None
     
     def exec(self):
         """Override exec to connect line edit AFTER dialog is created but before showing."""
         # Now that the dialog widgets are created, connect to the line edit
         self._connect_line_edit()
+        # Add the Options button
+        self._add_options_button()
+        # Update Options button state based on initial format
+        self._update_options_button_state()
         # Call the parent exec() which will show the dialog
         return super().exec()
     
@@ -112,6 +119,63 @@ class _SaveDialogWithFilterDetection(QFileDialog):
         else:
             self._filename_edit = None
     
+    def _add_options_button(self):
+        """Add the Options button to the file dialog's button area."""
+        # Find the QDialogButtonBox which contains Save/Cancel buttons
+        button_boxes = self.findChildren(QDialogButtonBox)
+        
+        if button_boxes:
+            button_box = button_boxes[0]
+            # Add a custom button labeled "Options..."
+            self._options_button = button_box.addButton("Options...", QDialogButtonBox.ActionRole)
+            self._options_button.clicked.connect(self._on_options_clicked)
+    
+    def _update_options_button_state(self):
+        """Enable/disable Options button based on current format."""
+        if not self._options_button:
+            return
+        
+        # Get the currently selected format
+        selected_filter = self.selectedNameFilter()
+        detected_format = ExportFormat.from_filter_string(selected_filter)
+        
+        # Enable button only for lossy formats (JPG, PDF)
+        is_lossy = detected_format in (ExportFormat.JPG, ExportFormat.PDF)
+        self._options_button.setEnabled(is_lossy)
+    
+    def _on_options_clicked(self):
+        """Handle Options button click - show quality panel."""
+        selected_filter = self.selectedNameFilter()
+        detected_format = ExportFormat.from_filter_string(selected_filter)
+        
+        # Only show panel for lossy formats
+        if detected_format not in (ExportFormat.JPG, ExportFormat.PDF):
+            return
+        
+        # Get current quality from settings (passed via parent window)
+        parent_window = self.parent()
+        if hasattr(parent_window, '_settings'):
+            if detected_format == ExportFormat.JPG:
+                current_quality = parent_window._settings.last_jpeg_quality
+            else:  # PDF
+                current_quality = parent_window._settings.last_pdf_image_quality
+        else:
+            current_quality = 95
+        
+        # Show quality panel
+        self.quality_panel = ExportQualityOptionsPanel(self, detected_format, current_quality)
+        if self.quality_panel.exec() == QDialog.Accepted:
+            # Update settings with new quality
+            new_quality = self.quality_panel.get_quality()
+            if hasattr(parent_window, '_settings'):
+                if detected_format == ExportFormat.JPG:
+                    parent_window._settings.last_jpeg_quality = new_quality
+                else:  # PDF
+                    parent_window._settings.last_pdf_image_quality = new_quality
+                # Save settings
+                if hasattr(parent_window, '_save_settings_safe'):
+                    parent_window._save_settings_safe()
+    
     def _on_filename_text_changed(self, text):
         """Called in real-time as user types in the filename field."""
         # Extract just the filename without path
@@ -126,6 +190,9 @@ class _SaveDialogWithFilterDetection(QFileDialog):
     
     def _on_filter_changed(self, selected_filter: str):
         """Called when user changes the 'Save as type' dropdown."""
+        # Update Options button state when format changes
+        self._update_options_button_state()
+        
         detected_format = ExportFormat.from_filter_string(selected_filter)
         
         # Only update if format actually changed
@@ -1167,6 +1234,14 @@ class MainWindow(QMainWindow):
             break
         
         # ============================================================================
+        # GET QUALITY SETTINGS (Updated by Options button in dialog if clicked)
+        # ============================================================================
+        
+        # Quality values are already in settings; they're updated by Options button in dialog
+        jpg_quality = self._settings.last_jpeg_quality
+        pdf_quality = self._settings.last_pdf_image_quality
+        
+        # ============================================================================
         # PROCEED WITH EXPORT
         # ============================================================================
         
@@ -1186,7 +1261,7 @@ class MainWindow(QMainWindow):
                 if valid_pages:
                     page_images, page_objects_list = zip(*valid_pages)
                     try:
-                        composite_pages_to_pdf(list(page_images), list(page_objects_list), output)
+                        composite_pages_to_pdf(list(page_images), list(page_objects_list), output, pdf_quality)
                         saved = total
                         exported_files = [output]
                     except PermissionError:
@@ -1266,7 +1341,7 @@ class MainWindow(QMainWindow):
                     out_path = directory / f"{actual_filename}{export_format.extension()}"
                     
                     try:
-                        composite_objects_to_format(page_image, objects, out_path, export_format)
+                        composite_objects_to_format(page_image, objects, out_path, export_format, jpg_quality)
                         exported_files.append(out_path)
                         saved += 1
                     except PermissionError:

@@ -198,7 +198,89 @@ On export failure:
 - Provide "Retry" and "Cancel" buttons
 - Errors demand user acknowledgment; success notifications are non-intrusive
 
-### 5.9 CLI Parameters
+### 5.10 Export Quality Options (v1.2.14)
+
+**Design Principle:**
+- Standard user workflow: Select format → click Save → done (no extra steps)
+- Advanced users: Click "Options" button to tune quality settings before saving
+- Lossless formats automatically use best available quality (PNG: max compression, TIFF: LZW)
+
+**Save As Dialog Changes:**
+- Add "Options..." button (enabled and visible ONLY for lossy formats: JPG and PDF; hidden for lossless formats: PNG/TIFF/BMP)
+- Button label: "Options..." or "Quality Options..."
+- Button position: Near standard "Save" and "Cancel" buttons (similar to Word/Office)
+
+**Quality Options Panel** (opened by "Options" button for lossy formats only):
+- Non-modal dialog floating above Save As dialog
+- Title: "Export Quality Options"
+- Shows quality slider (1-100) with numeric value always visible
+- Slider labels: "small file" on left ← → "large file" on right (indicates quality-to-filesize tradeoff)
+- Buttons: "OK" (apply settings and close panel), "Cancel" (discard changes and close panel)
+- After "OK": returns to Save As dialog so user can click "Save"
+- After "Cancel": returns to Save As dialog; no quality settings changed
+
+**Format-Specific Settings:**
+
+**Lossy Formats (Options button enabled):**
+| Format | Control | Range | Default | Slider Labels |
+|--------|---------|-------|---------|----------------|
+| **JPG** | Slider | 1-100 | 95 | "small file" ← → "large file" |
+| **PDF** | Slider | 1-100 | 95 | "small file" ← → "large file" |
+
+*For JPG and PDF, numeric value is always visible next to slider.*
+
+**Lossless Formats (Options button hidden):**
+| Format | Quality Control | Notes |
+|--------|-----------------|-------|
+| **PNG** | Automatic | Always uses compress_level=9 (maximum lossless compression) |
+| **TIFF** | Automatic | Always uses LZW compression (industry standard) |
+| **BMP** | Automatic | Always uncompressed (standard format) |
+
+**User Workflows:**
+
+*Standard (no quality adjustment):*
+1. Click "Save As..." button
+2. Select filename and format
+3. Click "Save"
+4. Export with default quality (JPG/PDF: 95; PNG: max compression; TIFF: LZW)
+5. Success notification appears
+
+*Advanced (with quality adjustment):*
+1. Click "Save As..." button
+2. Select filename and format
+3. Click "Options..." button (if enabled for that format)
+4. Adjust quality slider and click "OK"
+5. Click "Save"
+6. Export with selected quality settings
+7. Success notification appears
+
+**Settings Persistence:**
+- Configuration fields in `config.json`:
+  - `lastJpegQuality` (int, 1-100, default: 95)
+  - `lastPdfImageQuality` (int, 1-100, default: 95)
+- PNG and TIFF settings NOT persisted (always use best quality automatically)
+- Options panel pre-populates with last-used values for JPG and PDF
+- Settings updated when user clicks "OK" in options panel (not during export)
+
+**Export Behavior:**
+- JPG: Pass `quality=value` to `PIL.Image.save()` (user-selected or default 95)
+- PNG: Always pass `compress_level=9` to `PIL.Image.save()` (no user choice, automatic best quality)
+- PDF: Pass `quality=value` when compositing raster images (user-selected or default 95)
+- TIFF: Always use `compression='tiff_deflate'` (LZW, no user choice, automatic best quality)
+- BMP: No additional parameters (always uncompressed)
+
+**Error Handling:**
+- Invalid quality values: clamp to valid range
+- Corrupted config file: use format defaults
+- Export failure: show error dialog with cause
+
+**Benefits of This Approach:**
+- Simpler standard workflow (one less dialog)
+- Power users can still access quality controls
+- Lossless formats always get best quality without overhead
+- Consistent with Office/Word "Options" button pattern
+
+### 5.11 CLI Parameters
 - `-document <path>`: initial document to load (any supported format: PDF, Word, ODT, or image).
 - `-signature <path>`: initial signature to load (image file, PNG preferred).
 - If `-signature` is provided with `-document`, add signature annotation immediately after load.
@@ -208,7 +290,7 @@ Example startup:
 - `Signer.exe -document examples/document.pdf -signature examples/signature.png`
 - `Signer.exe -document examples/document.docx -signature examples/signature.png`
 
-### 5.10 File Naming (All Formats)
+### 5.12 File Naming (All Formats)
 Default save name (applies to all export formats):
 - Input `document.pdf` => `document-p<page>-signed.{ext}` for multi-page clarity (example: `document-p3-signed.jpg`)
 - If conflict exists, append numeric suffix (`-signed-1.jpg`, etc.)
