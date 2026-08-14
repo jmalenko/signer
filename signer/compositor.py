@@ -220,6 +220,190 @@ def validate_placeholder_for_multipage_export(
     return True, ""
 
 
+def detect_existing_files(
+    output_path: Path,
+    total_pages: int,
+    export_format: ExportFormat,
+    filename_stem: str = "",
+) -> list[Path]:
+    """
+    Detect which files would be overwritten by the export.
+    
+    Args:
+        output_path: The target file path (for single-file formats)
+        total_pages: Number of pages being exported
+        export_format: The export format
+        filename_stem: Base filename without extension (for multi-page formats, may contain # placeholder)
+    
+    Returns:
+        List of existing files that would be overwritten
+    """
+    existing = []
+    directory = output_path.parent
+    
+    if export_format.is_single_file_format():
+        # PDF, TIFF: single file
+        if output_path.exists():
+            existing.append(output_path)
+    else:
+        # JPG, PNG, BMP: per-page files
+        # Use the same placeholder-replacement logic as the actual export
+        for idx in range(total_pages):
+            # Replace placeholder with actual page number (same logic as export)
+            actual_filename = replace_placeholder_with_page_number(filename_stem, idx, total_pages)
+            filename = f"{actual_filename}{export_format.extension()}"
+            file_path = directory / filename
+            if file_path.exists():
+                existing.append(file_path)
+    
+    return existing
+
+
+def detect_older_page_files(
+    directory: Path,
+    filename_stem: str,
+    total_pages: int,
+    export_format: ExportFormat,
+) -> list[Path]:
+    """
+    Detect "older" page files that extend beyond the new export range.
+    
+    Example: Exporting 20 pages when 50 previous pages exist, finds pages 21-50.
+    
+    Args:
+        directory: Directory to search
+        filename_stem: Base filename without extension (may contain # placeholder)
+        total_pages: Number of pages being exported
+        export_format: The export format
+    
+    Returns:
+        List of files with page numbers > total_pages (sorted alphabetically)
+    """
+    if export_format.is_single_file_format():
+        # Single-file formats don't have older files
+        return []
+    
+    older_files = []
+    ext = export_format.extension()
+    
+    # Remove placeholder from filename_stem to get the actual base name
+    base_filename = filename_stem.replace("#", "")
+    
+    # Build a glob pattern to find all page files
+    # Since base_filename already has the suffix pattern (e.g., "doc-p" from "doc-p#")
+    # we just look for files matching base_filename + digits + extension
+    pad_width = len(str(total_pages))
+    
+    for file_path in directory.glob(f"{base_filename}[0-9]*{ext}"):
+        # Extract page number from filename
+        # Example: "doc-p042.jpg" → extract "42"
+        try:
+            # Get the part between base_filename and the extension
+            name_without_ext = file_path.stem  # "doc-p042"
+            if name_without_ext.startswith(base_filename):
+                page_str = name_without_ext[len(base_filename):]  # "042"
+                page_num = int(page_str)
+                
+                # If page number is beyond our export range, it's an "older" file
+                if page_num > total_pages:
+                    older_files.append(file_path)
+        except (ValueError, IndexError):
+            # Skip files that don't match the pattern
+            continue
+    
+    return sorted(older_files)
+
+
+def build_overwrite_dialog_info(
+    existing_files: list[Path],
+    older_files: list[Path],
+    total_pages: int,
+    export_format: ExportFormat,
+    output_path: Path,
+) -> tuple[str, str, bool]:
+    """
+    Build dialog info (title, message, show_cleanup_checkbox) based on overwrite scenario.
+    
+    Returns: (dialog_title, message, show_cleanup_checkbox)
+    """
+    show_cleanup_checkbox = False
+    
+    if not existing_files and not older_files:
+        # No overwrite needed
+        return "", "", False
+    
+    # Scenario A: Single file
+    if export_format.is_single_file_format() and existing_files:
+        if len(existing_files) == 1:
+            title = "File Already Exists"
+            filename = existing_files[0].name
+            message = f"The file '{filename}' already exists.\n\nDo you want to replace it?"
+            return title, message, False
+    
+    # Scenario E: Older files detected (multi-page export)
+    if older_files and existing_files and export_format.is_per_file_format():
+        title = "Replace Files and Clean Up Old Pages?"
+        
+        # Build existing files list
+        existing_names = [f.name for f in sorted(existing_files)]
+        files_text = "\n".join(f"• {name}" for name in existing_names[:3])
+        if len(existing_names) > 3:
+            files_text += f"\n• ... ({len(existing_names) - 3} more files)"
+        
+        # Build older files list
+        older_names = [f.name for f in sorted(older_files)]
+        older_text = "\n".join(f"• {name}" for name in older_names[:3])
+        if len(older_names) > 3:
+            older_text += f"\n• ... ({len(older_names) - 3} more files)"
+        
+        message = (
+            "These files will be overwritten:\n\n"
+            f"{files_text}\n\n"
+            "And these older page files can be deleted:\n\n"
+            f"{older_text}"
+        )
+        return title, message, True
+    
+    # Scenario B/C/D: Multi-page existing files (without older files)
+    if existing_files and export_format.is_per_file_format():
+        existing_names = [f.name for f in sorted(existing_files)]
+        
+        # Scenario C: All files will be overwritten
+        if len(existing_names) == total_pages:
+            title = "All Files Will Be Overwritten"
+            message = (
+                f"All {total_pages} pages of '{output_path.stem}.{export_format.extension()}' "
+                f"will be overwritten.\n\nDo you want to replace them?"
+            )
+            return title, message, False
+        
+        # Scenario B or D: Some/many files exist
+        if len(existing_names) <= 10:
+            # Scenario B: List all files
+            title = "Some Files Already Exist"
+            files_text = "\n".join(f"• {name}" for name in existing_names)
+            message = (
+                "The following files will be overwritten:\n\n"
+                f"{files_text}\n\n"
+                "Do you want to replace them?"
+            )
+        else:
+            # Scenario D: Large number (>10) - show summary
+            title = "Files Already Exist"
+            files_text = "\n".join(f"• {name}" for name in existing_names[:3])
+            message = (
+                f"{len(existing_names)} file(s) will be overwritten:\n\n"
+                f"{files_text}\n"
+                f"• ... ({len(existing_names) - 3} more files)\n\n"
+                "Do you want to replace them?"
+            )
+        
+        return title, message, False
+    
+    # Default (shouldn't reach here)
+    return "Overwrite Files", "Do you want to overwrite the existing files?", False
+
+
 def composite_objects_to_jpg(
     page_image: Image.Image,
     objects: list[CanvasObject],

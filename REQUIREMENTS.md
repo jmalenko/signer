@@ -570,8 +570,10 @@ Buttons: [Replace] [Cancel]
 ##### Scenario E: Older Page Files Detected (Multi-page export, fewer pages than before)
 - **When**: New export has fewer pages than previous export AND file pattern exactly matches (same prefix/format)
 - **Example**: Exporting 20 pages when 50 previous pages exist
+- **Dialog Type**: Custom QDialog with checkbox and dynamic button text
 ```
 Title: "Replace Files and Clean Up Old Pages?"
+
 Message: "These files will be overwritten:
 
 • document-signed-p01.jpg
@@ -582,14 +584,14 @@ And these older page files can be deleted:
 
 • document-signed-p21.jpg
 • document-signed-p22.jpg
-• ... (30 more files)
+• ... (30 more files)"
 
-[✓] Delete older page files
-[  ] Keep older page files
-
-Do you want to proceed?"
+Checkbox: [☐] Delete older page files  (default: unchecked)
 
 Buttons: [Replace] [Cancel]
+         (Button text changes based on checkbox state)
+         - If unchecked: "Replace"
+         - If checked: "Replace and delete older page files"
 ```
 
 ### Dialog Decision Logic
@@ -604,7 +606,7 @@ ELSE IF multi_file_export:
     IF len(existing_files) == 0 AND len(older_files) == 0:
         // No confirmation needed, proceed with export
     ELSE IF len(older_files) > 0 AND pattern_matches_exactly:
-        Show Scenario E (with cleanup checkbox)
+        Show Scenario E (with cleanup checkbox and dynamic button text)
     ELSE IF len(existing_files) == total_files AND placeholder_unchanged:
         Show Scenario C (optimized "all files" message)
     ELSE IF len(existing_files) <= 10:

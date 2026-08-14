@@ -9,9 +9,10 @@ from pathlib import Path
 
 import fitz
 from PIL import Image, UnidentifiedImageError
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QSize, Qt, QTimer, QUrl, QCoreApplication
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeyEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
     QColorDialog,
     QDialog,
     QDialogButtonBox,
@@ -38,6 +39,9 @@ from .compositor import (
     build_suggested_filename_for_dialog,
     replace_placeholder_with_page_number,
     validate_placeholder_for_multipage_export,
+    detect_existing_files,
+    detect_older_page_files,
+    build_overwrite_dialog_info,
     composite_objects_to_format,
     composite_objects_to_jpg,
     composite_pages_to_pdf,
@@ -884,7 +888,11 @@ class MainWindow(QMainWindow):
         
         last_export_folder = self._settings.last_export_folder or self._settings.last_save_directory
         
-        # Loop for file dialog - allows user to retry if validation fails
+        # Track user's last choices in the file dialog so we can restore them if they cancel overwrite confirmation
+        last_user_chosen_path: Path | None = None
+        last_user_chosen_format: ExportFormat | None = None
+        
+        # Loop for file dialog - allows user to retry if validation fails or overwrite is cancelled
         while True:
             # Build suggested filename with dynamic placeholder based on current format
             suggested_filename = build_suggested_filename_for_dialog(
@@ -892,7 +900,15 @@ class MainWindow(QMainWindow):
             )
             
             directory = Path(last_export_folder) if last_export_folder else Path(self.document_path).parent
-            default_path = directory / suggested_filename
+            
+            # If user previously chose a file in this session and cancelled overwrite, restore those values
+            if last_user_chosen_path is not None:
+                default_path = last_user_chosen_path
+                suggested_filename = last_user_chosen_path.name
+                # Also restore the format they chose
+                last_export_format = last_user_chosen_format or last_export_format
+            else:
+                default_path = directory / suggested_filename
             
             # Get all format filters
             all_filters_str = ExportFormat.all_formats_filter()
@@ -900,9 +916,12 @@ class MainWindow(QMainWindow):
             # In test mode, use static dialog method (easier to mock)
             # In normal mode, use custom dialog with real-time filter detection
             if in_test_mode:
+                # Note: Also disable built-in overwrite confirmation for consistency
+                # We handle it with our own custom dialog (v1.2.13)
                 chosen, selected_filter = QFileDialog.getSaveFileName(
                     self, "Save Document As", str(default_path),
-                    all_filters_str, last_export_format.file_filter()
+                    all_filters_str, last_export_format.file_filter(),
+                    options=QFileDialog.DontConfirmOverwrite
                 )
                 if not chosen:
                     return False
@@ -915,6 +934,10 @@ class MainWindow(QMainWindow):
                 # CRITICAL: Disable native dialog mode so Qt widgets (QLineEdit) are accessible
                 # Native Windows file dialog doesn't expose child widgets for us to monitor
                 dialog.setOption(QFileDialog.DontUseNativeDialog, True)
+                
+                # CRITICAL: Disable Qt's built-in overwrite confirmation
+                # We handle overwrite confirmation with our own custom dialog (v1.2.13)
+                dialog.setOption(QFileDialog.DontConfirmOverwrite, True)
                 
                 dialog.last_format = last_export_format
                 dialog.total_pages = total
@@ -933,7 +956,17 @@ class MainWindow(QMainWindow):
                     return False
                 
                 selected_filter = dialog.selectedNameFilter()
+                
+                # Explicitly close the file dialog to remove it from screen
+                # before showing any confirmation dialogs
+                dialog.close()
+                # Process events to ensure the dialog is fully closed
+                QCoreApplication.processEvents()
+            
             output = Path(chosen)
+            
+            # Save user's choice so we can restore it if they cancel overwrite confirmation
+            last_user_chosen_path = output
             
             # DETECT FORMAT FROM USER'S ACTIONS
             # First, try to detect from the file extension they typed
@@ -942,6 +975,9 @@ class MainWindow(QMainWindow):
             # Then, check what filter they selected in the dropdown
             # If they explicitly selected a different format filter, that takes precedence
             filter_based_format = ExportFormat.from_filter_string(selected_filter)
+            
+            # Save the detected format for restoration if user cancels overwrite
+            last_user_chosen_format = export_format
             
             # If file extension and filter don't match, user likely selected a different format in dropdown
             # The filter selection is explicit user action, so trust that
@@ -1025,8 +1061,115 @@ class MainWindow(QMainWindow):
                 else:
                     pass  # Multi-file format validation passed
             
-            # All validation passed, break out of the loop to proceed with export
+            # ================================================================
+            # CHECK FOR OVERWRITE AND SHOW CONFIRMATION DIALOG (v1.2.13)
+            # ================================================================
+            
+            # Detect which files would be overwritten
+            existing_files = detect_existing_files(output, total, export_format, filename_stem)
+            older_files = detect_older_page_files(output.parent, filename_stem, total, export_format)
+            
+            # Get dialog info based on scenario
+            dialog_title, dialog_message, show_cleanup_checkbox = build_overwrite_dialog_info(
+                existing_files, older_files, total, export_format, output
+            )
+            
+            # If there are files to overwrite, show confirmation dialog
+            if existing_files:
+                if not in_test_mode:
+                    cleanup_checkbox_result = False
+                    
+                    if show_cleanup_checkbox:
+                        # Scenario E: Show dialog with cleanup checkbox for older files
+                        dialog = QDialog(self)
+                        dialog.setWindowTitle(dialog_title)
+                        dialog.setModal(True)
+                        dialog.setMinimumWidth(450)
+                        
+                        layout = QVBoxLayout(dialog)
+                        
+                        # Add message label
+                        message_label = QLabel(dialog_message)
+                        message_label.setWordWrap(True)
+                        layout.addWidget(message_label)
+                        
+                        # Add cleanup checkbox
+                        cleanup_checkbox = QCheckBox("Delete older page files")
+                        cleanup_checkbox.setChecked(False)  # Unchecked by default
+                        layout.addWidget(cleanup_checkbox)
+                        
+                        # Add buttons
+                        button_layout = QVBoxLayout()
+                        replace_button = QPushButton("Replace")
+                        cancel_button = QPushButton("Cancel")
+                        button_layout.addWidget(replace_button)
+                        button_layout.addWidget(cancel_button)
+                        layout.addLayout(button_layout)
+                        
+                        # Connect button signals
+                        user_clicked_replace = False
+                        
+                        def update_replace_button_text(state=None):
+                            """Update Replace button text based on checkbox state."""
+                            if cleanup_checkbox.isChecked():
+                                replace_button.setText("Replace and delete older page files")
+                            else:
+                                replace_button.setText("Replace")
+                        
+                        def on_replace():
+                            nonlocal user_clicked_replace
+                            user_clicked_replace = True
+                            dialog.accept()
+                        
+                        def on_cancel():
+                            dialog.reject()
+                        
+                        # Connect checkbox state change to update button text
+                        cleanup_checkbox.toggled.connect(update_replace_button_text)
+                        replace_button.clicked.connect(on_replace)
+                        cancel_button.clicked.connect(on_cancel)
+                        
+                        # Initialize button text
+                        update_replace_button_text()
+                        
+                        # Show dialog
+                        result = dialog.exec()
+                        cleanup_checkbox_result = cleanup_checkbox.isChecked()
+                        
+                        # User clicked Cancel - return to file dialog
+                        if result == QDialog.Rejected:
+                            # Don't clear last_user_chosen_path/format - keep them for restoration
+                            continue  # Go back to file dialog with same values
+                    else:
+                        # Scenarios A-D: Simple yes/no confirmation dialog
+                        user_choice = QMessageBox.question(
+                            self, dialog_title, dialog_message,
+                            QMessageBox.StandardButtons(QMessageBox.Yes | QMessageBox.No),
+                            QMessageBox.No
+                        )
+                        
+                        # User clicked No - return to file dialog
+                        if user_choice == QMessageBox.No:
+                            # Don't clear last_user_chosen_path/format - keep them for restoration
+                            continue  # Go back to file dialog with same values
+                    
+                    # User clicked Replace - proceed with export
+                    # If cleanup checkbox was checked, delete older files
+                    if show_cleanup_checkbox and cleanup_checkbox_result:
+                        for old_file in older_files:
+                            try:
+                                old_file.unlink()
+                            except Exception as e:
+                                # Log but don't fail - user still wants to export
+                                logging.warning(f"Could not delete {old_file}: {e}")
+            
+            # All checks passed, proceed with export
             break
+        
+        # ============================================================================
+        # PROCEED WITH EXPORT
+        # ============================================================================
+        
         try:
             saved = 0
             exported_files: list[Path] = []
