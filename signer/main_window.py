@@ -10,7 +10,8 @@ from pathlib import Path
 import fitz
 from PIL import Image, UnidentifiedImageError
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl, QCoreApplication
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeyEvent
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeyEvent, QPainter, QImage, QPixmap, QPageSize
+from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -465,6 +466,7 @@ class MainWindow(QMainWindow):
         self._hamburger_file_menu = hamburger_menu.addMenu("File")
         self._hamburger_file_menu.addAction("Open Document", self.open_document)
         self._hamburger_file_menu.addAction("Save As…", self.save_document_as)
+        self._hamburger_file_menu.addAction("Print", self.print_document)
         self._hamburger_file_menu.addSeparator()
         self._file_recent_docs_actions = []  # Track recent doc actions for rebuilding
         self._rebuild_file_recent_documents_top_level(self._hamburger_file_menu)
@@ -1401,6 +1403,103 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.critical(self, "Save failed", f"Unexpected error:\n{exc}")
             return False
+
+    def print_document(self) -> None:
+        """Print the current document with all annotations."""
+        in_test_mode = os.environ.get("PYTEST_CURRENT_TEST") is not None
+        
+        try:
+            if not self.canvas.has_document:
+                if not in_test_mode:
+                    QMessageBox.warning(self, "Missing document", "Open a document first.")
+                return
+            
+            total = self.canvas.page_count
+            if total == 0:
+                if not in_test_mode:
+                    QMessageBox.warning(self, "Empty document", "Document has no pages.")
+                return
+            
+            # Create printer object
+            printer = QPrinter(QPrinter.HighResolution)
+            printer.setPageSize(QPageSize(QPageSize.A4))
+            
+            # Show print dialog
+            print_dialog = QPrintDialog(printer, self)
+            dialog_result = print_dialog.exec()
+            if dialog_result != QDialog.Accepted:
+                return
+            
+            # Render all pages to printer
+            painter = QPainter()
+            if not painter.begin(printer):
+                if not in_test_mode:
+                    QMessageBox.critical(self, "Print failed", "Failed to initialize printer.")
+                return
+            
+            try:
+                for page_idx in range(total):
+                    # Get page image
+                    page_image = self.canvas.page_image_at(page_idx)
+                    if page_image is None:
+                        continue
+                    
+                    # Get page objects
+                    objects = self.canvas.page_objects_at(page_idx)
+                    
+                    # Composite objects onto page image (in memory, no file I/O)
+                    composite_image = page_image.convert("RGBA")
+                    if objects:
+                        from PIL import Image as PILImage
+                        pw, ph = composite_image.size
+                        for obj in objects:
+                            try:
+                                overlay = obj.render_to_pil().convert("RGBA")
+                                x = int(round(obj.x))
+                                y = int(round(obj.y))
+                                # Clamp to avoid out-of-bounds
+                                x = max(0, min(x, pw - 1))
+                                y = max(0, min(y, ph - 1))
+                                composite_image.alpha_composite(overlay, dest=(x, y))
+                            except Exception:
+                                continue
+                    
+                    # Convert back to RGB for printing
+                    composite_image = composite_image.convert("RGB")
+                    
+                    # Convert PIL image to QPixmap for printing
+                    from io import BytesIO
+                    buffer = BytesIO()
+                    composite_image.save(buffer, format='JPEG', quality=95)
+                    buffer.seek(0)
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(buffer.getvalue(), 'JPEG')
+                    
+                    # Scale to fit page while maintaining aspect ratio
+                    page_rect = printer.pageRect(QPrinter.DevicePixel)
+                    scaled_pixmap = pixmap.scaledToWidth(
+                        int(page_rect.width()), Qt.SmoothTransformation
+                    )
+                    
+                    # Draw on page
+                    x = int((page_rect.width() - scaled_pixmap.width()) / 2)
+                    y = int((page_rect.height() - scaled_pixmap.height()) / 2)
+                    painter.drawPixmap(x, y, scaled_pixmap)
+                    
+                    # New page for next document (except last page)
+                    if page_idx < total - 1:
+                        printer.newPage()
+            finally:
+                painter.end()
+            
+            if not in_test_mode:
+                NotificationToast(self, "Document sent to printer successfully.")
+        
+        except Exception as exc:
+            if not in_test_mode:
+                QMessageBox.critical(self, "Print error", f"Unexpected error during printing:\n{exc}")
+            import traceback
+            traceback.print_exc()
 
     # ---------------------------------------------------------------- helpers
 

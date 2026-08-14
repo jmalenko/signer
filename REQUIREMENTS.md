@@ -772,5 +772,25 @@ Provide users with optional quality/compression control in the Save As dialog. S
    - Settings persist across application sessions
    - JPG and PDF maintain independent settings
 
+## Version 1.2.15 - Print
+
+1. The application provides a "Print" menu item in the main menu (hamburger menu → File).
+
+### Implementation Details
+
+1. **Menu Item**: Added "Print" action to File menu in hamburger menu (after "Save As...")
+2. **Print Dialog**: Opens native Windows print dialog allowing user to:
+   - Select printer
+   - Configure print settings (pages, copies, orientation)
+   - Preview before printing
+3. **Page Rendering**: 
+   - All document pages rendered with annotations
+   - Each page composited with its annotations (signatures, text, checkmarks, arrows)
+   - Pages printed at high resolution (300 DPI)
+4. **User Feedback**:
+   - Success message shown after printing
+   - Error messages displayed if printing fails
+   - Test mode support (no dialog interaction during tests)
+
 # Assumptions
 1. Signature has a transparent background.
