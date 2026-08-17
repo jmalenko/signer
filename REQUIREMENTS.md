@@ -804,5 +804,32 @@ Provide users with optional quality/compression control in the Save As dialog. S
 
 1. When a page is rotated, annotations shall not rotate visually, but their position coordinates shall be transformed so that the center of each annotation remains at the same visual location on the page. This accounts for the changed coordinate system after rotation.
 
+## Version 1.2.17 - Multi-Selection
+
+### Selection Mechanics
+1. Click on an annotation to select it (existing behavior, unchanged).
+2. Shift+click shall add (or remove if already in selection) the annotation under the mouse to the selection.
+3. Click on empty canvas to deselect all.
+4. Selection shall be limited to annotations on the current page only. Selection across pages is not supported.
+5. When navigating to a different page, the current selection shall be cleared.
+
+### Multi-Selection Operations
+When multiple annotations are selected, the following operations shall apply to all selected annotations:
+
+6. **Move** (arrow keys): All selected annotations move together with small increments (arrow key: ~10 pixels, Shift+arrow: ~50 pixels).
+7. **Delete**: Delete all selected annotations at once (single undo/redo unit).
+8. **Copy/Cut**: Copy or cut all selected annotations to clipboard (JSON format, can be pasted on different pages or in different document instances).
+9. **Paste**: Paste copied/cut annotations onto the current page (pasted annotations are offset slightly to avoid exact overlap).
+10. **Duplicate**: Duplicate all selected annotations on the same page (single undo/redo unit).
+11. **Color**: Change color of all selected annotations at once (single undo/redo unit).
+12. **Line width** (vector annotations only): Change line width of selected vector annotations (Checkmark, Cross, Arrows) — applies only to compatible types when multi-selected with text/signature.
+
+### Visual Feedback
+13. All selected annotations shall display a blue boundary (same as single-selection).
+
+### Clipboard Format
+15. Clipboard shall use JSON format for serialized annotations, compatible with existing annotation serialization.
+16. Pasted annotations shall have adjusted coordinates (offset by ~10 pixels) to avoid exact overlap with originals if pasted on the same page. No aadjusted coordinated if the paste is to another page.
+
 # Assumptions
 1. Signature has a transparent background.

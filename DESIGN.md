@@ -342,6 +342,80 @@ Default save name (applies to all export formats):
   - Export: `page_objects_with_rotation_at()` returns shallow copies with transformed coordinates
 - Export integration: `get_page_image_with_rotation()` returns rotated PIL image; export functions use transformed object coordinates
 
+### 5.14 Multi-Selection Feature (v1.2.17)
+
+**Selection Mechanics**:
+- **Single-selection**: Click on an annotation to select it (existing behavior, unchanged)
+- **Multi-selection**: Hold Shift and click on an annotation to add it to or remove it from current selection
+- **Selection scope**: Limited to annotations on the current page only; selection is cleared when navigating to a different page
+- **Clear selection**: Click on empty canvas to deselect all (existing behavior when no Shift held)
+
+**Multi-Selection Operations**:
+When multiple annotations are selected, the following operations apply to all selected annotations:
+
+| Operation | Behavior |
+|-----------|----------|
+| **Move** (arrow keys) | All selected annotations move together; Arrow keys: ~10px; Shift+Arrow: ~50px |
+| **Delete** (Delete key) | Delete all selected annotations in single undo/redo unit |
+| **Copy** (Ctrl+C) | Copy all selected annotations to clipboard as JSON |
+| **Cut** (Ctrl+X) | Copy all selected to clipboard, then delete in single undo unit |
+| **Paste** (Ctrl+V) | Paste copied annotations onto current page; applies ~10px offset on same page, no offset on different page |
+| **Duplicate** (Ctrl+D) | Create copies of all selected, offset by ~15px; single undo unit |
+| **Color change** | Apply color to all selected annotation types that support it |
+
+**Visual Feedback**:
+- Single selection: Blue boundary around selected annotation (existing)
+- Multi-selection: Blue boundary around all selected annotations; resize handles shown only on primary selected object
+
+**Clipboard Format (JSON)**:
+Annotations are serialized as a JSON array when copied/cut. Format preserves all object properties:
+```json
+[
+  {
+    "type": "signature|checkmark|cross|arrow_*|text",
+    "x": 100.0,
+    "y": 200.0,
+    "scaled_width": 300.0,
+    "scaled_height": 150.0,
+    "page": 0,
+    "color": "#cc0000",
+    ...
+  }
+]
+```
+
+When pasted:
+- **Same page**: Offset applied (~10 pixels) to avoid exact overlap with originals
+- **Different page**: No offset applied (already distinct location)
+
+**Implementation Details**:
+- Data structures: `_selected` (primary) + `_selected_multiple` (set of all selected)
+- Methods: `select_annotation(obj, multi)`, `clear_selection()`, `get_selected_annotations()`, `is_multi_selected()`
+- Multi-operation methods: `move_selected()`, `delete_selected()`, `duplicate_selected_multi()`, `copy_selected()`, `cut_selected()`, `paste_selected()`
+- Rendering: All selected annotations display blue boundary; resize handles only on primary
+- Page navigation: Selection cleared when switching pages via `set_current_page()`
+- Keyboard handling: Shift+click for multi-select; arrow keys for move; Delete/Ctrl+C/X/V for delete/copy/cut/paste
+
+**Menu Items** (Edit menu):
+- Cut (Ctrl+X): Works on single or multi-selection
+- Copy (Ctrl+C): Works on single or multi-selection
+- Paste (Ctrl+V): Pastes to current page with offset behavior as described
+- Duplicate (Ctrl+D): Works on single or multi-selection
+- Delete (Delete): Works on single or multi-selection
+
+**Edge Cases & Constraints**:
+- Multi-selection limited to current page; switching pages clears selection
+- Copy/paste works across document instances via system clipboard
+- Cache is set on first paste and persists for subsequent pastes, preventing intermediate copy operations from corrupting cached positions
+- Each multi-operation (move all, delete all) is a single undo/redo unit
+- Invalid operations on mixed types are gracefully ignored (e.g., line width only applies to vector types)
+
+**Backward Compatibility**:
+- Existing single-selection behavior unchanged (click selects one, click-empty deselects)
+- All existing operations (Delete, Duplicate, Color change) now work with multi-selection
+- Undo/redo: each multi-operation is single unit, maintaining existing behavior for single operations
+- Paste position preservation: Cache strategy ensures copy→move→paste sequences work correctly even with external Ctrl+C interference
+
 ## 6. Error Handling
 - Missing/unreadable document: block canvas interaction, show clear error message.
 - Missing signature annotation: allow document load, prompt user to add a signature annotation before save.

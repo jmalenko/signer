@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import copy
+import json
+
 from PIL import Image
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from .objects import (
     ANCHOR_HANDLE,
     HANDLE_FX,
     HANDLE_FY,
     CanvasObject,
+    canvas_object_from_dict,
 )
 
 
@@ -31,8 +35,10 @@ class DocumentCanvas(QWidget):
         self._page_rotations: dict[int, int] = {}  # Track rotation angle (0, 90, 180, 270) per page
 
         self._selected: CanvasObject | None = None
+        self._selected_multiple: set[CanvasObject] = set()  # Multi-selection
         self._dragging: bool = False
         self._drag_handle: int = -1
+        self._cached_copy_data: list[dict] | None = None  # Cache copy data to preserve original positions
 
         self._drag_doc_offset_x: float = 0.0
         self._drag_doc_offset_y: float = 0.0
@@ -128,6 +134,7 @@ class DocumentCanvas(QWidget):
         self._current_page = 0
         self._page_objects = {}
         self._selected = None
+        self._selected_multiple.clear()
         self._recompute_fit()
         self.pageChanged.emit(0, len(self._pages))
         self.objectChanged.emit()
@@ -140,6 +147,7 @@ class DocumentCanvas(QWidget):
         if page == self._current_page:
             return
         self._selected = None
+        self._selected_multiple.clear()
         self._current_page = page
         self._recompute_fit()
         self.pageChanged.emit(self._current_page, len(self._pages))
@@ -223,21 +231,257 @@ class DocumentCanvas(QWidget):
         self.update()
 
     def remove_selected(self) -> None:
-        if self._selected is None:
+        """Remove selected annotation(s). Works with single or multi-selection."""
+        if self.is_multi_selected():
+            self.delete_selected()
+        elif self._selected is None:
             return
-        objs = self._page_objects.get(self._current_page, [])
-        if self._selected in objs:
-            objs.remove(self._selected)
-        self._selected = None
+        else:
+            # Single selection - original behavior
+            objs = self._page_objects.get(self._current_page, [])
+            if self._selected in objs:
+                objs.remove(self._selected)
+            self._selected = None
+            self.objectChanged.emit()
+            self.update()
+
+    def duplicate_selected(self) -> None:
+        """Duplicate selected annotation(s). Works with single or multi-selection."""
+        if self.is_multi_selected():
+            self.duplicate_selected_multi()
+        elif self._selected is None:
+            return
+        else:
+            # Single selection - original behavior
+            dup = self._selected.duplicate()
+            dup.page = self._current_page
+            self.add_object(dup)
+
+    # ---------------------------------------------------------------- multi-selection API
+
+    def select_annotation(self, obj: CanvasObject, multi: bool = False) -> None:
+        """Select an annotation.
+        
+        Args:
+            obj: Annotation to select
+            multi: If True, add/remove from multi-selection (Shift+click behavior).
+                   If False, clear previous selection and select this one (click behavior).
+        """
+        if not multi:
+            # Single selection mode
+            self._selected = obj
+            self._selected_multiple.clear()
+        else:
+            # Multi-selection mode (Shift+click)
+            if obj in self._selected_multiple:
+                # Remove from selection
+                self._selected_multiple.discard(obj)
+            else:
+                # Add to selection
+                self._selected_multiple.add(obj)
+                # Keep _selected as primary for UI feedback
+                if self._selected is None:
+                    self._selected = obj
         self.objectChanged.emit()
         self.update()
 
-    def duplicate_selected(self) -> None:
-        if self._selected is None:
+    def clear_selection(self) -> None:
+        """Clear all selections."""
+        self._selected = None
+        self._selected_multiple.clear()
+        self.objectChanged.emit()
+        self.update()
+
+    def get_selected_annotations(self) -> list[CanvasObject]:
+        """Return all selected annotations (sorted for consistency)."""
+        if self._selected_multiple:
+            return sorted(list(self._selected_multiple), key=lambda o: (o.y, o.x))
+        elif self._selected is not None:
+            return [self._selected]
+        return []
+
+    def is_multi_selected(self) -> bool:
+        """Check if multiple annotations are currently selected."""
+        return len(self._selected_multiple) > 1
+
+    def move_selected(self, dx: float, dy: float) -> None:
+        """Move all selected annotations by (dx, dy) in document space."""
+        selected = self.get_selected_annotations()
+        if not selected:
             return
-        dup = self._selected.duplicate()
-        dup.page = self._current_page
-        self.add_object(dup)
+        
+        objs = self.current_page_objects()
+        for obj in selected:
+            obj.x += dx
+            obj.y += dy
+            if self.current_page_image:
+                pw, ph = self.current_page_image.size
+                obj.clamp_to_page(pw, ph)
+        self.objectChanged.emit()
+        self.update()
+
+    def delete_selected(self) -> None:
+        """Delete all selected annotations. Single undo unit."""
+        objs = self.current_page_objects()
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        
+        # Remove all selected from page
+        for obj in selected:
+            if obj in objs:
+                objs.remove(obj)
+        
+        self.clear_selection()
+        self.objectChanged.emit()
+
+    def duplicate_selected_multi(self) -> None:
+        """Duplicate all selected annotations. Single undo unit."""
+        objs = self.current_page_objects()
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        
+        new_objs = []
+        for obj in selected:
+            dup = obj.duplicate()
+            dup.x += 10  # Small offset to avoid exact overlap
+            dup.y += 10
+            if self.current_page_image:
+                pw, ph = self.current_page_image.size
+                dup.clamp_to_page(pw, ph)
+            objs.append(dup)
+            new_objs.append(dup)
+        
+        # Select new duplicates
+        self._selected_multiple.clear()
+        self._selected_multiple.update(new_objs)
+        self._selected = new_objs[0] if new_objs else None
+        self.objectChanged.emit()
+        self.update()
+
+    def copy_selected(self) -> None:
+        """Copy selected annotations to clipboard as JSON.
+        
+        Also updates the internal cache so that new copy operations properly
+        update what gets pasted. The cache persists across multiple pastes,
+        preventing intermediate copy operations (like external programs) from
+        corrupting the cached positions.
+        """
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        
+        data = [obj.to_dict() for obj in selected]
+        json_str = json.dumps(data, indent=2)
+        
+        clipboard = QApplication.clipboard()
+        clipboard.setText(json_str)
+        
+        # Update cache so new copy operations are reflected in pastes
+        self._cached_copy_data = data
+
+    def cut_selected(self) -> None:
+        """Cut selected annotations (copy to clipboard, then delete)."""
+        self.copy_selected()
+        self.delete_selected()
+
+    def paste_selected(self) -> None:
+        """Paste annotations from clipboard onto current page.
+        
+        Cache is set on the FIRST paste (when reading from clipboard) and then
+        persists for all subsequent pastes, even if the clipboard is updated by
+        intermediate copy operations. This ensures copy->paste->paste sequences
+        always use the position from the original copy.
+        
+        Offset (~10 pixels) is applied when pasting on the same page to avoid exact overlap.
+        No offset is applied when pasting to a different page (already distinct location).
+        """
+        # If no cache, read from clipboard and cache it
+        if self._cached_copy_data is None:
+            clipboard = QApplication.clipboard()
+            json_str = clipboard.text()
+            if not json_str:
+                return
+            
+            try:
+                data = json.loads(json_str)
+                if not isinstance(data, list):
+                    data = [data]
+                # Cache this data for all future pastes until a new copy-paste cycle
+                self._cached_copy_data = data
+            except json.JSONDecodeError:
+                # Clipboard doesn't contain valid annotation JSON; ignore
+                return
+        else:
+            # Cache exists, use it
+            data = self._cached_copy_data
+        
+        # Use setdefault to ensure page list exists in _page_objects
+        objs = self._page_objects.setdefault(self._current_page, [])
+        pasted_objs = []
+        
+        for item in data:
+            try:
+                # Use factory function to deserialize based on type
+                original_page = item.get("page")
+                
+                obj = canvas_object_from_dict(item)
+                if obj is None:
+                    # Unknown type; skip
+                    continue
+                
+                obj.page = self._current_page  # Ensure pasted on current page
+                
+                # Apply offset only if pasting on same page as original
+                if original_page == self._current_page:
+                    obj.x += 10  # Offset to avoid exact overlap
+                    obj.y += 10
+                
+                if self.current_page_image:
+                    pw, ph = self.current_page_image.size
+                    obj.clamp_to_page(pw, ph)
+                
+                objs.append(obj)
+                pasted_objs.append(obj)
+            except (KeyError, ValueError, TypeError):
+                # Invalid annotation data; skip
+                continue
+        
+        # Select pasted annotations
+        self._selected_multiple.clear()
+        self._selected_multiple.update(pasted_objs)
+        self._selected = pasted_objs[0] if pasted_objs else None
+        self.objectChanged.emit()
+        self.update()
+
+    def set_color_selected(self, color: QColor) -> None:
+        """Set color for all selected annotations."""
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        for obj in selected:
+            obj.color = color
+        self.objectChanged.emit()
+        self.update()
+
+    def set_line_width_selected(self, width_factor: float) -> None:
+        """Set line width factor for vector annotations in selection."""
+        from .objects import ARROW_TYPES, AnnotationType
+        
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        for obj in selected:
+            # Apply only to vector annotations
+            if hasattr(obj, 'annotation_type') and (
+                obj.annotation_type in ARROW_TYPES or 
+                obj.annotation_type in {AnnotationType.CHECKMARK, AnnotationType.CROSS}
+            ):
+                if hasattr(obj, 'line_width_factor'):
+                    obj.line_width_factor = width_factor
+        self.objectChanged.emit()
+        self.update()
 
     # ---------------------------------------------------------------- coordinate helpers
 
@@ -385,14 +629,18 @@ class DocumentCanvas(QWidget):
             r = self._object_view_rect(obj)
             obj.draw_in_viewport(painter, r.x(), r.y(), r.width(), r.height(), self._fit_scale)
 
-            if obj is self._selected:
+            # Draw selection boundary for single or multi-selected objects
+            is_selected = obj is self._selected or obj in self._selected_multiple
+            if is_selected:
                 painter.save()
                 painter.setPen(QColor("#00a2ff"))
                 painter.setBrush(Qt.NoBrush)
                 painter.drawRect(r)
-                for hr in obj.handle_rects_viewport(r.x(), r.y(), r.width(), r.height()):
-                    painter.fillRect(hr, QColor("#00a2ff"))
-                    painter.drawRect(hr)
+                # Only draw resize handles for primary selected object
+                if obj is self._selected:
+                    for hr in obj.handle_rects_viewport(r.x(), r.y(), r.width(), r.height()):
+                        painter.fillRect(hr, QColor("#00a2ff"))
+                        painter.drawRect(hr)
                 painter.restore()
 
     # ---------------------------------------------------------------- mouse
@@ -413,22 +661,28 @@ class DocumentCanvas(QWidget):
         for obj in reversed(objects):
             r = self._object_view_rect(obj)
             if r.contains(pt):
-                prev_selected = self._selected
-                self._selected = obj
+                # Check for Shift+click (multi-select)
+                if event.modifiers() & Qt.ShiftModifier:
+                    self.select_annotation(obj, multi=True)
+                else:
+                    # Regular click (single select)
+                    self.select_annotation(obj, multi=False)
+                
+                # Start dragging the clicked object
                 self._dragging = True
                 self._drag_handle = -1
                 doc_pt = self._view_to_doc(pt)
                 self._drag_doc_offset_x = doc_pt.x() - obj.x
                 self._drag_doc_offset_y = doc_pt.y() - obj.y
-                if prev_selected is not obj:
-                    self.objectChanged.emit()
-                self.update()
                 return
 
-        if self._selected is not None:
-            self._selected = None
-            self.objectChanged.emit()
-        self.update()
+        # Clicked on empty space
+        if event.modifiers() & Qt.ShiftModifier:
+            # Shift+click on empty doesn't clear (no change)
+            pass
+        else:
+            # Regular click on empty clears selection
+            self.clear_selection()
 
     def _start_handle_drag(self, h_idx: int, pt: QPointF) -> None:
         obj = self._selected
@@ -540,15 +794,61 @@ class DocumentCanvas(QWidget):
 
     def keyPressEvent(self, event) -> None:
         key = event.key()
+        
+        # Page navigation
         if key == Qt.Key_PageDown:
             self.goto_page(self._current_page + 1)
+            return
         elif key == Qt.Key_PageUp:
             self.goto_page(self._current_page - 1)
+            return
         elif key == Qt.Key_Home:
             self.goto_page(0)
+            return
         elif key == Qt.Key_End:
             self.goto_page(len(self._pages) - 1)
-        elif key in (Qt.Key_Delete, Qt.Key_Backspace) and self._selected is not None:
-            self.remove_selected()
-        else:
-            super().keyPressEvent(event)
+            return
+        
+        # Get selected annotations
+        selected = self.get_selected_annotations()
+        
+        # Delete
+        if key in (Qt.Key_Delete, Qt.Key_Backspace):
+            if selected:
+                self.delete_selected()
+                return
+        
+        # Arrow keys for movement (only if something is selected)
+        if key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
+            if not selected:
+                super().keyPressEvent(event)
+                return
+            
+            # Determine increment: Shift for larger, normal for smaller
+            increment = 50.0 if event.modifiers() & Qt.ShiftModifier else 10.0
+            
+            if key == Qt.Key_Up:
+                self.move_selected(0, -increment)
+            elif key == Qt.Key_Down:
+                self.move_selected(0, increment)
+            elif key == Qt.Key_Left:
+                self.move_selected(-increment, 0)
+            elif key == Qt.Key_Right:
+                self.move_selected(increment, 0)
+            return
+        
+        # Copy/Cut/Paste
+        if event.modifiers() & Qt.ControlModifier:
+            if key == Qt.Key_C:
+                if selected:
+                    self.copy_selected()
+                return
+            elif key == Qt.Key_X:
+                if selected:
+                    self.cut_selected()
+                return
+            elif key == Qt.Key_V:
+                self.paste_selected()
+                return
+        
+        super().keyPressEvent(event)

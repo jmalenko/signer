@@ -478,9 +478,9 @@ class MainWindow(QMainWindow):
         edit_menu.addAction("Undo")  # placeholder for future
         edit_menu.addAction("Redo")  # placeholder for future
         edit_menu.addSeparator()
-        edit_menu.addAction("Cut")  # placeholder
-        edit_menu.addAction("Copy")  # placeholder
-        edit_menu.addAction("Paste")  # placeholder
+        edit_menu.addAction("Cut", self.canvas.cut_selected)
+        edit_menu.addAction("Copy", self.canvas.copy_selected)
+        edit_menu.addAction("Paste", self.canvas.paste_selected)
         edit_menu.addAction("Duplicate", self.canvas.duplicate_selected)
         edit_menu.addSeparator()
         edit_menu.addAction("Select All")  # placeholder
