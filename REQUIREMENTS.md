@@ -792,5 +792,17 @@ Provide users with optional quality/compression control in the Save As dialog. S
    - Error messages displayed if printing fails
    - Test mode support (no dialog interaction during tests)
 
+## Version 1.2.16 - Document and page rotation
+
+1. The application shall support document rotation (90° to the left and 90° to the right). Add these items into Edit main menu.
+
+1. The application shall support rotation of the current page from the document (90° to the left and 90° to the right). Add these items into Edit main menu.
+
+1. Rotation shall be temporary (session-only) and not persisted.
+
+1. When exporting documents, rotated pages shall be saved with their rotated orientation in all supported formats (JPG, PNG, PDF, TIFF, BMP).
+
+1. When a page is rotated, annotations shall not rotate visually, but their position coordinates shall be transformed so that the center of each annotation remains at the same visual location on the page. This accounts for the changed coordinate system after rotation.
+
 # Assumptions
 1. Signature has a transparent background.

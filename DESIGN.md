@@ -296,6 +296,52 @@ Default save name (applies to all export formats):
 - If conflict exists, append numeric suffix (`-signed-1.jpg`, etc.)
 - Version 1.2.10 unifies this across all formats via "Save As" dialog
 
+### 5.13 Document and Page Rotation (v1.2.16)
+
+**Design Principle**: Rotation is temporary (session-only) for viewing and exporting; no persistence to disk.
+
+**Menu Items**: Four rotation actions in Edit menu:
+- Rotate Current Page Left (90° counter-clockwise)
+- Rotate Current Page Right (90° clockwise)
+- Rotate All Pages Left (all pages 90° counter-clockwise)
+- Rotate All Pages Right (all pages 90° clockwise)
+
+**Rotation Behavior**:
+- Per-page rotation state tracked via `_page_rotations: dict[int, int]` (maps page index to angle in 0/90/180/270)
+- Rotation is cumulative: clicking "left" 4 times on same page returns to 0°
+- Annotations do not rotate visually, but their position coordinates are transformed so the center remains at the same visual location
+- Coordinate transformation accounts for the changed coordinate system after page rotation
+- Window auto-resizes to maintain aspect ratio for portrait↔landscape transitions (via `_recompute_fit()`)
+
+**Annotation Coordinate Transformation**:
+- Original annotation coordinates stored relative to unrotated page
+- **Center-based transformation**: Calculate annotation center from top-left corner (x, y), transform center coordinates, convert back to top-left corner
+- **Display**: Annotation center is transformed via `_transform_doc_coords_by_rotation()` so centers remain at the same visual location on the page after rotation
+- **Export**: Annotation center is transformed via `page_objects_with_rotation_at()` so centers appear at the correct visual position on the rotated page
+- **Mouse interaction**: Mouse coordinates are converted via `_transform_doc_coords_inverse()` to convert back from rotated to original coordinates
+- **Key property**: Annotations themselves are NOT rotated—only their position changes. Signatures keep their aspect ratio, text stays upright, etc.
+- **Transformation formulas** (mapping W×H original page to H×W rotated page):
+  - 90° CCW: (x, y) → (y, W - x)
+  - 180°: (x, y) → (W - x, H - y)
+  - 270° CCW: (x, y) → (H - y, x)
+
+**Export Behavior**:
+- All export formats (JPG, PNG, PDF, TIFF, BMP) export rotated pages as-is
+- Multi-page documents can have mixed rotations (different angles per page); each exports with its own rotation
+- Annotations are exported at their transformed coordinates on rotated pages
+- `page_objects_with_rotation_at()` returns objects with coordinates pre-transformed for export
+- Rotation does not modify stored image files, only the displayed/exported view
+
+**Implementation Details**:
+- Rendering: PIL `Image.rotate(degrees, expand=True)` applies rotation with dimension swapping
+- Dimension swapping: 90°/270° rotations swap width↔height for proper fit calculation
+- Pixmap caching: `_update_rotated_pixmap()` regenerates QPixmap after rotation
+- Canvas coordinate mapping: 
+  - Display: `_object_view_rect()` transforms annotation coords
+  - Interaction: `_view_to_doc()` applies inverse transformation
+  - Export: `page_objects_with_rotation_at()` returns shallow copies with transformed coordinates
+- Export integration: `get_page_image_with_rotation()` returns rotated PIL image; export functions use transformed object coordinates
+
 ## 6. Error Handling
 - Missing/unreadable document: block canvas interaction, show clear error message.
 - Missing signature annotation: allow document load, prompt user to add a signature annotation before save.

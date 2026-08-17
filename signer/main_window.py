@@ -485,6 +485,12 @@ class MainWindow(QMainWindow):
         edit_menu.addSeparator()
         edit_menu.addAction("Select All")  # placeholder
         edit_menu.addAction("Delete", self.canvas.remove_selected)
+        edit_menu.addSeparator()
+        edit_menu.addAction("Rotate Current Page Left", self.canvas.rotate_current_page_left)
+        edit_menu.addAction("Rotate Current Page Right", self.canvas.rotate_current_page_right)
+        edit_menu.addSeparator()
+        edit_menu.addAction("Rotate All Pages Left", self.canvas.rotate_all_pages_left)
+        edit_menu.addAction("Rotate All Pages Right", self.canvas.rotate_all_pages_right)
 
         # Annotations menu
         annotations_menu = hamburger_menu.addMenu("Annotations")
@@ -1255,8 +1261,8 @@ class MainWindow(QMainWindow):
 
             if export_format == ExportFormat.PDF:
                 # Export all pages as PDF
-                page_images = [self.canvas.page_image_at(idx) for idx in range(total)]
-                page_objects_list = [self.canvas.page_objects_at(idx) for idx in range(total)]
+                page_images = [self.canvas.get_page_image_with_rotation(idx) for idx in range(total)]
+                page_objects_list = [self.canvas.page_objects_with_rotation_at(idx) for idx in range(total)]
                 
                 # Filter out None pages
                 valid_pages = [(img, objs) for img, objs in zip(page_images, page_objects_list) if img is not None]
@@ -1293,8 +1299,8 @@ class MainWindow(QMainWindow):
             
             elif export_format == ExportFormat.TIFF:
                 # Export all pages as TIFF
-                page_images = [self.canvas.page_image_at(idx) for idx in range(total)]
-                page_objects_list = [self.canvas.page_objects_at(idx) for idx in range(total)]
+                page_images = [self.canvas.get_page_image_with_rotation(idx) for idx in range(total)]
+                page_objects_list = [self.canvas.page_objects_with_rotation_at(idx) for idx in range(total)]
                 
                 # Filter out None pages
                 valid_pages = [(img, objs) for img, objs in zip(page_images, page_objects_list) if img is not None]
@@ -1333,8 +1339,8 @@ class MainWindow(QMainWindow):
                 # For JPG, PNG, BMP: export per-page or single page
                 failed_pages = []
                 for idx in range(total):
-                    page_image = self.canvas.page_image_at(idx)
-                    objects = self.canvas.page_objects_at(idx)
+                    page_image = self.canvas.get_page_image_with_rotation(idx)
+                    objects = self.canvas.page_objects_with_rotation_at(idx)
                     if page_image is None:
                         continue
                     

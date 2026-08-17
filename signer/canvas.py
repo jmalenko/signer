@@ -28,6 +28,7 @@ class DocumentCanvas(QWidget):
         self._page_pixmaps: list[QPixmap] = []
         self._current_page: int = 0
         self._page_objects: dict[int, list[CanvasObject]] = {}
+        self._page_rotations: dict[int, int] = {}  # Track rotation angle (0, 90, 180, 270) per page
 
         self._selected: CanvasObject | None = None
         self._dragging: bool = False
@@ -75,6 +76,52 @@ class DocumentCanvas(QWidget):
     def page_objects_at(self, index: int) -> list[CanvasObject]:
         return self._page_objects.get(index, [])
 
+    def page_objects_with_rotation_at(self, index: int) -> list[CanvasObject]:
+        """Get objects for a page with coordinates transformed for rotation.
+        
+        For export: returns objects with coordinates already adjusted for the
+        rotated page orientation, so their centers stay at the same visual location.
+        Annotations themselves are NOT rotated - only their position changes.
+        """
+        objects = self._page_objects.get(index, [])
+        rotation = self._page_rotations.get(index, 0)
+        
+        if rotation == 0:
+            # No rotation, return objects as-is
+            return objects
+        
+        # For rotated pages, create transformed copies
+        if index < 0 or index >= len(self._pages):
+            return objects
+        
+        orig_width, orig_height = self._pages[index].size
+        transformed = []
+        
+        for obj in objects:
+            # Calculate the center of the annotation
+            # (x, y) is the top-left corner, so add half the dimensions to get center
+            center_x = obj.x + obj._base_width / 2
+            center_y = obj.y + obj._base_height / 2
+            
+            # Transform the center coordinates so it stays at the same visual location
+            new_center_x, new_center_y = self._transform_doc_coords_by_rotation(
+                center_x, center_y, rotation, orig_width, orig_height
+            )
+            
+            # Convert back to top-left corner coordinates
+            new_x = new_center_x - obj._base_width / 2
+            new_y = new_center_y - obj._base_height / 2
+            
+            # Create a shallow copy of the object with transformed coordinates
+            # Annotations keep their original size and are NOT rotated
+            import copy
+            obj_copy = copy.copy(obj)
+            obj_copy.x = new_x
+            obj_copy.y = new_y
+            transformed.append(obj_copy)
+        
+        return transformed
+
     def set_pages(self, pages: list[Image.Image]) -> None:
         self._pages = [p.convert("RGB") for p in pages]
         self._page_pixmaps = [QPixmap.fromImage(ImageQt(p)) for p in self._pages]
@@ -98,6 +145,70 @@ class DocumentCanvas(QWidget):
         self.pageChanged.emit(self._current_page, len(self._pages))
         self.objectChanged.emit()
         self.update()
+
+    def _get_rotated_page_image(self, page_index: int) -> Image.Image:
+        """Get the PIL image for a page, applying rotation if set."""
+        if page_index < 0 or page_index >= len(self._pages):
+            return self._pages[0] if self._pages else None
+        
+        original = self._pages[page_index]
+        rotation = self._page_rotations.get(page_index, 0)
+        
+        if rotation == 0:
+            return original
+        elif rotation == 90:
+            return original.rotate(90, expand=True)
+        elif rotation == 180:
+            return original.rotate(180, expand=True)
+        elif rotation == 270:
+            return original.rotate(270, expand=True)
+        else:
+            return original
+    
+    def rotate_current_page_left(self) -> None:
+        """Rotate current page 90 degrees counter-clockwise."""
+        self._page_rotations[self._current_page] = (self._page_rotations.get(self._current_page, 0) + 90) % 360
+        self._update_rotated_pixmap(self._current_page)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+    
+    def rotate_current_page_right(self) -> None:
+        """Rotate current page 90 degrees clockwise."""
+        self._page_rotations[self._current_page] = (self._page_rotations.get(self._current_page, 0) + 270) % 360
+        self._update_rotated_pixmap(self._current_page)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+    
+    def rotate_all_pages_left(self) -> None:
+        """Rotate all pages 90 degrees counter-clockwise."""
+        for i in range(len(self._pages)):
+            self._page_rotations[i] = (self._page_rotations.get(i, 0) + 90) % 360
+            self._update_rotated_pixmap(i)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+    
+    def rotate_all_pages_right(self) -> None:
+        """Rotate all pages 90 degrees clockwise."""
+        for i in range(len(self._pages)):
+            self._page_rotations[i] = (self._page_rotations.get(i, 0) + 270) % 360
+            self._update_rotated_pixmap(i)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+    
+    def _update_rotated_pixmap(self, page_index: int) -> None:
+        """Update the pixmap cache for a page after rotation."""
+        if page_index < 0 or page_index >= len(self._page_pixmaps):
+            return
+        rotated_img = self._get_rotated_page_image(page_index)
+        self._page_pixmaps[page_index] = QPixmap.fromImage(ImageQt(rotated_img))
+    
+    def get_page_image_with_rotation(self, page_index: int) -> Image.Image:
+        """Get a PIL image for a page with rotation applied (for export)."""
+        return self._get_rotated_page_image(page_index)
 
     # ---------------------------------------------------------------- object API
 
@@ -130,19 +241,87 @@ class DocumentCanvas(QWidget):
 
     # ---------------------------------------------------------------- coordinate helpers
 
+    def _transform_doc_coords_by_rotation(self, x: float, y: float, rotation: int, page_width: float, page_height: float) -> tuple[float, float]:
+        """Transform document coordinates based on page rotation.
+        
+        Maps original page coordinates to rotated page coordinates so annotation
+        centers remain visually in the same location after rotation.
+        """
+        if rotation == 0:
+            return x, y
+        elif rotation == 90:
+            # 90° CCW: new page dimensions are height × width
+            # (x, y) on W×H → (y, W - x) on H×W
+            return y, page_width - x
+        elif rotation == 180:
+            return page_width - x, page_height - y
+        elif rotation == 270:
+            # 270° CCW: new page dimensions are height × width
+            # (x, y) on W×H → (H - y, x) on H×W
+            return page_height - y, x
+        else:
+            return x, y
+    
+    def _transform_doc_coords_inverse(self, x: float, y: float, rotation: int, page_width: float, page_height: float) -> tuple[float, float]:
+        """Inverse transformation: convert rotated coordinates back to original.
+        
+        Maps from rotated page coordinate system back to original page coordinates.
+        """
+        if rotation == 0:
+            return x, y
+        elif rotation == 90:
+            # Inverse of (x, y) -> (y, W - x)
+            # x' = y, y' = W - x => y = x', x = W - y'
+            return page_width - y, x
+        elif rotation == 180:
+            return page_width - x, page_height - y
+        elif rotation == 270:
+            # Inverse of (x, y) -> (H - y, x)
+            # x' = H - y, y' = x => y = H - x', x = y'
+            return y, page_height - x
+        else:
+            return x, y
+
     def _object_view_rect(self, obj: CanvasObject) -> QRectF:
+        # Get original page dimensions
+        orig_width, orig_height = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        
+        # Calculate the center of the annotation
+        # (obj.x, obj.y) is the top-left corner, so add half the dimensions to get center
+        center_x = obj.x + obj._base_width / 2
+        center_y = obj.y + obj._base_height / 2
+        
+        # Transform the center coordinates based on page rotation
+        # so annotation centers remain at the same visual location on the page
+        transformed_center_x, transformed_center_y = self._transform_doc_coords_by_rotation(
+            center_x, center_y, rotation, orig_width, orig_height
+        )
+        
+        # Convert back to top-left corner coordinates for QRectF
+        transformed_x = transformed_center_x - obj.scaled_width / 2
+        transformed_y = transformed_center_y - obj.scaled_height / 2
+        
         return QRectF(
-            self._doc_offset_x + obj.x * self._fit_scale,
-            self._doc_offset_y + obj.y * self._fit_scale,
+            self._doc_offset_x + transformed_x * self._fit_scale,
+            self._doc_offset_y + transformed_y * self._fit_scale,
             obj.scaled_width * self._fit_scale,
             obj.scaled_height * self._fit_scale,
         )
 
     def _view_to_doc(self, pt: QPointF) -> QPointF:
-        return QPointF(
-            (pt.x() - self._doc_offset_x) / self._fit_scale,
-            (pt.y() - self._doc_offset_y) / self._fit_scale,
+        # Convert view coordinates to document coordinates
+        doc_x = (pt.x() - self._doc_offset_x) / self._fit_scale
+        doc_y = (pt.y() - self._doc_offset_y) / self._fit_scale
+        
+        # Apply inverse rotation transformation to get original page coordinates
+        orig_width, orig_height = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        doc_x, doc_y = self._transform_doc_coords_inverse(
+            doc_x, doc_y, rotation, orig_width, orig_height
         )
+        
+        return QPointF(doc_x, doc_y)
 
     def _recompute_fit(self) -> None:
         if not self._pages:
@@ -150,7 +329,11 @@ class DocumentCanvas(QWidget):
             self._doc_offset_x = 0.0
             self._doc_offset_y = 0.0
             return
+        # Use rotated dimensions if rotation is applied
         dw, dh = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        if rotation in (90, 270):
+            dw, dh = dh, dw  # Swap dimensions for 90/270 degree rotations
         vw, vh = max(1, self.width()), max(1, self.height())
         self._fit_scale = min(vw / dw, vh / dh)
         self._doc_offset_x = (vw - dw * self._fit_scale) / 2
@@ -187,7 +370,11 @@ class DocumentCanvas(QWidget):
             return
 
         pm = self._page_pixmaps[self._current_page]
+        # Use rotated dimensions if rotation is applied
         dw, dh = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        if rotation in (90, 270):
+            dw, dh = dh, dw  # Swap dimensions for 90/270 degree rotations
         target = QRectF(
             self._doc_offset_x, self._doc_offset_y,
             dw * self._fit_scale, dh * self._fit_scale,
