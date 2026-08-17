@@ -464,9 +464,9 @@ class MainWindow(QMainWindow):
 
         # File menu
         self._hamburger_file_menu = hamburger_menu.addMenu("File")
-        self._hamburger_file_menu.addAction("Open Document", self.open_document)
-        self._hamburger_file_menu.addAction("Save As…", self.save_document_as)
-        self._hamburger_file_menu.addAction("Print", self.print_document)
+        self._hamburger_file_menu.addAction("Open Document (Ctrl+O or O)", self.open_document)
+        self._hamburger_file_menu.addAction("Save As… (Ctrl+S or S)", self.save_document_as)
+        self._hamburger_file_menu.addAction("Print (Ctrl+P or P)", self.print_document)
         self._hamburger_file_menu.addSeparator()
         self._file_recent_docs_actions = []  # Track recent doc actions for rebuilding
         self._rebuild_file_recent_documents_top_level(self._hamburger_file_menu)
@@ -475,22 +475,22 @@ class MainWindow(QMainWindow):
 
         # Edit menu
         edit_menu = hamburger_menu.addMenu("Edit")
-        edit_menu.addAction("Undo")  # placeholder for future
-        edit_menu.addAction("Redo")  # placeholder for future
+        edit_menu.addAction("Undo (Ctrl+Z or Z)", self.undo)
+        edit_menu.addAction("Redo (Ctrl+Y or Y)", self.redo)
         edit_menu.addSeparator()
-        edit_menu.addAction("Cut", self.canvas.cut_selected)
-        edit_menu.addAction("Copy", self.canvas.copy_selected)
-        edit_menu.addAction("Paste", self.canvas.paste_selected)
-        edit_menu.addAction("Duplicate", self.canvas.duplicate_selected)
+        edit_menu.addAction("Cut (Ctrl+X or X)", self.canvas.cut_selected)
+        edit_menu.addAction("Copy (Ctrl+C or C)", self.canvas.copy_selected)
+        edit_menu.addAction("Paste (Ctrl+V or V)", self.canvas.paste_selected)
+        edit_menu.addAction("Duplicate (Ctrl+D or D)", self.canvas.duplicate_selected)
         edit_menu.addSeparator()
-        edit_menu.addAction("Select All")  # placeholder
+        edit_menu.addAction("Select All (Ctrl+A or A)", self.canvas.select_all_on_page)
         edit_menu.addAction("Delete", self.canvas.remove_selected)
         edit_menu.addSeparator()
-        edit_menu.addAction("Rotate Current Page Left", self.canvas.rotate_current_page_left)
-        edit_menu.addAction("Rotate Current Page Right", self.canvas.rotate_current_page_right)
+        edit_menu.addAction("Rotate Current Page Left (Shift+Ctrl+L or Shift+L)", self.canvas.rotate_current_page_left)
+        edit_menu.addAction("Rotate Current Page Right (Shift+Ctrl+R or Shift+R)", self.canvas.rotate_current_page_right)
         edit_menu.addSeparator()
-        edit_menu.addAction("Rotate All Pages Left", self.canvas.rotate_all_pages_left)
-        edit_menu.addAction("Rotate All Pages Right", self.canvas.rotate_all_pages_right)
+        edit_menu.addAction("Rotate All Pages Left (Ctrl+L or L)", self.canvas.rotate_all_pages_left)
+        edit_menu.addAction("Rotate All Pages Right (Ctrl+R or R)", self.canvas.rotate_all_pages_right)
 
         # Annotations menu
         annotations_menu = hamburger_menu.addMenu("Annotations")
@@ -1558,6 +1558,18 @@ class MainWindow(QMainWindow):
     def _update_title(self) -> None:
         doc_name = Path(self.document_path).name if self.document_path else "(no document)"
         self.setWindowTitle(f"Signer — {doc_name}")
+
+    # ---------------------------------------------------------------- undo/redo (placeholder)
+
+    def undo(self) -> None:
+        """Undo the last action (placeholder - not yet implemented)."""
+        # TODO: Implement undo/redo stack
+        pass
+
+    def redo(self) -> None:
+        """Redo the last undone action (placeholder - not yet implemented)."""
+        # TODO: Implement undo/redo stack
+        pass
 
     # ---------------------------------------------------------------- unsaved changes handling
 

@@ -292,6 +292,18 @@ class DocumentCanvas(QWidget):
         self.objectChanged.emit()
         self.update()
 
+    def select_all_on_page(self) -> None:
+        """Select all annotations on the current page."""
+        objs = self.current_page_objects()
+        if not objs:
+            return
+        self._selected_multiple.clear()
+        self._selected_multiple.update(objs)
+        if objs:
+            self._selected = objs[0]  # Set first as primary
+        self.objectChanged.emit()
+        self.update()
+
     def get_selected_annotations(self) -> list[CanvasObject]:
         """Return all selected annotations (sorted for consistency)."""
         if self._selected_multiple:
@@ -794,8 +806,13 @@ class DocumentCanvas(QWidget):
 
     def keyPressEvent(self, event) -> None:
         key = event.key()
+        modifiers = event.modifiers()
         
-        # Page navigation
+        # Get selected annotations
+        selected = self.get_selected_annotations()
+        
+        # ================================================================ Page navigation
+        # Page Up / Page Down
         if key == Qt.Key_PageDown:
             self.goto_page(self._current_page + 1)
             return
@@ -809,36 +826,47 @@ class DocumentCanvas(QWidget):
             self.goto_page(len(self._pages) - 1)
             return
         
-        # Get selected annotations
-        selected = self.get_selected_annotations()
+        # ================================================================ Escape: Deselect all
+        if key == Qt.Key_Escape:
+            self.clear_selection()
+            return
         
-        # Delete
+        # ================================================================ Delete annotation(s)
         if key in (Qt.Key_Delete, Qt.Key_Backspace):
             if selected:
                 self.delete_selected()
-                return
-        
-        # Arrow keys for movement (only if something is selected)
-        if key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
-            if not selected:
-                super().keyPressEvent(event)
-                return
-            
-            # Determine increment: Shift for larger, normal for smaller
-            increment = 50.0 if event.modifiers() & Qt.ShiftModifier else 10.0
-            
-            if key == Qt.Key_Up:
-                self.move_selected(0, -increment)
-            elif key == Qt.Key_Down:
-                self.move_selected(0, increment)
-            elif key == Qt.Key_Left:
-                self.move_selected(-increment, 0)
-            elif key == Qt.Key_Right:
-                self.move_selected(increment, 0)
             return
         
-        # Copy/Cut/Paste
-        if event.modifiers() & Qt.ControlModifier:
+        # ================================================================ Arrow keys
+        if key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
+            if selected:
+                # Movement: 12pt normal, 1px with Shift (per V1.2.18)
+                increment = 1.0 if modifiers & Qt.ShiftModifier else 12.0
+                
+                if key == Qt.Key_Up:
+                    self.move_selected(0, -increment)
+                elif key == Qt.Key_Down:
+                    self.move_selected(0, increment)
+                elif key == Qt.Key_Left:
+                    self.move_selected(-increment, 0)
+                elif key == Qt.Key_Right:
+                    self.move_selected(increment, 0)
+                return
+            else:
+                # Page navigation without annotation selected: left/right arrows
+                if key == Qt.Key_Left:
+                    self.goto_page(self._current_page - 1)
+                    return
+                elif key == Qt.Key_Right:
+                    self.goto_page(self._current_page + 1)
+                    return
+        
+        # ================================================================ Copy / Cut / Paste / Duplicate
+        # Both Ctrl variants (Ctrl+C/X/V/D/A/Z/Y) and single-key variants (C/X/V/D/A/Z/Y)
+        is_ctrl_key = modifiers & Qt.ControlModifier
+        is_shift_key = modifiers & Qt.ShiftModifier
+        
+        if is_ctrl_key:
             if key == Qt.Key_C:
                 if selected:
                     self.copy_selected()
@@ -849,6 +877,123 @@ class DocumentCanvas(QWidget):
                 return
             elif key == Qt.Key_V:
                 self.paste_selected()
+                return
+            elif key == Qt.Key_D:
+                if selected:
+                    self.duplicate_selected()
+                return
+            elif key == Qt.Key_A:
+                self.select_all_on_page()
+                return
+            elif key == Qt.Key_Z:
+                # Undo (Ctrl+Z) - delegate to parent window
+                self.parent().undo() if hasattr(self.parent(), 'undo') else None
+                return
+            elif key in (Qt.Key_Y, Qt.Key_Plus):  # Ctrl+Y for Redo
+                # Redo (Ctrl+Y or Ctrl+Shift+Z) - delegate to parent window
+                self.parent().redo() if hasattr(self.parent(), 'redo') else None
+                return
+            # ================================================================ Rotation with Ctrl
+            elif key == Qt.Key_L:
+                if is_shift_key:
+                    # Shift+Ctrl+L: Rotate current page left
+                    self.rotate_current_page_left()
+                else:
+                    # Ctrl+L: Rotate all pages left
+                    self.rotate_all_pages_left()
+                return
+            elif key == Qt.Key_R:
+                if is_shift_key:
+                    # Shift+Ctrl+R: Rotate current page right
+                    self.rotate_current_page_right()
+                else:
+                    # Ctrl+R: Rotate all pages right
+                    self.rotate_all_pages_right()
+                return
+            # ================================================================ Document operations (delegate to parent)
+            elif key == Qt.Key_O:
+                # Ctrl+O: Open document
+                if hasattr(self.parent(), 'open_document'):
+                    self.parent().open_document()
+                return
+            elif key == Qt.Key_S:
+                # Ctrl+S: Save As dialog
+                if hasattr(self.parent(), 'save_document_as'):
+                    self.parent().save_document_as()
+                return
+            elif key == Qt.Key_P:
+                # Ctrl+P: Print
+                if hasattr(self.parent(), 'print_document'):
+                    self.parent().print_document()
+                return
+        else:
+            # ================================================================ Single-key hotkey variants (no Ctrl)
+            # These are available only in default document view (no Ctrl modifier)
+            if key == Qt.Key_O:
+                # O: Open document
+                if hasattr(self.parent(), 'open_document'):
+                    self.parent().open_document()
+                return
+            elif key == Qt.Key_S:
+                # S: Save As dialog
+                if hasattr(self.parent(), 'save_document_as'):
+                    self.parent().save_document_as()
+                return
+            elif key == Qt.Key_P:
+                # P: Print
+                if hasattr(self.parent(), 'print_document'):
+                    self.parent().print_document()
+                return
+            elif key == Qt.Key_C:
+                # C: Copy
+                if selected:
+                    self.copy_selected()
+                return
+            elif key == Qt.Key_X:
+                # X: Cut
+                if selected:
+                    self.cut_selected()
+                return
+            elif key == Qt.Key_V:
+                # V: Paste
+                self.paste_selected()
+                return
+            elif key == Qt.Key_D:
+                # D: Duplicate
+                if selected:
+                    self.duplicate_selected()
+                return
+            elif key == Qt.Key_A:
+                # A: Select all
+                self.select_all_on_page()
+                return
+            elif key == Qt.Key_Z:
+                # Z: Undo
+                if hasattr(self.parent(), 'undo'):
+                    self.parent().undo()
+                return
+            elif key == Qt.Key_Y:
+                # Y: Redo
+                if hasattr(self.parent(), 'redo'):
+                    self.parent().redo()
+                return
+            elif key == Qt.Key_L:
+                # L or Shift+L: Rotate
+                if is_shift_key:
+                    # Shift+L: Rotate current page left
+                    self.rotate_current_page_left()
+                else:
+                    # L: Rotate all pages left
+                    self.rotate_all_pages_left()
+                return
+            elif key == Qt.Key_R:
+                # R or Shift+R: Rotate
+                if is_shift_key:
+                    # Shift+R: Rotate current page right
+                    self.rotate_current_page_right()
+                else:
+                    # R: Rotate all pages right
+                    self.rotate_all_pages_right()
                 return
         
         super().keyPressEvent(event)

@@ -831,5 +831,50 @@ When multiple annotations are selected, the following operations shall apply to 
 15. Clipboard shall use JSON format for serialized annotations, compatible with existing annotation serialization.
 16. Pasted annotations shall have adjusted coordinates (offset by ~10 pixels) to avoid exact overlap with originals if pasted on the same page. No aadjusted coordinated if the paste is to another page.
 
+## Version 1.2.18 - Keyboard navigation and hotkeys
+
+1. When an annotation is selected, arrow keys (left, right, up, down) shall move it by 12pt. With Shift held, movement shall be 1px.
+
+2. **Supported hotkeys and keyboard shortcuts:**
+
+| Hotkey | Alternative (no Ctrl) | Action |
+|--------|----------------------|--------|
+| **Navigation & Movement** |
+| ← / → (no selection) | — | Navigate to previous/next page |
+| ↑ / ↓ (selected) | — | Move selected annotation up/down by 12pt (Shift: 1px) |
+| ← / → (selected) | — | Move selected annotation left/right by 12pt (Shift: 1px) |
+| Page Up | — | Go to previous page |
+| Page Down | — | Go to next page |
+| Home | — | Go to first page |
+| End | — | Go to last page |
+| **Document & File Operations** |
+| Ctrl+O | O | Open document |
+| Ctrl+S | S | Show Save As dialog |
+| Ctrl+P | P | Print |
+| **Annotation Operations** |
+| Ctrl+C | C | Copy selected annotation(s) |
+| Ctrl+X | X | Cut selected annotation(s) |
+| Ctrl+V | V | Paste annotation(s) |
+| Ctrl+D | D | Duplicate selected annotation(s) |
+| Ctrl+A | A | Select all annotations on current page |
+| Delete | — | Delete selected annotation(s) |
+| Escape | — | Deselect all annotations |
+| **Undo/Redo** |
+| Ctrl+Z | Z | Undo |
+| Ctrl+Y | Y | Redo |
+| **Document Rotation** |
+| Ctrl+L | L | Rotate all document pages left (90°) |
+| Ctrl+R | R | Rotate all document pages right (90°) |
+| Shift+Ctrl+L | Shift+L | Rotate current page left (90°) |
+| Shift+Ctrl+R | Shift+R | Rotate current page right (90°) |
+
+**Context:** All hotkeys (both Ctrl-based and single-key variants) are active only in the default document view when no dialog or text input field is active. They are intentionally unavailable when:
+- A dialog is open (Open, Save As, Overwrite confirmation, etc.)
+- A text input field is active (in a text annotation being edited, in the Save dialog filename field, etc.)
+
+This prevents accidental triggering of hotkeys while the user is typing or confirming actions.
+
+3. **Note on annotation addition hotkeys**: Hotkeys for directly adding specific annotation types (Checkmark, Cross, Arrows, Text, Signature) are not provided; these are accessed via the Annotations menu or toolbar button.
+
 # Assumptions
 1. Signature has a transparent background.
