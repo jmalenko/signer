@@ -1,0 +1,24 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples/document1.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_e",
+      "page": 0,
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 0,
+      "x": 77.19836400818002,
+      "y": 1882.8548057259713
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}
