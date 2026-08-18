@@ -8,8 +8,8 @@
       "type": "add_annotation",
       "annotation_type": "checkmark",
       "page": 0,
-      "x": 300,
-      "y": 350
+      "x": 285,
+      "y": 650
     },
     {
       "type": "save_document"

@@ -39,32 +39,31 @@ class TestDocument1Checkmark:
         # 2. User adding checkmark annotation, moving it, resizing it
         # 3. User saving output to examples/document1-signed.png
         # 4. Test fixture copied that file to the expected location
-        expected_image = FIXTURES_DIR / "document1_checkmark" / "output.png"
+        expected_image = FIXTURES_DIR / "document1_checkmark" / "document1-signed.png"
         assert expected_image.exists(), f"Expected image not found: {expected_image}"
 
     def test_document1_checkmark_pixel_perfect(self, main_window, temp_dir):
         """Test that checkmark annotation renders correctly and matches reference."""
+        from unittest.mock import patch
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+        
         actions_file = FIXTURES_DIR / "document1_checkmark.json"
-        expected_image = FIXTURES_DIR / "document1_checkmark" / "output.png"
-        output_image = temp_dir / "output.png"
+        expected_image = FIXTURES_DIR / "document1_checkmark" / "document1-signed.png"
+        output_image = temp_dir / "document1-signed.png"
 
-        # Load actions and modify save path
+        # Load actions (pure user actions, no test-specific paths)
         with open(actions_file) as f:
             actions_data = json.load(f)
 
-        # Update save_document action with output path
-        for action in actions_data.get("actions", []):
-            if action.get("type") == "save_document":
-                action["path"] = str(output_image.absolute())
-                break
+        # Mock the file dialog to save to temp directory
+        def mock_get_save_filename(*args, **kwargs):
+            return (str(output_image.absolute()), "PNG files (*.png)")
 
-        # Save modified actions
-        temp_actions = temp_dir / "actions_with_output_path.json"
-        with open(temp_actions, "w") as f:
-            json.dump(actions_data, f, indent=2)
-
-        # Play actions in the isolated main window
-        play_actions_from_file(main_window, temp_actions)
+        # Play actions with mocked save dialog
+        with patch.object(QFileDialog, 'getSaveFileName', side_effect=mock_get_save_filename):
+            with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
+                play_actions_from_file(main_window, actions_file)
+        
         QApplication.processEvents()
 
         # Verify output matches reference (pixel-perfect)
