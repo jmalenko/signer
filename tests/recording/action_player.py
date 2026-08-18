@@ -13,11 +13,12 @@ from signer.objects import AnnotationType, CanvasObject
 class ActionPlayer:
     """Plays back recorded actions against a MainWindow instance."""
 
-    def __init__(self, main_window: MainWindow):
+    def __init__(self, main_window: MainWindow, output_path: Optional[Path] = None):
         self.main_window = main_window
         self.canvas = main_window.canvas
         self._object_map: Dict[int, CanvasObject] = {}
         self._next_object_id = 0
+        self.output_path = output_path
 
     def load_actions(self, actions_file: str | Path) -> List[Dict[str, Any]]:
         """Load actions from a JSON file."""
@@ -178,16 +179,19 @@ class ActionPlayer:
         """Save the document.
         
         If path is provided in the action, the file will be saved to that path.
-        If path is omitted, the application's default save dialog will be used.
+        If path is omitted and output_path was set in constructor, use that.
+        Otherwise, the application's default save dialog will be used.
         """
-        path = action.get("path")
+        path = action.get("path") or self.output_path
         
         from pathlib import Path
         from unittest.mock import patch
         
         if path:
+            # Ensure it's a string path
+            path_str = str(path)
             # Determine the file format from the path extension
-            ext = Path(path).suffix.lower()
+            ext = Path(path_str).suffix.lower()
             if ext == '.png':
                 format_filter = "PNG files (*.png)"
             elif ext in ['.jpg', '.jpeg']:
@@ -196,13 +200,13 @@ class ActionPlayer:
                 format_filter = "JPEG files (*.jpg *.jpeg)"  # default
             
             # Mock the file dialog to use our path
-            with patch.object(QFileDialog, 'getSaveFileName', return_value=(path, format_filter)):
+            with patch.object(QFileDialog, 'getSaveFileName', return_value=(path_str, format_filter)):
                 with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
                     result = self.main_window.save_signed_document()
                     if not result:
-                        raise RuntimeError(f"Failed to save document to: {path}")
+                        raise RuntimeError(f"Failed to save document to: {path_str}")
         else:
-            # No path specified - let the application use its default behavior
+            # No path specified and no output_path set - let the application use its default behavior
             # Mock only the message box, let the dialog proceed
             with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
                 result = self.main_window.save_signed_document()
@@ -219,8 +223,14 @@ class ActionPlayer:
         return self._object_map.get(obj_id)
 
 
-def play_actions_from_file(main_window: MainWindow, actions_file: str | Path) -> None:
-    """Convenience function to play actions from a file."""
-    player = ActionPlayer(main_window)
+def play_actions_from_file(main_window: MainWindow, actions_file: str | Path, output_path: Optional[Path] = None) -> None:
+    """Convenience function to play actions from a file.
+    
+    Args:
+        main_window: The main window to play actions against
+        actions_file: Path to JSON file containing actions
+        output_path: Optional path to use when save_document action has no path
+    """
+    player = ActionPlayer(main_window, output_path=output_path)
     actions = player.load_actions(actions_file)
     player.play_actions(actions)

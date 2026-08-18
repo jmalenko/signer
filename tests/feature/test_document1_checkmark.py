@@ -32,37 +32,14 @@ class TestDocument1Checkmark:
         yield window
         window.close()
 
-    def test_generate_reference_image(self):
-        """Document that reference image was created by user actions."""
-        # This test documents that the reference image was created by:
-        # 1. User running: SIGNER_RECORD_ACTIONS=1 python main.py -document examples/document1.pdf
-        # 2. User adding checkmark annotation, moving it, resizing it
-        # 3. User saving output to examples/document1-signed.png
-        # 4. Test fixture copied that file to the expected location
-        expected_image = FIXTURES_DIR / "document1_checkmark" / "document1-signed.png"
-        assert expected_image.exists(), f"Expected image not found: {expected_image}"
-
     def test_document1_checkmark_pixel_perfect(self, main_window, temp_dir):
         """Test that checkmark annotation renders correctly and matches reference."""
-        from unittest.mock import patch
-        from PySide6.QtWidgets import QFileDialog, QMessageBox
-        
         actions_file = FIXTURES_DIR / "document1_checkmark.json"
         expected_image = FIXTURES_DIR / "document1_checkmark" / "document1-signed.png"
         output_image = temp_dir / "document1-signed.png"
 
-        # Load actions (pure user actions, no test-specific paths)
-        with open(actions_file) as f:
-            actions_data = json.load(f)
-
-        # Mock the file dialog to save to temp directory
-        def mock_get_save_filename(*args, **kwargs):
-            return (str(output_image.absolute()), "PNG files (*.png)")
-
-        # Play actions with mocked save dialog
-        with patch.object(QFileDialog, 'getSaveFileName', side_effect=mock_get_save_filename):
-            with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
-                play_actions_from_file(main_window, actions_file)
+        # Play actions with output path
+        play_actions_from_file(main_window, actions_file, output_path=output_image)
         
         QApplication.processEvents()
 
