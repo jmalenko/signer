@@ -93,6 +93,7 @@ class ActionPlayer:
         x = action["x"]
         y = action["y"]
         page = action.get("page", 0)
+        text = action.get("text")  # Optional text content for text annotations
 
         # Convert string to enum
         ann_type = AnnotationType(ann_type_str)
@@ -108,6 +109,14 @@ class ActionPlayer:
             # Move to the recorded position
             self.canvas.selected.x = x
             self.canvas.selected.y = y
+            
+            # Set text content if this is a text annotation
+            if text is not None and hasattr(self.canvas.selected, 'text'):
+                self.canvas.selected.text = text
+                # Resize annotation to fit the text
+                if hasattr(self.canvas.selected, 'fit_text_box'):
+                    self.canvas.selected.fit_text_box()
+            
             self.canvas.objectChanged.emit()
             self.canvas.update()
             
