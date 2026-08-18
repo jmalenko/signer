@@ -12,6 +12,7 @@ venv/
 build/
 dist/
 *.spec
+!signer.spec
 
 # Test and tooling caches
 .pytest_cache/
@@ -25,8 +26,8 @@ test-results/
 .vscode/*.log
 
 # Local app/runtime outputs
-*-signed.jpg
-*-signed-*.jpg
+document-signed.*
+document-signed-p*.*
 
 # OS files
 .DS_Store

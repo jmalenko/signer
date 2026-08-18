@@ -4,26 +4,34 @@
 Build a small Windows desktop app to place a scanned signature (transparent image) on top of a PDF page and export the result as a JPG, with minimal manual steps.
 
 ## 1.1 Example Assets (Current Workspace)
+- `examples/document.odt` (sample OpenDocument Text document; master file, other examples are derived from this)
 - `examples/document.pdf` (sample one-page input document)
+- `examples/document.doc` (sample Word document)
+- `examples/document.docx` (sample Word document)
+- `examples/document1.pdf` (sample multi-page input document, 1st page of master document)
+- `examples/document1.jpg` (sample image document)
 - `examples/signature.png` (sample signature image)
 - `examples/signature.xcf` (GIMP source; not directly supported for import)
-- `examples/document.odt` (non-PDF sample; expected validation failure)
 
 ## 2. Scope (v1)
-- Open a PDF document.
+- Open a document in one of the supported formats: PDF, Word (.docx/.doc), ODT, or images (JPG, PNG, BMP, WEBP, GIF, TIFF).
+- Multi-format support via format-agnostic document loader:
+  - PDF: rendered directly via PyMuPDF
+  - Word/ODT: converted to temporary PDF via LibreOffice, then rendered
+  - Images: loaded directly via Pillow
 - Open/select a signature image from annotation submenu (PNG preferred for transparency).
 - Show document and signature overlay in one canvas.
 - Drag signature to final position.
 - Resize signature (scale up/down) before saving by dragging boundary handles.
 - Save merged output as JPG.
 - Support startup parameters:
-  - `-document <path>`
-  - `-signature <path>`
+  - `-document <path>` (any supported document format)
+  - `-signature <path>` (image file, PNG preferred)
 - If signature is not provided, reuse last signature file.
 - Default output file name: `<documentname>-signed.jpg`.
 - Document view fits window (no zoom controls in v1).
 - Default position for new annotations: centered in the visible page.
-- Support multi-page PDFs: place objects on any page.
+- Support multi-page documents: place objects on any page.
 - Add paging controls in toolbar and keyboard support (`PageUp`, `PageDown`, `Home`, `End`).
 - Show blue boundary around selected signature/annotation while editing.
 - Change mouse cursor to move arrows when hovering draggable objects.
@@ -39,11 +47,11 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 - Advanced typography controls (font families, rich text editing) for text annotations.
 
 ## 4. UX Design
-### Main Window
+### Main Window (Version 1.2.10 Update)
 - Top toolbar (large buttons):
   - Open Document
   - Add Annotation (2nd position)
-  - Save JPG (3rd position, same workflow group)
+  - Save As... (3rd position, same workflow group, replaces "Save JPG")
   - Previous Page / Next Page
   - Annotation picker (dropdown):
     - Checkmark
@@ -51,16 +59,17 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
     - Arrow N/NE/E/SE/S/SW/W/NW
     - Text ▶ Free text / Current date / Current time / Current date & time
     - Signature ▶ From file… / Recent (up to 10 LRU files)
-- Terminology: primary actions are provided as Toolbar buttons (faster navigation). They may be mirrored in the menu for compatibility.
+- **Hamburger menu** (right end, three horizontal lines ☰):
+  - **File:** Open Document, Recent Documents, Save As..., Exit
+  - **Edit:** Undo, Redo, Cut, Copy, Paste, Duplicate, Select All, Delete
+  - **Annotations:** List of all annotation types with submenus
+  - **Help:** Homepage (on GitHub)
+- Terminology: primary actions are provided as Toolbar buttons (faster navigation). They are also available in the hamburger menu for accessibility.
 - Central canvas:
   - Background: rendered current PDF page (fit-to-window).
   - Foreground: draggable/scalable objects (signature + annotations).
   - Blue boundary for selected object.
-- Status bar:
-  - Current document path.
-  - Current signature path.
-  - Current page number / total pages.
-  - Selected object coordinates/size.
+- Status bar: (removed in version 1.2.1)
 
 ### Typical Flow
 1. Start app.
@@ -70,21 +79,28 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 5. Navigate to page (toolbar or keyboard shortcuts).
 6. Drag/scale signature to desired location.
 7. Optionally add and adjust annotation objects.
-8. Save active page to JPG.
+8. Save document via "Save As..." dialog, selecting desired format (JPG, PNG, PDF, TIFF, BMP).
 
 ## 5. Functional Design
 ### 5.1 Input Handling
 - Validate file existence and extensions.
-- PDF input: support multi-page PDFs.
-- Signature input: PNG (for transparency).
-- Unsupported signature formats (e.g., `.xcf`) should trigger a clear validation message.
+- Supported document formats:
+  - **PDF** input: support multi-page PDFs via PyMuPDF
+  - **Word** (.docx, .doc): convert to PDF via LibreOffice, then render
+  - **ODT**: convert to PDF via LibreOffice, then render
+  - **Images** (JPG, PNG, BMP, WEBP, GIF, TIFF): load directly via Pillow
+- Signature input: PNG (for transparency) or other image formats supported by Pillow.
+- Unsupported format (e.g., `.xcf`, unsupported file types) should trigger a clear validation message.
 
 ### 5.2 Rendering Pipeline
-1. Render active PDF page to bitmap at fixed internal DPI: **300 DPI**.
-2. Scale page bitmap to fit viewport while preserving aspect ratio.
-3. Render object layer for active page (signature + annotations) in viewport coordinates.
-4. Support object move and scale (boundary-handle drag).
-5. On save (active page):
+1. For PDF documents: render active PDF page to bitmap at fixed internal DPI via PyMuPDF.
+2. For Word/ODT documents: convert to temporary PDF via LibreOffice subprocess, then render via PyMuPDF.
+3. For image documents: load directly via Pillow.
+4. All document pages normalized to `List[PIL.Image]` at fixed internal DPI: **300 DPI**.
+5. Scale page bitmap to fit viewport while preserving aspect ratio.
+6. Render object layer for active page (signature + annotations) in viewport coordinates.
+7. Support object move and scale (boundary-handle drag).
+8. On save (active page):
    - Convert object viewport coordinates to source bitmap coordinates.
    - Composite signature and annotations in z-order over active page bitmap.
    - Export JPG.
@@ -149,25 +165,269 @@ Recent items appear in relevant menus:
 - **Signature submenu**: Recent signatures with separator (existing)
 - **Toolbar "Open Document" dropdown**: Recent documents submenu
 
-### 5.8 CLI Parameters
-- `-document <path>`: initial document to load.
-- `-signature <path>`: initial signature to load.
+### 5.8 Export Formats (Save As)
+Supported export formats for annotated documents:
+- **JPG**: 300 DPI, lossy compression, default format
+- **PNG**: 300 DPI, lossless compression, maintains transparency
+- **PDF**: 300 DPI, raster images (embedded), all pages in single file
+- **TIFF**: 300 DPI, compressed multi-frame, all pages in single file
+- **BMP**: 300 DPI, uncompressed raster
+
+File naming for multi-page export:
+- Single-page: `{name}-signed.{ext}`
+- Multi-page JPG/PNG/BMP: `{name}-signed-p01.{ext}`, `{name}-signed-p02.{ext}`, etc.
+- PDF/TIFF: `{name}-signed.{ext}` (all pages in one file)
+
+Save As Dialog Behavior:
+- Preserves last used export format (extension) from previous save
+- Format is auto-detected from file extension in the filename input
+- User can change format by modifying the extension
+
+### 5.9 Post-Export Notification (v1.2.11)
+After successful export:
+- Display an auto-dismissing notification toast (bottom-right corner)
+- Duration: auto-dismiss after 5 seconds or manual close with X button
+- Message format: "Exported {filename} to [directory link]"
+- Directory link is clickable (underlined, colored) and opens Windows Explorer at that location
+- Notification does not steal focus; user can continue working
+- Notification text is readable with sufficient contrast against background
+
+On export failure:
+- Display a modal error dialog (blocks interaction) instead of notification
+- Dialog shows specific error message, file path, and recovery suggestions
+- Provide "Retry" and "Cancel" buttons
+- Errors demand user acknowledgment; success notifications are non-intrusive
+
+### 5.10 Export Quality Options (v1.2.14)
+
+**Design Principle:**
+- Standard user workflow: Select format → click Save → done (no extra steps)
+- Advanced users: Click "Options" button to tune quality settings before saving
+- Lossless formats automatically use best available quality (PNG: max compression, TIFF: LZW)
+
+**Save As Dialog Changes:**
+- Add "Options..." button (enabled and visible ONLY for lossy formats: JPG and PDF; hidden for lossless formats: PNG/TIFF/BMP)
+- Button label: "Options..." or "Quality Options..."
+- Button position: Near standard "Save" and "Cancel" buttons (similar to Word/Office)
+
+**Quality Options Panel** (opened by "Options" button for lossy formats only):
+- Non-modal dialog floating above Save As dialog
+- Title: "Export Quality Options"
+- Shows quality slider (1-100) with numeric value always visible
+- Slider labels: "small file" on left ← → "large file" on right (indicates quality-to-filesize tradeoff)
+- Buttons: "OK" (apply settings and close panel), "Cancel" (discard changes and close panel)
+- After "OK": returns to Save As dialog so user can click "Save"
+- After "Cancel": returns to Save As dialog; no quality settings changed
+
+**Format-Specific Settings:**
+
+**Lossy Formats (Options button enabled):**
+| Format | Control | Range | Default | Slider Labels |
+|--------|---------|-------|---------|----------------|
+| **JPG** | Slider | 1-100 | 95 | "small file" ← → "large file" |
+| **PDF** | Slider | 1-100 | 95 | "small file" ← → "large file" |
+
+*For JPG and PDF, numeric value is always visible next to slider.*
+
+**Lossless Formats (Options button hidden):**
+| Format | Quality Control | Notes |
+|--------|-----------------|-------|
+| **PNG** | Automatic | Always uses compress_level=9 (maximum lossless compression) |
+| **TIFF** | Automatic | Always uses LZW compression (industry standard) |
+| **BMP** | Automatic | Always uncompressed (standard format) |
+
+**User Workflows:**
+
+*Standard (no quality adjustment):*
+1. Click "Save As..." button
+2. Select filename and format
+3. Click "Save"
+4. Export with default quality (JPG/PDF: 95; PNG: max compression; TIFF: LZW)
+5. Success notification appears
+
+*Advanced (with quality adjustment):*
+1. Click "Save As..." button
+2. Select filename and format
+3. Click "Options..." button (if enabled for that format)
+4. Adjust quality slider and click "OK"
+5. Click "Save"
+6. Export with selected quality settings
+7. Success notification appears
+
+**Settings Persistence:**
+- Configuration fields in `config.json`:
+  - `lastJpegQuality` (int, 1-100, default: 95)
+  - `lastPdfImageQuality` (int, 1-100, default: 95)
+- PNG and TIFF settings NOT persisted (always use best quality automatically)
+- Options panel pre-populates with last-used values for JPG and PDF
+- Settings updated when user clicks "OK" in options panel (not during export)
+
+**Export Behavior:**
+- JPG: Pass `quality=value` to `PIL.Image.save()` (user-selected or default 95)
+- PNG: Always pass `compress_level=9` to `PIL.Image.save()` (no user choice, automatic best quality)
+- PDF: Pass `quality=value` when compositing raster images (user-selected or default 95)
+- TIFF: Always use `compression='tiff_deflate'` (LZW, no user choice, automatic best quality)
+- BMP: No additional parameters (always uncompressed)
+
+**Error Handling:**
+- Invalid quality values: clamp to valid range
+- Corrupted config file: use format defaults
+- Export failure: show error dialog with cause
+
+**Benefits of This Approach:**
+- Simpler standard workflow (one less dialog)
+- Power users can still access quality controls
+- Lossless formats always get best quality without overhead
+- Consistent with Office/Word "Options" button pattern
+
+### 5.11 CLI Parameters
+- `-document <path>`: initial document to load (any supported format: PDF, Word, ODT, or image).
+- `-signature <path>`: initial signature to load (image file, PNG preferred).
 - If `-signature` is provided with `-document`, add signature annotation immediately after load.
 - If `-signature` is omitted, do not auto-add annotations on document open.
 
 Example startup:
 - `Signer.exe -document examples/document.pdf -signature examples/signature.png`
+- `Signer.exe -document examples/document.docx -signature examples/signature.png`
 
-### 5.9 File Naming
-Default save name:
-- Input `document.pdf` => `document-p<page>-signed.jpg` for multi-page clarity (example: `document-p3-signed.jpg`)
+### 5.12 File Naming (All Formats)
+Default save name (applies to all export formats):
+- Input `document.pdf` => `document-p<page>-signed.{ext}` for multi-page clarity (example: `document-p3-signed.jpg`)
 - If conflict exists, append numeric suffix (`-signed-1.jpg`, etc.)
+- Version 1.2.10 unifies this across all formats via "Save As" dialog
+
+### 5.13 Document and Page Rotation (v1.2.16)
+
+**Design Principle**: Rotation is temporary (session-only) for viewing and exporting; no persistence to disk.
+
+**Menu Items**: Four rotation actions in Edit menu:
+- Rotate Current Page Left (90° counter-clockwise)
+- Rotate Current Page Right (90° clockwise)
+- Rotate All Pages Left (all pages 90° counter-clockwise)
+- Rotate All Pages Right (all pages 90° clockwise)
+
+**Rotation Behavior**:
+- Per-page rotation state tracked via `_page_rotations: dict[int, int]` (maps page index to angle in 0/90/180/270)
+- Rotation is cumulative: clicking "left" 4 times on same page returns to 0°
+- Annotations do not rotate visually, but their position coordinates are transformed so the center remains at the same visual location
+- Coordinate transformation accounts for the changed coordinate system after page rotation
+- Window auto-resizes to maintain aspect ratio for portrait↔landscape transitions (via `_recompute_fit()`)
+
+**Annotation Coordinate Transformation**:
+- Original annotation coordinates stored relative to unrotated page
+- **Center-based transformation**: Calculate annotation center from top-left corner (x, y), transform center coordinates, convert back to top-left corner
+- **Display**: Annotation center is transformed via `_transform_doc_coords_by_rotation()` so centers remain at the same visual location on the page after rotation
+- **Export**: Annotation center is transformed via `page_objects_with_rotation_at()` so centers appear at the correct visual position on the rotated page
+- **Mouse interaction**: Mouse coordinates are converted via `_transform_doc_coords_inverse()` to convert back from rotated to original coordinates
+- **Key property**: Annotations themselves are NOT rotated—only their position changes. Signatures keep their aspect ratio, text stays upright, etc.
+- **Transformation formulas** (mapping W×H original page to H×W rotated page):
+  - 90° CCW: (x, y) → (y, W - x)
+  - 180°: (x, y) → (W - x, H - y)
+  - 270° CCW: (x, y) → (H - y, x)
+
+**Export Behavior**:
+- All export formats (JPG, PNG, PDF, TIFF, BMP) export rotated pages as-is
+- Multi-page documents can have mixed rotations (different angles per page); each exports with its own rotation
+- Annotations are exported at their transformed coordinates on rotated pages
+- `page_objects_with_rotation_at()` returns objects with coordinates pre-transformed for export
+- Rotation does not modify stored image files, only the displayed/exported view
+
+**Implementation Details**:
+- Rendering: PIL `Image.rotate(degrees, expand=True)` applies rotation with dimension swapping
+- Dimension swapping: 90°/270° rotations swap width↔height for proper fit calculation
+- Pixmap caching: `_update_rotated_pixmap()` regenerates QPixmap after rotation
+- Canvas coordinate mapping: 
+  - Display: `_object_view_rect()` transforms annotation coords
+  - Interaction: `_view_to_doc()` applies inverse transformation
+  - Export: `page_objects_with_rotation_at()` returns shallow copies with transformed coordinates
+- Export integration: `get_page_image_with_rotation()` returns rotated PIL image; export functions use transformed object coordinates
+
+### 5.14 Multi-Selection Feature (v1.2.17)
+
+**Selection Mechanics**:
+- **Single-selection**: Click on an annotation to select it (existing behavior, unchanged)
+- **Multi-selection**: Hold Shift and click on an annotation to add it to or remove it from current selection
+- **Selection scope**: Limited to annotations on the current page only; selection is cleared when navigating to a different page
+- **Clear selection**: Click on empty canvas to deselect all (existing behavior when no Shift held)
+
+**Multi-Selection Operations**:
+When multiple annotations are selected, the following operations apply to all selected annotations:
+
+| Operation | Behavior |
+|-----------|----------|
+| **Move** (arrow keys) | All selected annotations move together; Arrow keys: ~10px; Shift+Arrow: ~50px |
+| **Delete** (Delete key) | Delete all selected annotations in single undo/redo unit |
+| **Copy** (Ctrl+C) | Copy all selected annotations to clipboard as JSON |
+| **Cut** (Ctrl+X) | Copy all selected to clipboard, then delete in single undo unit |
+| **Paste** (Ctrl+V) | Paste copied annotations onto current page; applies ~10px offset on same page, no offset on different page |
+| **Duplicate** (Ctrl+D) | Create copies of all selected, offset by ~15px; single undo unit |
+| **Color change** | Apply color to all selected annotation types that support it |
+
+**Visual Feedback**:
+- Single selection: Blue boundary around selected annotation (existing)
+- Multi-selection: Blue boundary around all selected annotations; resize handles shown only on primary selected object
+
+**Clipboard Format (JSON)**:
+Annotations are serialized as a JSON array when copied/cut. Format preserves all object properties:
+```json
+[
+  {
+    "type": "signature|checkmark|cross|arrow_*|text",
+    "x": 100.0,
+    "y": 200.0,
+    "scaled_width": 300.0,
+    "scaled_height": 150.0,
+    "page": 0,
+    "color": "#cc0000",
+    ...
+  }
+]
+```
+
+When pasted:
+- **Same page**: Offset applied (~10 pixels) to avoid exact overlap with originals
+- **Different page**: No offset applied (already distinct location)
+
+**Implementation Details**:
+- Data structures: `_selected` (primary) + `_selected_multiple` (set of all selected)
+- Methods: `select_annotation(obj, multi)`, `clear_selection()`, `get_selected_annotations()`, `is_multi_selected()`
+- Multi-operation methods: `move_selected()`, `delete_selected()`, `duplicate_selected_multi()`, `copy_selected()`, `cut_selected()`, `paste_selected()`
+- Rendering: All selected annotations display blue boundary; resize handles only on primary
+- Page navigation: Selection cleared when switching pages via `set_current_page()`
+- Keyboard handling: Shift+click for multi-select; arrow keys for move; Delete/Ctrl+C/X/V for delete/copy/cut/paste
+
+**Menu Items** (Edit menu):
+- Cut (Ctrl+X): Works on single or multi-selection
+- Copy (Ctrl+C): Works on single or multi-selection
+- Paste (Ctrl+V): Pastes to current page with offset behavior as described
+- Duplicate (Ctrl+D): Works on single or multi-selection
+- Delete (Delete): Works on single or multi-selection
+
+**Edge Cases & Constraints**:
+- Multi-selection limited to current page; switching pages clears selection
+- Copy/paste works across document instances via system clipboard
+- Cache is set on first paste and persists for subsequent pastes, preventing intermediate copy operations from corrupting cached positions
+- Each multi-operation (move all, delete all) is a single undo/redo unit
+- Invalid operations on mixed types are gracefully ignored (e.g., line width only applies to vector types)
+
+**Backward Compatibility**:
+- Existing single-selection behavior unchanged (click selects one, click-empty deselects)
+- All existing operations (Delete, Duplicate, Color change) now work with multi-selection
+- Undo/redo: each multi-operation is single unit, maintaining existing behavior for single operations
+- Paste position preservation: Cache strategy ensures copy→move→paste sequences work correctly even with external Ctrl+C interference
 
 ## 6. Error Handling
-- Missing/unreadable PDF: block canvas interaction, show clear message.
+- Missing/unreadable document: block canvas interaction, show clear error message.
 - Missing signature annotation: allow document load, prompt user to add a signature annotation before save.
-- Corrupt image/PDF: show validation error and keep app responsive.
-- Save failure (permissions/locked file): show retryable error.
+- Corrupt image/document: show validation error and keep app responsive.
+- Save failure (permissions/locked file/disk full): show modal error dialog with specific cause and recovery suggestions; offer retry or cancel.
+- Invalid export path (bad characters, too long): validate before export and show error with corrected suggestion.
+- Directory link failure (path no longer exists): show brief toast notification "Unable to open directory"; do not crash.
+- Partial export failure (multi-page): stop process, show error listing failed pages and reason, offer retry or cancel.
+
+### Error Dialog vs Notification Toast
+- **Modal error dialogs** (block interaction): export failures, validation errors, missing dependencies
+- **Auto-dismissing toasts** (non-intrusive): success notifications, secondary warnings that don't block workflow
 
 ## 6.1 Selection-Dependent Toolbar Actions
 - Duplicate/Delete actions are enabled only when an annotation is selected.
@@ -193,7 +453,18 @@ Default save name:
 
 ## 8. Tool Analysis
 
-## Option A (Recommended): Python + PySide6 + PyMuPDF + Pillow
+### Multi-Format Document Support (v1.2.9)
+For Word and ODT support, the app integrates with LibreOffice:
+- **LibreOffice** (headless): Converts Word and ODT to temporary PDF for rendering
+- **PyMuPDF (fitz)**: Renders PDF pages (including converted docs) to images
+- **Pillow**: Handles direct image loading and JPG export
+
+Path resolution for LibreOffice:
+1. Check settings file (`libreOfficePath` field in config.json)
+2. Search system PATH
+3. Show error if not found
+
+## Option A (Recommended): Python + PySide6 + PyMuPDF + Pillow + LibreOffice
 - **PySide6**: native-feeling desktop UI on Windows, quick iteration.
 - **PyMuPDF (fitz)**: reliable PDF page rendering to image.
 - **Pillow**: robust compositing and JPG export.
@@ -243,6 +514,27 @@ Default save name:
 - Multi-page PDFs are supported with toolbar + keyboard navigation.
 - Save behavior exports the active page to JPG.
 
+### Dialog Implementation Trade-off (Version 1.2.12)
+- **Native Windows file dialog** (default Qt behavior) does NOT expose underlying text input widget (QLineEdit)
+- **Smart filename handling** requires real-time monitoring of user input as they type to:
+  - Preserve custom filename stem across format changes
+  - Auto-update filename when user changes file extension
+  - Capture user intent without dialog blocking
+- **Trade-off decision**: Use **non-native Qt dialog** (DontUseNativeDialog flag) to access QLineEdit
+  - Pros: Enables powerful auto-correction, filename preservation, real-time format detection
+  - Cons: Older UI appearance (Windows 95-style classic Qt theme instead of modern Windows Aero)
+- **Rationale**: Functional capability takes priority over native UI appearance for this utility
+- **Test coverage**: 41+ tests cover all format switching, placeholder, and validation scenarios
+
+### Version 1.2.12 Implementation Details
+- **Real-time capture**: `QLineEdit.textChanged.connect(self._on_filename_text_changed)`
+- **Non-native dialog**: `QFileDialog.setOption(DontUseNativeDialog, True)` set before `exec()`
+- **Placeholder calculation**: `len(str(total_pages))` gives required digit count
+- **Custom stem extraction**: `Path(filename).stem` gets name without extension
+- **Format detection**: Both `ExportFormat.from_extension()` and `ExportFormat.from_filter_string()`
+- **Smart validation**: Separate paths for single-file vs multi-file formats
+- **User interaction flow**: User types → validation → if invalid, show info dialog → user retries (dialog stays open)
+
 ## Tool Decision
 Use **Option A** for v1 due to shortest implementation path and low risk for required features.
 
@@ -260,15 +552,17 @@ Use **Option A** for v1 due to shortest implementation path and low risk for req
 - Manual functional tests:
   - startup with/without CLI args,
   - startup using sample assets (`examples/document.pdf` + `examples/signature.png`),
-  - verify unsupported format handling using `examples/signature.xcf`,
-  - verify invalid document handling using `examples/document.odt`,
+  - **verify Word document (.docx) opens and renders correctly,**
+  - **verify ODT document opens and renders correctly,**
+  - **verify image document (.jpg) opens and renders correctly,**
+  - **verify unsupported format shows error dialog,**
   - verify page navigation via toolbar and keys (`PageUp`, `PageDown`, `Home`, `End`),
   - verify per-page object persistence when switching pages,
   - verify cursor change on hover and blue boundary on selection,
   - verify boundary-handle scaling behavior,
   - verify text annotation allows non-proportional resize,
   - verify text default is 12pt, no wrapping, and Ctrl+Enter creates newline,
-  - verify toolbar order: Open Document, Add Annotation, Save JPG,
+  - verify toolbar order: Open Document, Add Annotation, Save As...,
   - verify no top-level Open Signature toolbar button,
   - verify duplicate/delete enabled only when selection exists,
   - verify color behavior for selected vs non-selected state,
@@ -279,7 +573,14 @@ Use **Option A** for v1 due to shortest implementation path and low risk for req
   - verify signature annotation LRU list updates and respects 10-item limit,
   - load invalid files,
   - drag and save accuracy,
-  - transparency preserved in composition before JPG flattening.
+  - transparency preserved in composition before JPG flattening,
+  - **verify export success shows auto-dismissing notification toast with directory link,**
+  - **verify clicking directory link opens Windows Explorer at export location,**
+  - **verify notification auto-dismisses after 5 seconds,**
+  - **verify manual close button (X) on notification works,**
+  - **verify export failure shows modal error dialog with specific error message,**
+  - **verify error dialog includes retry and cancel buttons,**
+  - **verify partial export failure (multi-page) shows error with list of failed pages.**
 
 ## 12. Recommended Workflow Improvements vs GIMP
 - One-step startup with saved signature.

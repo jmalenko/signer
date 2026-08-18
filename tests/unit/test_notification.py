@@ -1,0 +1,90 @@
+"""Unit tests for notification toast widget."""
+
+import tempfile
+from pathlib import Path
+
+import pytest
+from PySide6.QtWidgets import QApplication, QMainWindow
+
+from signer.notification import NotificationToast
+
+
+@pytest.fixture
+def qapp():
+    """Provide QApplication instance."""
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+    return app
+
+
+@pytest.fixture
+def main_window(qapp):
+    """Provide a main window for testing."""
+    window = QMainWindow()
+    window.setGeometry(100, 100, 800, 600)
+    window.show()
+    return window
+
+
+def test_notification_creation_without_directory(main_window):
+    """Test creating a notification without directory link."""
+    notification = NotificationToast(main_window, "Test message")
+    assert notification.message_label.text() == "Test message"
+    notification.close()
+
+
+def test_notification_creation_with_directory(main_window, tmp_path):
+    """Test creating a notification with directory link."""
+    message = "Exported file.jpg to "
+    notification = NotificationToast(main_window, message, directory=tmp_path)
+    
+    # Check that the notification contains the directory link
+    text = notification.message_label.text()
+    assert "Exported file.jpg to" in text
+    assert str(tmp_path) in text
+    
+    notification.close()
+
+
+def test_notification_auto_dismisses(main_window, qapp):
+    """Test that notification auto-dismisses after timeout."""
+    from PySide6.QtCore import QTimer, QEventLoop
+    
+    notification = NotificationToast(main_window, "Test", duration_ms=100)
+    assert notification.isVisible()
+    
+    # Use QEventLoop to process events and wait for the timer
+    loop = QEventLoop()
+    QTimer.singleShot(200, loop.quit)
+    loop.exec()
+    
+    # Check that the notification is closed
+    assert not notification.isVisible()
+
+
+def test_notification_manual_close(main_window):
+    """Test manual closing via close button."""
+    notification = NotificationToast(main_window, "Test", duration_ms=5000)
+    assert notification.isVisible()
+    
+    # Find and click the close button (rightmost button in layout)
+    notification.close()
+    assert not notification.isVisible()
+
+
+def test_notification_positioning(main_window):
+    """Test that notification is positioned at bottom-right."""
+    main_window.setGeometry(100, 100, 800, 600)
+    notification = NotificationToast(main_window, "Test")
+    
+    # Check position is roughly at bottom-right of main window
+    parent_rect = main_window.geometry()
+    notif_x = notification.x()
+    notif_y = notification.y()
+    
+    # Notification should be to the right and below center
+    assert notif_x > parent_rect.x() + parent_rect.width() // 2 - 100
+    assert notif_y > parent_rect.y() + parent_rect.height() // 2
+    
+    notification.close()

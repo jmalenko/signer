@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import copy
+import json
+
 from PIL import Image
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QApplication, QWidget
 
 from .objects import (
     ANCHOR_HANDLE,
     HANDLE_FX,
     HANDLE_FY,
     CanvasObject,
+    canvas_object_from_dict,
 )
 
 
@@ -28,10 +32,13 @@ class DocumentCanvas(QWidget):
         self._page_pixmaps: list[QPixmap] = []
         self._current_page: int = 0
         self._page_objects: dict[int, list[CanvasObject]] = {}
+        self._page_rotations: dict[int, int] = {}  # Track rotation angle (0, 90, 180, 270) per page
 
         self._selected: CanvasObject | None = None
+        self._selected_multiple: set[CanvasObject] = set()  # Multi-selection
         self._dragging: bool = False
         self._drag_handle: int = -1
+        self._cached_copy_data: list[dict] | None = None  # Cache copy data to preserve original positions
 
         self._drag_doc_offset_x: float = 0.0
         self._drag_doc_offset_y: float = 0.0
@@ -75,12 +82,59 @@ class DocumentCanvas(QWidget):
     def page_objects_at(self, index: int) -> list[CanvasObject]:
         return self._page_objects.get(index, [])
 
+    def page_objects_with_rotation_at(self, index: int) -> list[CanvasObject]:
+        """Get objects for a page with coordinates transformed for rotation.
+        
+        For export: returns objects with coordinates already adjusted for the
+        rotated page orientation, so their centers stay at the same visual location.
+        Annotations themselves are NOT rotated - only their position changes.
+        """
+        objects = self._page_objects.get(index, [])
+        rotation = self._page_rotations.get(index, 0)
+        
+        if rotation == 0:
+            # No rotation, return objects as-is
+            return objects
+        
+        # For rotated pages, create transformed copies
+        if index < 0 or index >= len(self._pages):
+            return objects
+        
+        orig_width, orig_height = self._pages[index].size
+        transformed = []
+        
+        for obj in objects:
+            # Calculate the center of the annotation
+            # (x, y) is the top-left corner, so add half the dimensions to get center
+            center_x = obj.x + obj._base_width / 2
+            center_y = obj.y + obj._base_height / 2
+            
+            # Transform the center coordinates so it stays at the same visual location
+            new_center_x, new_center_y = self._transform_doc_coords_by_rotation(
+                center_x, center_y, rotation, orig_width, orig_height
+            )
+            
+            # Convert back to top-left corner coordinates
+            new_x = new_center_x - obj._base_width / 2
+            new_y = new_center_y - obj._base_height / 2
+            
+            # Create a shallow copy of the object with transformed coordinates
+            # Annotations keep their original size and are NOT rotated
+            import copy
+            obj_copy = copy.copy(obj)
+            obj_copy.x = new_x
+            obj_copy.y = new_y
+            transformed.append(obj_copy)
+        
+        return transformed
+
     def set_pages(self, pages: list[Image.Image]) -> None:
         self._pages = [p.convert("RGB") for p in pages]
         self._page_pixmaps = [QPixmap.fromImage(ImageQt(p)) for p in self._pages]
         self._current_page = 0
         self._page_objects = {}
         self._selected = None
+        self._selected_multiple.clear()
         self._recompute_fit()
         self.pageChanged.emit(0, len(self._pages))
         self.objectChanged.emit()
@@ -93,11 +147,76 @@ class DocumentCanvas(QWidget):
         if page == self._current_page:
             return
         self._selected = None
+        self._selected_multiple.clear()
         self._current_page = page
         self._recompute_fit()
         self.pageChanged.emit(self._current_page, len(self._pages))
         self.objectChanged.emit()
         self.update()
+
+    def _get_rotated_page_image(self, page_index: int) -> Image.Image:
+        """Get the PIL image for a page, applying rotation if set."""
+        if page_index < 0 or page_index >= len(self._pages):
+            return self._pages[0] if self._pages else None
+        
+        original = self._pages[page_index]
+        rotation = self._page_rotations.get(page_index, 0)
+        
+        if rotation == 0:
+            return original
+        elif rotation == 90:
+            return original.rotate(90, expand=True)
+        elif rotation == 180:
+            return original.rotate(180, expand=True)
+        elif rotation == 270:
+            return original.rotate(270, expand=True)
+        else:
+            return original
+    
+    def rotate_current_page_left(self) -> None:
+        """Rotate current page 90 degrees counter-clockwise."""
+        self._page_rotations[self._current_page] = (self._page_rotations.get(self._current_page, 0) + 90) % 360
+        self._update_rotated_pixmap(self._current_page)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+    
+    def rotate_current_page_right(self) -> None:
+        """Rotate current page 90 degrees clockwise."""
+        self._page_rotations[self._current_page] = (self._page_rotations.get(self._current_page, 0) + 270) % 360
+        self._update_rotated_pixmap(self._current_page)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+    
+    def rotate_all_pages_left(self) -> None:
+        """Rotate all pages 90 degrees counter-clockwise."""
+        for i in range(len(self._pages)):
+            self._page_rotations[i] = (self._page_rotations.get(i, 0) + 90) % 360
+            self._update_rotated_pixmap(i)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+    
+    def rotate_all_pages_right(self) -> None:
+        """Rotate all pages 90 degrees clockwise."""
+        for i in range(len(self._pages)):
+            self._page_rotations[i] = (self._page_rotations.get(i, 0) + 270) % 360
+            self._update_rotated_pixmap(i)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+    
+    def _update_rotated_pixmap(self, page_index: int) -> None:
+        """Update the pixmap cache for a page after rotation."""
+        if page_index < 0 or page_index >= len(self._page_pixmaps):
+            return
+        rotated_img = self._get_rotated_page_image(page_index)
+        self._page_pixmaps[page_index] = QPixmap.fromImage(ImageQt(rotated_img))
+    
+    def get_page_image_with_rotation(self, page_index: int) -> Image.Image:
+        """Get a PIL image for a page with rotation applied (for export)."""
+        return self._get_rotated_page_image(page_index)
 
     # ---------------------------------------------------------------- object API
 
@@ -112,37 +231,353 @@ class DocumentCanvas(QWidget):
         self.update()
 
     def remove_selected(self) -> None:
-        if self._selected is None:
+        """Remove selected annotation(s). Works with single or multi-selection."""
+        if self.is_multi_selected():
+            self.delete_selected()
+        elif self._selected is None:
             return
-        objs = self._page_objects.get(self._current_page, [])
-        if self._selected in objs:
-            objs.remove(self._selected)
-        self._selected = None
+        else:
+            # Single selection - original behavior
+            objs = self._page_objects.get(self._current_page, [])
+            if self._selected in objs:
+                objs.remove(self._selected)
+            self._selected = None
+            self.objectChanged.emit()
+            self.update()
+
+    def duplicate_selected(self) -> None:
+        """Duplicate selected annotation(s). Works with single or multi-selection."""
+        if self.is_multi_selected():
+            self.duplicate_selected_multi()
+        elif self._selected is None:
+            return
+        else:
+            # Single selection - original behavior
+            dup = self._selected.duplicate()
+            dup.page = self._current_page
+            self.add_object(dup)
+
+    # ---------------------------------------------------------------- multi-selection API
+
+    def select_annotation(self, obj: CanvasObject, multi: bool = False) -> None:
+        """Select an annotation.
+        
+        Args:
+            obj: Annotation to select
+            multi: If True, add/remove from multi-selection (Shift+click behavior).
+                   If False, clear previous selection and select this one (click behavior).
+        """
+        if not multi:
+            # Single selection mode
+            self._selected = obj
+            self._selected_multiple.clear()
+        else:
+            # Multi-selection mode (Shift+click)
+            if obj in self._selected_multiple:
+                # Remove from selection
+                self._selected_multiple.discard(obj)
+            else:
+                # Add to selection
+                self._selected_multiple.add(obj)
+                # Keep _selected as primary for UI feedback
+                if self._selected is None:
+                    self._selected = obj
         self.objectChanged.emit()
         self.update()
 
-    def duplicate_selected(self) -> None:
-        if self._selected is None:
+    def clear_selection(self) -> None:
+        """Clear all selections."""
+        self._selected = None
+        self._selected_multiple.clear()
+        self.objectChanged.emit()
+        self.update()
+
+    def select_all_on_page(self) -> None:
+        """Select all annotations on the current page."""
+        objs = self.current_page_objects()
+        if not objs:
             return
-        dup = self._selected.duplicate()
-        dup.page = self._current_page
-        self.add_object(dup)
+        self._selected_multiple.clear()
+        self._selected_multiple.update(objs)
+        if objs:
+            self._selected = objs[0]  # Set first as primary
+        self.objectChanged.emit()
+        self.update()
+
+    def get_selected_annotations(self) -> list[CanvasObject]:
+        """Return all selected annotations (sorted for consistency)."""
+        if self._selected_multiple:
+            return sorted(list(self._selected_multiple), key=lambda o: (o.y, o.x))
+        elif self._selected is not None:
+            return [self._selected]
+        return []
+
+    def is_multi_selected(self) -> bool:
+        """Check if multiple annotations are currently selected."""
+        return len(self._selected_multiple) > 1
+
+    def move_selected(self, dx: float, dy: float) -> None:
+        """Move all selected annotations by (dx, dy) in document space."""
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        
+        objs = self.current_page_objects()
+        for obj in selected:
+            obj.x += dx
+            obj.y += dy
+            if self.current_page_image:
+                pw, ph = self.current_page_image.size
+                obj.clamp_to_page(pw, ph)
+        self.objectChanged.emit()
+        self.update()
+
+    def delete_selected(self) -> None:
+        """Delete all selected annotations. Single undo unit."""
+        objs = self.current_page_objects()
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        
+        # Remove all selected from page
+        for obj in selected:
+            if obj in objs:
+                objs.remove(obj)
+        
+        self.clear_selection()
+        self.objectChanged.emit()
+
+    def duplicate_selected_multi(self) -> None:
+        """Duplicate all selected annotations. Single undo unit."""
+        objs = self.current_page_objects()
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        
+        new_objs = []
+        for obj in selected:
+            dup = obj.duplicate()
+            dup.x += 10  # Small offset to avoid exact overlap
+            dup.y += 10
+            if self.current_page_image:
+                pw, ph = self.current_page_image.size
+                dup.clamp_to_page(pw, ph)
+            objs.append(dup)
+            new_objs.append(dup)
+        
+        # Select new duplicates
+        self._selected_multiple.clear()
+        self._selected_multiple.update(new_objs)
+        self._selected = new_objs[0] if new_objs else None
+        self.objectChanged.emit()
+        self.update()
+
+    def copy_selected(self) -> None:
+        """Copy selected annotations to clipboard as JSON.
+        
+        Also updates the internal cache so that new copy operations properly
+        update what gets pasted. The cache persists across multiple pastes,
+        preventing intermediate copy operations (like external programs) from
+        corrupting the cached positions.
+        """
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        
+        data = [obj.to_dict() for obj in selected]
+        json_str = json.dumps(data, indent=2)
+        
+        clipboard = QApplication.clipboard()
+        clipboard.setText(json_str)
+        
+        # Update cache so new copy operations are reflected in pastes
+        self._cached_copy_data = data
+
+    def cut_selected(self) -> None:
+        """Cut selected annotations (copy to clipboard, then delete)."""
+        self.copy_selected()
+        self.delete_selected()
+
+    def paste_selected(self) -> None:
+        """Paste annotations from clipboard onto current page.
+        
+        Cache is set on the FIRST paste (when reading from clipboard) and then
+        persists for all subsequent pastes, even if the clipboard is updated by
+        intermediate copy operations. This ensures copy->paste->paste sequences
+        always use the position from the original copy.
+        
+        Offset (~10 pixels) is applied when pasting on the same page to avoid exact overlap.
+        No offset is applied when pasting to a different page (already distinct location).
+        """
+        # If no cache, read from clipboard and cache it
+        if self._cached_copy_data is None:
+            clipboard = QApplication.clipboard()
+            json_str = clipboard.text()
+            if not json_str:
+                return
+            
+            try:
+                data = json.loads(json_str)
+                if not isinstance(data, list):
+                    data = [data]
+                # Cache this data for all future pastes until a new copy-paste cycle
+                self._cached_copy_data = data
+            except json.JSONDecodeError:
+                # Clipboard doesn't contain valid annotation JSON; ignore
+                return
+        else:
+            # Cache exists, use it
+            data = self._cached_copy_data
+        
+        # Use setdefault to ensure page list exists in _page_objects
+        objs = self._page_objects.setdefault(self._current_page, [])
+        pasted_objs = []
+        
+        for item in data:
+            try:
+                # Use factory function to deserialize based on type
+                original_page = item.get("page")
+                
+                obj = canvas_object_from_dict(item)
+                if obj is None:
+                    # Unknown type; skip
+                    continue
+                
+                obj.page = self._current_page  # Ensure pasted on current page
+                
+                # Apply offset only if pasting on same page as original
+                if original_page == self._current_page:
+                    obj.x += 10  # Offset to avoid exact overlap
+                    obj.y += 10
+                
+                if self.current_page_image:
+                    pw, ph = self.current_page_image.size
+                    obj.clamp_to_page(pw, ph)
+                
+                objs.append(obj)
+                pasted_objs.append(obj)
+            except (KeyError, ValueError, TypeError):
+                # Invalid annotation data; skip
+                continue
+        
+        # Select pasted annotations
+        self._selected_multiple.clear()
+        self._selected_multiple.update(pasted_objs)
+        self._selected = pasted_objs[0] if pasted_objs else None
+        self.objectChanged.emit()
+        self.update()
+
+    def set_color_selected(self, color: QColor) -> None:
+        """Set color for all selected annotations."""
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        for obj in selected:
+            obj.color = color
+        self.objectChanged.emit()
+        self.update()
+
+    def set_line_width_selected(self, width_factor: float) -> None:
+        """Set line width factor for vector annotations in selection."""
+        from .objects import ARROW_TYPES, AnnotationType
+        
+        selected = self.get_selected_annotations()
+        if not selected:
+            return
+        for obj in selected:
+            # Apply only to vector annotations
+            if hasattr(obj, 'annotation_type') and (
+                obj.annotation_type in ARROW_TYPES or 
+                obj.annotation_type in {AnnotationType.CHECKMARK, AnnotationType.CROSS}
+            ):
+                if hasattr(obj, 'line_width_factor'):
+                    obj.line_width_factor = width_factor
+        self.objectChanged.emit()
+        self.update()
 
     # ---------------------------------------------------------------- coordinate helpers
 
+    def _transform_doc_coords_by_rotation(self, x: float, y: float, rotation: int, page_width: float, page_height: float) -> tuple[float, float]:
+        """Transform document coordinates based on page rotation.
+        
+        Maps original page coordinates to rotated page coordinates so annotation
+        centers remain visually in the same location after rotation.
+        """
+        if rotation == 0:
+            return x, y
+        elif rotation == 90:
+            # 90° CCW: new page dimensions are height × width
+            # (x, y) on W×H → (y, W - x) on H×W
+            return y, page_width - x
+        elif rotation == 180:
+            return page_width - x, page_height - y
+        elif rotation == 270:
+            # 270° CCW: new page dimensions are height × width
+            # (x, y) on W×H → (H - y, x) on H×W
+            return page_height - y, x
+        else:
+            return x, y
+    
+    def _transform_doc_coords_inverse(self, x: float, y: float, rotation: int, page_width: float, page_height: float) -> tuple[float, float]:
+        """Inverse transformation: convert rotated coordinates back to original.
+        
+        Maps from rotated page coordinate system back to original page coordinates.
+        """
+        if rotation == 0:
+            return x, y
+        elif rotation == 90:
+            # Inverse of (x, y) -> (y, W - x)
+            # x' = y, y' = W - x => y = x', x = W - y'
+            return page_width - y, x
+        elif rotation == 180:
+            return page_width - x, page_height - y
+        elif rotation == 270:
+            # Inverse of (x, y) -> (H - y, x)
+            # x' = H - y, y' = x => y = H - x', x = y'
+            return y, page_height - x
+        else:
+            return x, y
+
     def _object_view_rect(self, obj: CanvasObject) -> QRectF:
+        # Get original page dimensions
+        orig_width, orig_height = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        
+        # Calculate the center of the annotation
+        # (obj.x, obj.y) is the top-left corner, so add half the dimensions to get center
+        center_x = obj.x + obj._base_width / 2
+        center_y = obj.y + obj._base_height / 2
+        
+        # Transform the center coordinates based on page rotation
+        # so annotation centers remain at the same visual location on the page
+        transformed_center_x, transformed_center_y = self._transform_doc_coords_by_rotation(
+            center_x, center_y, rotation, orig_width, orig_height
+        )
+        
+        # Convert back to top-left corner coordinates for QRectF
+        transformed_x = transformed_center_x - obj.scaled_width / 2
+        transformed_y = transformed_center_y - obj.scaled_height / 2
+        
         return QRectF(
-            self._doc_offset_x + obj.x * self._fit_scale,
-            self._doc_offset_y + obj.y * self._fit_scale,
+            self._doc_offset_x + transformed_x * self._fit_scale,
+            self._doc_offset_y + transformed_y * self._fit_scale,
             obj.scaled_width * self._fit_scale,
             obj.scaled_height * self._fit_scale,
         )
 
     def _view_to_doc(self, pt: QPointF) -> QPointF:
-        return QPointF(
-            (pt.x() - self._doc_offset_x) / self._fit_scale,
-            (pt.y() - self._doc_offset_y) / self._fit_scale,
+        # Convert view coordinates to document coordinates
+        doc_x = (pt.x() - self._doc_offset_x) / self._fit_scale
+        doc_y = (pt.y() - self._doc_offset_y) / self._fit_scale
+        
+        # Apply inverse rotation transformation to get original page coordinates
+        orig_width, orig_height = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        doc_x, doc_y = self._transform_doc_coords_inverse(
+            doc_x, doc_y, rotation, orig_width, orig_height
         )
+        
+        return QPointF(doc_x, doc_y)
 
     def _recompute_fit(self) -> None:
         if not self._pages:
@@ -150,7 +585,11 @@ class DocumentCanvas(QWidget):
             self._doc_offset_x = 0.0
             self._doc_offset_y = 0.0
             return
+        # Use rotated dimensions if rotation is applied
         dw, dh = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        if rotation in (90, 270):
+            dw, dh = dh, dw  # Swap dimensions for 90/270 degree rotations
         vw, vh = max(1, self.width()), max(1, self.height())
         self._fit_scale = min(vw / dw, vh / dh)
         self._doc_offset_x = (vw - dw * self._fit_scale) / 2
@@ -187,7 +626,11 @@ class DocumentCanvas(QWidget):
             return
 
         pm = self._page_pixmaps[self._current_page]
+        # Use rotated dimensions if rotation is applied
         dw, dh = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        if rotation in (90, 270):
+            dw, dh = dh, dw  # Swap dimensions for 90/270 degree rotations
         target = QRectF(
             self._doc_offset_x, self._doc_offset_y,
             dw * self._fit_scale, dh * self._fit_scale,
@@ -198,14 +641,18 @@ class DocumentCanvas(QWidget):
             r = self._object_view_rect(obj)
             obj.draw_in_viewport(painter, r.x(), r.y(), r.width(), r.height(), self._fit_scale)
 
-            if obj is self._selected:
+            # Draw selection boundary for single or multi-selected objects
+            is_selected = obj is self._selected or obj in self._selected_multiple
+            if is_selected:
                 painter.save()
                 painter.setPen(QColor("#00a2ff"))
                 painter.setBrush(Qt.NoBrush)
                 painter.drawRect(r)
-                for hr in obj.handle_rects_viewport(r.x(), r.y(), r.width(), r.height()):
-                    painter.fillRect(hr, QColor("#00a2ff"))
-                    painter.drawRect(hr)
+                # Only draw resize handles for primary selected object
+                if obj is self._selected:
+                    for hr in obj.handle_rects_viewport(r.x(), r.y(), r.width(), r.height()):
+                        painter.fillRect(hr, QColor("#00a2ff"))
+                        painter.drawRect(hr)
                 painter.restore()
 
     # ---------------------------------------------------------------- mouse
@@ -226,22 +673,28 @@ class DocumentCanvas(QWidget):
         for obj in reversed(objects):
             r = self._object_view_rect(obj)
             if r.contains(pt):
-                prev_selected = self._selected
-                self._selected = obj
+                # Check for Shift+click (multi-select)
+                if event.modifiers() & Qt.ShiftModifier:
+                    self.select_annotation(obj, multi=True)
+                else:
+                    # Regular click (single select)
+                    self.select_annotation(obj, multi=False)
+                
+                # Start dragging the clicked object
                 self._dragging = True
                 self._drag_handle = -1
                 doc_pt = self._view_to_doc(pt)
                 self._drag_doc_offset_x = doc_pt.x() - obj.x
                 self._drag_doc_offset_y = doc_pt.y() - obj.y
-                if prev_selected is not obj:
-                    self.objectChanged.emit()
-                self.update()
                 return
 
-        if self._selected is not None:
-            self._selected = None
-            self.objectChanged.emit()
-        self.update()
+        # Clicked on empty space
+        if event.modifiers() & Qt.ShiftModifier:
+            # Shift+click on empty doesn't clear (no change)
+            pass
+        else:
+            # Regular click on empty clears selection
+            self.clear_selection()
 
     def _start_handle_drag(self, h_idx: int, pt: QPointF) -> None:
         obj = self._selected
@@ -353,15 +806,194 @@ class DocumentCanvas(QWidget):
 
     def keyPressEvent(self, event) -> None:
         key = event.key()
+        modifiers = event.modifiers()
+        
+        # Get selected annotations
+        selected = self.get_selected_annotations()
+        
+        # ================================================================ Page navigation
+        # Page Up / Page Down
         if key == Qt.Key_PageDown:
             self.goto_page(self._current_page + 1)
+            return
         elif key == Qt.Key_PageUp:
             self.goto_page(self._current_page - 1)
+            return
         elif key == Qt.Key_Home:
             self.goto_page(0)
+            return
         elif key == Qt.Key_End:
             self.goto_page(len(self._pages) - 1)
-        elif key in (Qt.Key_Delete, Qt.Key_Backspace) and self._selected is not None:
-            self.remove_selected()
+            return
+        
+        # ================================================================ Escape: Deselect all
+        if key == Qt.Key_Escape:
+            self.clear_selection()
+            return
+        
+        # ================================================================ Delete annotation(s)
+        if key in (Qt.Key_Delete, Qt.Key_Backspace):
+            if selected:
+                self.delete_selected()
+            return
+        
+        # ================================================================ Arrow keys
+        if key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
+            if selected:
+                # Movement: 12pt normal, 1px with Shift (per V1.2.18)
+                increment = 1.0 if modifiers & Qt.ShiftModifier else 12.0
+                
+                if key == Qt.Key_Up:
+                    self.move_selected(0, -increment)
+                elif key == Qt.Key_Down:
+                    self.move_selected(0, increment)
+                elif key == Qt.Key_Left:
+                    self.move_selected(-increment, 0)
+                elif key == Qt.Key_Right:
+                    self.move_selected(increment, 0)
+                return
+            else:
+                # Page navigation without annotation selected: left/right arrows
+                if key == Qt.Key_Left:
+                    self.goto_page(self._current_page - 1)
+                    return
+                elif key == Qt.Key_Right:
+                    self.goto_page(self._current_page + 1)
+                    return
+        
+        # ================================================================ Copy / Cut / Paste / Duplicate
+        # Both Ctrl variants (Ctrl+C/X/V/D/A/Z/Y) and single-key variants (C/X/V/D/A/Z/Y)
+        is_ctrl_key = modifiers & Qt.ControlModifier
+        is_shift_key = modifiers & Qt.ShiftModifier
+        
+        if is_ctrl_key:
+            if key == Qt.Key_C:
+                if selected:
+                    self.copy_selected()
+                return
+            elif key == Qt.Key_X:
+                if selected:
+                    self.cut_selected()
+                return
+            elif key == Qt.Key_V:
+                self.paste_selected()
+                return
+            elif key == Qt.Key_D:
+                if selected:
+                    self.duplicate_selected()
+                return
+            elif key == Qt.Key_A:
+                self.select_all_on_page()
+                return
+            elif key == Qt.Key_Z:
+                # Undo (Ctrl+Z) - delegate to parent window
+                self.parent().undo() if hasattr(self.parent(), 'undo') else None
+                return
+            elif key in (Qt.Key_Y, Qt.Key_Plus):  # Ctrl+Y for Redo
+                # Redo (Ctrl+Y or Ctrl+Shift+Z) - delegate to parent window
+                self.parent().redo() if hasattr(self.parent(), 'redo') else None
+                return
+            # ================================================================ Rotation with Ctrl
+            elif key == Qt.Key_L:
+                if is_shift_key:
+                    # Shift+Ctrl+L: Rotate current page left
+                    self.rotate_current_page_left()
+                else:
+                    # Ctrl+L: Rotate all pages left
+                    self.rotate_all_pages_left()
+                return
+            elif key == Qt.Key_R:
+                if is_shift_key:
+                    # Shift+Ctrl+R: Rotate current page right
+                    self.rotate_current_page_right()
+                else:
+                    # Ctrl+R: Rotate all pages right
+                    self.rotate_all_pages_right()
+                return
+            # ================================================================ Document operations (delegate to parent)
+            elif key == Qt.Key_O:
+                # Ctrl+O: Open document
+                if hasattr(self.parent(), 'open_document'):
+                    self.parent().open_document()
+                return
+            elif key == Qt.Key_S:
+                # Ctrl+S: Save As dialog
+                if hasattr(self.parent(), 'save_document_as'):
+                    self.parent().save_document_as()
+                return
+            elif key == Qt.Key_P:
+                # Ctrl+P: Print
+                if hasattr(self.parent(), 'print_document'):
+                    self.parent().print_document()
+                return
         else:
-            super().keyPressEvent(event)
+            # ================================================================ Single-key hotkey variants (no Ctrl)
+            # These are available only in default document view (no Ctrl modifier)
+            if key == Qt.Key_O:
+                # O: Open document
+                if hasattr(self.parent(), 'open_document'):
+                    self.parent().open_document()
+                return
+            elif key == Qt.Key_S:
+                # S: Save As dialog
+                if hasattr(self.parent(), 'save_document_as'):
+                    self.parent().save_document_as()
+                return
+            elif key == Qt.Key_P:
+                # P: Print
+                if hasattr(self.parent(), 'print_document'):
+                    self.parent().print_document()
+                return
+            elif key == Qt.Key_C:
+                # C: Copy
+                if selected:
+                    self.copy_selected()
+                return
+            elif key == Qt.Key_X:
+                # X: Cut
+                if selected:
+                    self.cut_selected()
+                return
+            elif key == Qt.Key_V:
+                # V: Paste
+                self.paste_selected()
+                return
+            elif key == Qt.Key_D:
+                # D: Duplicate
+                if selected:
+                    self.duplicate_selected()
+                return
+            elif key == Qt.Key_A:
+                # A: Select all
+                self.select_all_on_page()
+                return
+            elif key == Qt.Key_Z:
+                # Z: Undo
+                if hasattr(self.parent(), 'undo'):
+                    self.parent().undo()
+                return
+            elif key == Qt.Key_Y:
+                # Y: Redo
+                if hasattr(self.parent(), 'redo'):
+                    self.parent().redo()
+                return
+            elif key == Qt.Key_L:
+                # L or Shift+L: Rotate
+                if is_shift_key:
+                    # Shift+L: Rotate current page left
+                    self.rotate_current_page_left()
+                else:
+                    # L: Rotate all pages left
+                    self.rotate_all_pages_left()
+                return
+            elif key == Qt.Key_R:
+                # R or Shift+R: Rotate
+                if is_shift_key:
+                    # Shift+R: Rotate current page right
+                    self.rotate_current_page_right()
+                else:
+                    # R: Rotate all pages right
+                    self.rotate_all_pages_right()
+                return
+        
+        super().keyPressEvent(event)

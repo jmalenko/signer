@@ -114,9 +114,8 @@ class TestMultipageAnnotations:
         result = main_window.open_document(str(sample_multipage_pdf))
         assert result is True
         
-        total_pages = main_window.canvas.page_count
-        
         # 2. Add annotations on each page
+        total_pages = main_window.canvas.page_count
         for page_idx in range(total_pages):
             main_window.canvas.goto_page(page_idx)
             
@@ -131,8 +130,13 @@ class TestMultipageAnnotations:
         output_dir = temp_dir / "multipage_output"
         output_dir.mkdir()
         
-        # Mock file dialog to return our output directory
-        base_output = output_dir / "document-signed.jpg"
+        # Mock file dialog to return our output directory with placeholder for multi-page exports
+        if total_pages > 1:
+            # Multi-page JPG export requires placeholder
+            base_output = output_dir / "document-signed-p#.jpg"
+        else:
+            # Single-page export doesn't need placeholder
+            base_output = output_dir / "document-signed.jpg"
         
         with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(base_output), "JPEG files (*.jpg *.jpeg)")):
             with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):

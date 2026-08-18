@@ -424,3 +424,27 @@ class VectorAnnotation(CanvasObject):
         obj._natural_width = data.get("natural_width", obj._natural_width)
         obj._natural_height = data.get("natural_height", obj._natural_height)
         return obj
+
+
+# ------------------------------------------------------------------ factory
+
+def canvas_object_from_dict(data: dict[str, Any]) -> CanvasObject | None:
+    """Factory function to deserialize a CanvasObject from a dictionary.
+    
+    Dispatches to the appropriate subclass based on the "type" field.
+    
+    Args:
+        data: Dictionary containing serialized object data
+        
+    Returns:
+        Deserialized CanvasObject, or None if type is unknown
+    """
+    obj_type = data.get("type")
+    
+    if obj_type == "SignatureObject":
+        return SignatureObject.from_dict(data)
+    elif obj_type == "VectorAnnotation":
+        return VectorAnnotation.from_dict(data)
+    else:
+        # Unknown type; return None
+        return None
