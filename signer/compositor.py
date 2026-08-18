@@ -402,7 +402,6 @@ def build_overwrite_dialog_info(
     
     # Default (shouldn't reach here)
     return "Overwrite Files", "Do you want to overwrite the existing files?", False
->>>>>>> icon
 
 
 def composite_objects_to_jpg(
@@ -410,16 +409,8 @@ def composite_objects_to_jpg(
     objects: list[CanvasObject],
     output_path: str | Path,
     jpg_quality: int = 95,
-    file_format: str = "JPEG",
 ) -> None:
-    """Composite all objects over the page image and save as JPEG or PNG.
-    
-    Args:
-        page_image: The page image to composite onto
-        objects: List of canvas objects to composite
-        output_path: Output file path
-        jpg_quality: JPEG quality (1-100, ignored for PNG)
-        file_format: Output format ("JPEG" or "PNG")
+    """Composite all objects over the page image and save as JPEG.
     """
     base = page_image.convert("RGBA")
     pw, ph = base.size
@@ -593,4 +584,3 @@ def composite_objects_to_format(
     else:
         # Default to JPG for unknown formats
         composite_objects_to_jpg(page_image, objects, output_path, jpg_quality)
->>>>>>> icon
