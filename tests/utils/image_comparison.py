@@ -12,7 +12,7 @@ def compare_images(
     expected_path: str | Path,
     tolerance: int = 0,
     diff_output_path: Optional[str | Path] = None,
-) -> Tuple[bool, float, Optional[Image.Image]]:
+) -> Tuple[bool, Optional[Image.Image]]:
     """
     Compare two images pixel by pixel.
     
@@ -23,7 +23,7 @@ def compare_images(
         diff_output_path: Optional path to save diff image (always generated for visualization)
         
     Returns:
-        Tuple of (images_match, mismatch_percentage, diff_image)
+        Tuple of (images_match, diff_image)
     """
     actual = Image.open(actual_path).convert("RGB")
     expected = Image.open(expected_path).convert("RGB")
@@ -33,7 +33,7 @@ def compare_images(
         if diff_output_path:
             diff_img = _create_diff_image(actual, expected)
             diff_img.save(diff_output_path)
-        return False, 100.0, None
+        return False, None
     
     # Calculate difference
     diff = ImageChops.difference(actual, expected)
@@ -48,30 +48,16 @@ def compare_images(
     if tolerance == 0:
         # Pixel-perfect comparison
         if diff.getbbox() is None:
-            return True, 0.0, diff_img
+            return True, diff_img
     else:
         # Tolerance-based comparison
-        diff_pixels = 0
-        total_pixels = actual.width * actual.height
         for pixel in diff.getdata():
             # Check if any channel exceeds tolerance
             if any(c > tolerance for c in pixel[:3]):  # For RGB, only 3 channels
-                diff_pixels += 1
-        
-        mismatch_pct = (diff_pixels / total_pixels) * 100
-        if mismatch_pct == 0:
-            return True, 0.0, diff_img
+                return False, diff_img
+        return True, diff_img
     
-    # Calculate mismatch percentage
-    diff_bbox = diff.getbbox()
-    if diff_bbox:
-        diff_area = (diff_bbox[2] - diff_bbox[0]) * (diff_bbox[3] - diff_bbox[1])
-        total_area = actual.width * actual.height
-        mismatch_pct = (diff_area / total_area) * 100
-    else:
-        mismatch_pct = 0.0
-    
-    return False, mismatch_pct, diff_img
+    return False, diff_img
 
 
 def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Image:
@@ -121,12 +107,12 @@ def assert_images_equal(
     Raises:
         AssertionError: If images don't match, with details about the mismatch
     """
-    match, mismatch_pct, diff_img = compare_images(
+    match, diff_img = compare_images(
         actual_path, expected_path, tolerance, diff_output_path
     )
     
     if not match:
-        msg = f"Images do not match. Mismatch: {mismatch_pct:.2f}%"
+        msg = "Images do not match."
         if diff_output_path:
             msg += f"\nDiff image saved to: {diff_output_path}"
         raise AssertionError(msg)
@@ -189,7 +175,7 @@ def assert_images_equal_with_results(
         diff_path = tmpdir / "diff.png"
         
         # Compare images and always generate diff for visualization
-        match, mismatch_pct, _ = compare_images(
+        match, _ = compare_images(
             actual_path, expected_path, tolerance, diff_output_path=diff_path
         )
         
@@ -201,14 +187,13 @@ def assert_images_equal_with_results(
                 expected_image=expected_path if expected_path.exists() else None,
                 diff_image=diff_path if diff_path.exists() else None,
                 match=match,
-                mismatch_pct=mismatch_pct,
             )
         
         # Raise assertion error if mismatch
         if not match:
             results_dir = tr.get_test_results_dir()
             msg = (
-                f"Images do not match (mismatch: {mismatch_pct:.2f}%)\n"
+                f"Images do not match.\n"
                 f"Results saved to: {results_dir}/{test_name}/"
             )
             raise AssertionError(msg)

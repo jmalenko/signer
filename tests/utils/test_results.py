@@ -21,7 +21,6 @@ def organize_test_output(
     expected_image: str | Path,
     diff_image: Optional[str | Path] = None,
     match: bool = True,
-    mismatch_pct: float = 0.0,
 ) -> dict:
     """
     Organize test output images in a flat structure.
@@ -40,7 +39,6 @@ def organize_test_output(
         expected_image: Path to expected reference image
         diff_image: Path to diff visualization
         match: Whether images match (PASS=True, FAIL=False)
-        mismatch_pct: Percentage of mismatched pixels
     
     Returns:
         Dictionary with paths to all saved files
