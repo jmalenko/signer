@@ -33,7 +33,7 @@ DEFAULT_LINE_WIDTH_FACTOR: float = 0.07
 class AnnotationType(Enum):
     SIGNATURE = "signature"
     CHECKMARK = "checkmark"
-    CROSS = "cross"
+    CROSSMARK = "crossmark"
     ARROW_N = "arrow_n"
     ARROW_NE = "arrow_ne"
     ARROW_E = "arrow_e"
@@ -230,7 +230,7 @@ class SignatureObject(CanvasObject):
 
 
 class VectorAnnotation(CanvasObject):
-    """Checkmark, cross, arrow, or text annotation drawn as vector graphics."""
+    """Checkmark, crossmark, arrow, or text annotation drawn as vector graphics."""
 
     def __init__(
         self,
@@ -316,7 +316,7 @@ class VectorAnnotation(CanvasObject):
             path.lineTo(vx + vw - m, vy + m)
             painter.drawPath(path)
 
-        elif t == AnnotationType.CROSS:
+        elif t == AnnotationType.CROSSMARK:
             painter.setPen(self._pen(vw, vh))
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(QPointF(vx + m, vy + m), QPointF(vx + vw - m, vy + vh - m))

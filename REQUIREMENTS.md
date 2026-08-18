@@ -161,7 +161,7 @@ Feedback after implementation, round 3:
 
 7. How the automated feature tests shall be created: I as a developer want to record the actions (move, scale, add text, add checkmark) by using the application. Update the code that captures these actions. You will then use the record output to write the test case. Then the code may be disabled; it will be used only in development later to create feature tests.
 
-8. Feature tests shall cover each annotation type (checkmark, cross, arrows, text, signature) using document1.pdf.
+8. Feature tests shall cover each annotation type (checkmark, crossmark, arrows, text, signature) using document1.pdf.
 
 ### Details added by AI
 
@@ -221,6 +221,11 @@ Motivation: The sizes should be a appropriate for documents using text size 11 p
      - Font: 11pt × 4.167 ≈ 46 pixels
    - Settings store sizes in PDF points; rendering applies DPI scaling automatically
    - Serialization preserves PDF points for compatibility
+
+## Version 1.2.20 - Terminology standardization
+
+1. Rename the "Cross" annotation to "Crossmark" for consistency with "Checkmark".
+2. All documentation, code, and user-facing text shall use "Crossmark" instead of "Cross". 
 
 # Assumptions
 1. Signature has a transparent background.

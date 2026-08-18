@@ -173,7 +173,7 @@ class MainWindow(QMainWindow):
         ann_btn.setMenu(ann_menu)
 
         ann_menu.addAction("✔ Checkmark", lambda: self._add_vector(AnnotationType.CHECKMARK))
-        ann_menu.addAction("✖ Cross", lambda: self._add_vector(AnnotationType.CROSS))
+        ann_menu.addAction("✖ Crossmark", lambda: self._add_vector(AnnotationType.CROSSMARK))
 
         arrow_menu = ann_menu.addMenu("➡ Arrow")
         for name, atype in ARROW_DIRECTIONS:
@@ -261,7 +261,7 @@ class MainWindow(QMainWindow):
         # Annotations menu
         annotations_menu = hamburger_menu.addMenu("Annotations")
         annotations_menu.addAction("Checkmark", lambda: self._add_vector(AnnotationType.CHECKMARK))
-        annotations_menu.addAction("Cross", lambda: self._add_vector(AnnotationType.CROSS))
+        annotations_menu.addAction("Crossmark", lambda: self._add_vector(AnnotationType.CROSSMARK))
         arrow_submenu = annotations_menu.addMenu("Arrow")
         for name, atype in ARROW_DIRECTIONS:
             arrow_submenu.addAction(name, lambda checked=False, t=atype: self._add_vector(t))

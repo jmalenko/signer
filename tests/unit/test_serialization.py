@@ -152,13 +152,13 @@ class TestVectorAnnotationSerialization:
         assert restored.ann_type == AnnotationType.CHECKMARK
         assert restored.text == ""
     
-    def test_cross_to_dict(self):
-        """Test cross annotation serialization."""
-        ann = VectorAnnotation(AnnotationType.CROSS, 50, 50, 0)
+    def test_crossmark_to_dict(self):
+        """Test crossmark annotation serialization."""
+        ann = VectorAnnotation(AnnotationType.CROSSMARK, 50, 50, 0)
         
         data = ann.to_dict()
         
-        assert data["ann_type"] == "cross"
+        assert data["ann_type"] == "crossmark"
         # 20 * 300/72 = 83.3333...
         assert abs(data["base_width"] - 83.33) < 0.01
         assert abs(data["base_height"] - 83.33) < 0.01
@@ -242,7 +242,7 @@ class TestVectorAnnotationSerialization:
         """Test full roundtrip for all annotation types."""
         for ann_type in [
             AnnotationType.CHECKMARK,
-            AnnotationType.CROSS,
+            AnnotationType.CROSSMARK,
             AnnotationType.ARROW_N,
             AnnotationType.ARROW_E,
             AnnotationType.TEXT,

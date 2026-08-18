@@ -28,7 +28,7 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 - Show blue boundary around selected signature/annotation while editing.
 - Change mouse cursor to move arrows when hovering draggable objects.
 - Use toolbar-first UI with large action buttons instead of hierarchical menu for primary actions.
-- Support annotations (checkmark, cross, 8-direction arrows, text) with color + move + scale.
+- Support annotations (checkmark, crossmark, 8-direction arrows, text) with color + move + scale.
 - Remove top-level "Open Signature" button from toolbar; signature insertion is done via annotation menu.
 
 ## 3. Non-Goals (v1)
@@ -47,7 +47,7 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
   - Previous Page / Next Page
   - Annotation picker (dropdown):
     - Checkmark
-    - Cross
+    - Crossmark
     - Arrow N/NE/E/SE/S/SW/W/NW
     - Text ▶ Free text / Current date / Current time / Current date & time
     - Signature ▶ From file… / Recent (up to 10 LRU files)
@@ -113,7 +113,7 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 ### 5.6 Annotations
 - Supported types:
   - Checkmark
-  - Cross
+  - Crossmark
   - Arrow: N, NE, E, SE, S, SW, W, NW
   - Text (submenu):
     - Free text
@@ -750,7 +750,7 @@ Create a JSON fixture file with the action sequence:
 ```
 
 **Naming Convention:**
-- File: `tests/fixtures/cross_actions.json`
+- File: `tests/fixtures/crossmark_actions.json`
 - This name becomes the `test_name` used in results organization
 - Results appear in: `test-results/actual/cross_actions/`
 
@@ -772,13 +772,13 @@ FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 
 class TestCrossAnnotation(unittest.TestCase):
-    """Test cross annotation workflow."""
+    """Test crossmark annotation workflow."""
     
     @classmethod
     def setUpClass(cls):
         """Set up fixtures once for the class."""
-        cls.actions_file = FIXTURES_DIR / "cross_actions.json"
-        cls.expected_image = FIXTURES_DIR / "cross_actions-expected" / "cross-output.png"
+        cls.actions_file = FIXTURES_DIR / "crossmark_actions.json"
+        cls.expected_image = FIXTURES_DIR / "crossmark_actions-expected" / "crossmark-output.png"
     
     def setUp(self):
         """Create a fresh MainWindow for each test."""
@@ -901,7 +901,7 @@ class TestCrossAnnotation(unittest.TestCase):
 
 Here's a complete working example:
 
-**File: `tests/fixtures/cross_actions.json`**
+**File: `tests/fixtures/crossmark_actions.json`**
 ```json
 {
   "actions": [
@@ -927,13 +927,13 @@ from tests.utils.image_comparison import assert_images_equal_with_results
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
 
 
-class TestCrossAnnotation(unittest.TestCase):
-    """Test cross annotation workflow."""
+class TestCrossmarkAnnotation(unittest.TestCase):
+    """Test crossmark annotation workflow."""
     
     @classmethod
     def setUpClass(cls):
-        cls.actions_file = FIXTURES_DIR / "cross_actions.json"
-        cls.expected_image = FIXTURES_DIR / "cross_actions-expected" / "cross-output.png"
+        cls.actions_file = FIXTURES_DIR / "crossmark_actions.json"
+        cls.expected_image = FIXTURES_DIR / "crossmark_actions-expected" / "crossmark-output.png"
     
     def setUp(self):
         self.temp_dir = TemporaryDirectory()
@@ -967,7 +967,7 @@ class TestCrossAnnotation(unittest.TestCase):
 #### Step 10: Commit to Repository
 
 ```bash
-git add tests/fixtures/cross_actions.json
+git add tests/fixtures/crossmark_actions.json
 git add tests/fixtures/cross_actions-expected/
 git add tests/feature/test_cross_annotation.py
 git commit -m "Add feature test for cross annotation"
@@ -987,7 +987,7 @@ git commit -m "Add feature test for cross annotation"
 #### Common Pitfalls
 
 1. **Naming mismatch**: JSON file name must match `test_name` parameter
-   - File: `cross_actions.json` ✓
+   - File: `crossmark_actions.json` ✓
    - Parameter: `test_name="cross_actions"` ✓
 
 2. **Missing expected image**: File must exist before test runs
@@ -1236,7 +1236,7 @@ Follow these patterns when creating tests:
 
 | Item | Pattern | Example |
 |------|---------|---------|
-| JSON file | `{name}_actions.json` | `cross_actions.json` |
+| JSON file | `{name}_actions.json` | `crossmark_actions.json` |
 | Test class | `Test{Name}` | `TestCrossAnnotation` |
 | Test method | `test_{feature}_{type}` | `test_cross_annotation_pixel_perfect` |
 | test_name param | `{name}_actions` | `test_name="cross_actions"` |

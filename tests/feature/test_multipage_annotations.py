@@ -60,10 +60,10 @@ class TestMultipageAnnotations:
         assert main_window.canvas.current_page == 1
         
         # 4. Add different annotation on page 1
-        main_window._add_vector(AnnotationType.CROSS)
-        page1_cross = main_window.canvas.selected
-        page1_cross.x = 200
-        page1_cross.y = 200
+        main_window._add_vector(AnnotationType.CROSSMARK)
+        page1_crossmark = main_window.canvas.selected
+        page1_crossmark.x = 200
+        page1_crossmark.y = 200
         main_window.canvas.objectChanged.emit()
         
         # 5. Go to page 2 (if exists)
@@ -87,12 +87,12 @@ class TestMultipageAnnotations:
         assert page0_objects[0].x == 100
         assert page0_objects[0].y == 100
         
-        # 7. Go to page 1 - cross should still be there
+        # 7. Go to page 1 - crossmark should still be there
         main_window.canvas.goto_page(1)
         assert main_window.canvas.current_page == 1
         page1_objects = main_window.canvas.current_page_objects()
         assert len(page1_objects) == 1
-        assert page1_objects[0].ann_type == AnnotationType.CROSS
+        assert page1_objects[0].ann_type == AnnotationType.CROSSMARK
         assert page1_objects[0].x == 200
         assert page1_objects[0].y == 200
         
@@ -228,9 +228,9 @@ class TestMultipageAnnotations:
         obj0.y = 100
         main_window.canvas.objectChanged.emit()
         
-        # Add cross on page 1
+        # Add crossmark on page 1
         main_window.canvas.goto_page(1)
-        main_window._add_vector(AnnotationType.CROSS)
+        main_window._add_vector(AnnotationType.CROSSMARK)
         obj1 = main_window.canvas.selected
         obj1.x = 200
         obj1.y = 200
@@ -242,11 +242,11 @@ class TestMultipageAnnotations:
         assert len(page0_objects) == 1
         assert page0_objects[0].ann_type == AnnotationType.CHECKMARK
         
-        # Verify page 1 only has cross
+        # Verify page 1 only has crossmark
         main_window.canvas.goto_page(1)
         page1_objects = main_window.canvas.current_page_objects()
         assert len(page1_objects) == 1
-        assert page1_objects[0].ann_type == AnnotationType.CROSS
+        assert page1_objects[0].ann_type == AnnotationType.CROSSMARK
         
         # Modify object on page 0
         main_window.canvas.goto_page(0)
@@ -320,9 +320,9 @@ class TestMultipageAnnotations:
         obj0.color = obj0.color.__class__("#ff0000")  # Red
         main_window.canvas.objectChanged.emit()
         
-        # Page 1: blue cross
+        # Page 1: blue crossmark
         main_window.canvas.goto_page(1)
-        main_window._add_vector(AnnotationType.CROSS)
+        main_window._add_vector(AnnotationType.CROSSMARK)
         obj1 = main_window.canvas.selected
         obj1.color = obj1.color.__class__("#0000ff")  # Blue
         main_window.canvas.objectChanged.emit()

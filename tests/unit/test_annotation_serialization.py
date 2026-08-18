@@ -134,7 +134,7 @@ class TestAnnotationSerialization:
         """Test AnnotationType enum values."""
         assert AnnotationType.SIGNATURE.value == "signature"
         assert AnnotationType.CHECKMARK.value == "checkmark"
-        assert AnnotationType.CROSS.value == "cross"
+        assert AnnotationType.CROSSMARK.value == "crossmark"
         assert AnnotationType.ARROW_N.value == "arrow_n"
         assert AnnotationType.ARROW_NE.value == "arrow_ne"
         assert AnnotationType.ARROW_E.value == "arrow_e"
