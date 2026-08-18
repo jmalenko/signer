@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor
 
 from signer.objects import (
     CanvasObject, VectorAnnotation, SignatureObject, AnnotationType,
-    DEFAULT_FONT_FAMILY, DEFAULT_TEXT_FONT_PX, DEFAULT_LINE_WIDTH_FACTOR
+    DEFAULT_FONT_FAMILY, DEFAULT_TEXT_FONT_PT, DEFAULT_LINE_WIDTH_FACTOR
 )
 from signer.settings import AppSettings, SettingsStore
 from PIL import Image
@@ -182,9 +182,9 @@ class TestSettingsSerialization:
         settings = AppSettings()
         
         assert settings.recent_color == "#cc0000"
-        assert settings.recent_line_width == 1.5
+        assert settings.recent_line_width_pt == 1.5
         assert settings.recent_font_family == "Arial"
-        assert settings.recent_font_size_px == 48
+        assert settings.recent_font_size_pt == 11
         assert settings.last_signature_path is None
         assert settings.last_open_document_path is None
         assert settings.last_save_directory is None
@@ -196,9 +196,9 @@ class TestSettingsSerialization:
         """Test AppSettings with custom values."""
         settings = AppSettings(
             recent_color="#ff0000",
-            recent_line_width=2.0,
+            recent_line_width_pt=2.0,
             recent_font_family="Times",
-            recent_font_size_px=36,
+            recent_font_size_pt=11,
             last_signature_path="/path/sig.png",
             recent_signature_paths=["/path/sig1.png", "/path/sig2.png"],
             recent_text_strings=["Text 1", "Text 2"],
@@ -206,9 +206,9 @@ class TestSettingsSerialization:
         )
         
         assert settings.recent_color == "#ff0000"
-        assert settings.recent_line_width == 2.0
+        assert settings.recent_line_width_pt == 2.0
         assert settings.recent_font_family == "Times"
-        assert settings.recent_font_size_px == 36
+        assert settings.recent_font_size_pt == 11
         assert settings.last_signature_path == "/path/sig.png"
         assert len(settings.recent_signature_paths) == 2
         assert len(settings.recent_text_strings) == 2
@@ -234,9 +234,9 @@ class TestSettingsSerialization:
         # Create settings with custom values
         settings = AppSettings(
             recent_color="#ff0000",
-            recent_line_width=2.0,
+            recent_line_width_pt=2.0,
             recent_font_family="Times",
-            recent_font_size_px=36,
+            recent_font_size_pt=11,
             last_signature_path="/path/sig.png",
             recent_signature_paths=["/path/sig1.png", "/path/sig2.png"],
             recent_text_strings=["Text 1", "Text 2"],
@@ -250,9 +250,9 @@ class TestSettingsSerialization:
         loaded = store.load()
         
         assert loaded.recent_color == "#ff0000"
-        assert loaded.recent_line_width == 2.0
+        assert loaded.recent_line_width_pt == 2.0
         assert loaded.recent_font_family == "Times"
-        assert loaded.recent_font_size_px == 36
+        assert loaded.recent_font_size_pt == 11
         assert loaded.last_signature_path == "/path/sig.png"
         assert loaded.recent_signature_paths == ["/path/sig1.png", "/path/sig2.png"]
         assert loaded.recent_text_strings == ["Text 1", "Text 2"]
@@ -284,7 +284,7 @@ class TestSettingsSerialization:
         
         assert settings.recent_color == "#ff0000"
         # Other values should be defaults
-        assert settings.recent_line_width == 1.5
+        assert settings.recent_line_width_pt == 1.5
         assert settings.recent_font_family == "Arial"
     
     def test_settings_path_windows(self, temp_dir):

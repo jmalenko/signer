@@ -118,18 +118,20 @@ class TestVectorAnnotationSerialization:
         assert data["type"] == "VectorAnnotation"
         assert data["x"] == 100
         assert data["y"] == 100
-        assert data["base_width"] == 100
-        assert data["base_height"] == 100
+        # 20 * 300/72 = 83.3333...
+        assert abs(data["base_width"] - 83.33) < 0.01
+        assert abs(data["base_height"] - 83.33) < 0.01
         assert data["scale"] == 2.0
         assert data["page"] == 0
         assert data["color"] == "#cc0000"
         assert data["ann_type"] == "checkmark"
         assert data["text"] == ""
         assert data["font_family"] == "Arial"
-        assert data["font_size_px"] == 48
+        assert data["font_size_px"] == 11
         assert data["line_width_factor"] == 0.07
-        assert data["natural_width"] == 100
-        assert data["natural_height"] == 100
+        # Natural width/height also scaled
+        assert abs(data["natural_width"] - 83.33) < 0.01
+        assert abs(data["natural_height"] - 83.33) < 0.01
     
     def test_checkmark_from_dict(self):
         """Test checkmark annotation deserialization."""
@@ -141,8 +143,9 @@ class TestVectorAnnotationSerialization:
         
         assert restored.x == 100
         assert restored.y == 100
-        assert restored._base_width == 100
-        assert restored._base_height == 100
+        # 20 * 300/72 = 83.3333...
+        assert abs(restored._base_width - 83.33) < 0.01
+        assert abs(restored._base_height - 83.33) < 0.01
         assert restored.scale == 2.0
         assert restored.page == 0
         assert restored.color.name() == "#cc0000"
@@ -156,8 +159,9 @@ class TestVectorAnnotationSerialization:
         data = ann.to_dict()
         
         assert data["ann_type"] == "cross"
-        assert data["base_width"] == 100
-        assert data["base_height"] == 100
+        # 20 * 300/72 = 83.3333...
+        assert abs(data["base_width"] - 83.33) < 0.01
+        assert abs(data["base_height"] - 83.33) < 0.01
     
     def test_arrow_to_dict(self):
         """Test arrow annotation serialization."""
@@ -166,8 +170,9 @@ class TestVectorAnnotationSerialization:
         data = ann.to_dict()
         
         assert data["ann_type"] == "arrow_n"
-        assert data["base_width"] == 200
-        assert data["base_height"] == 200
+        # 40 * 300/72 = 166.6666...
+        assert abs(data["base_width"] - 166.67) < 0.01
+        assert abs(data["base_height"] - 166.67) < 0.01
     
     def test_text_annotation_to_dict(self, qapp):
         """Test text annotation serialization."""
@@ -179,7 +184,7 @@ class TestVectorAnnotationSerialization:
         assert data["ann_type"] == "text"
         assert data["text"] == "Hello World"
         assert data["font_family"] == "Arial"
-        assert data["font_size_px"] == 48
+        assert data["font_size_px"] == 11
         assert "natural_width" in data
         assert "natural_height" in data
     
@@ -201,7 +206,7 @@ class TestVectorAnnotationSerialization:
         assert restored.ann_type == AnnotationType.TEXT
         assert restored.text == "Hello World"
         assert restored._font_family == "Arial"
-        assert restored._font_size_px == 48
+        assert restored._font_size_px == 11
     
     def test_text_annotation_custom_font(self):
         """Test text annotation with custom font settings."""

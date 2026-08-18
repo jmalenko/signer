@@ -194,6 +194,33 @@ The following details clarify the test implementation requirements:
    - Temporary directories for test outputs
    - Sample PDF and signature files
 
+## Version 1.2.19 - Annotation and text sizing
+
+Motivation: The sizes should be a appropriate for documents using text size 11 points. 
+
+1. Default font size for text annotations: **11 points**
+
+2. Default annotation size (width/height) for vector annotations: **20 points**
+   - Checkmark: 20×20 points
+   - Cross: 20×20 points  
+   - Arrows: 40×40 points (2× base size)
+
+3. Default line width for annotations: **1.5 points**
+   - Proportional to the annotation size for visual consistency
+
+4. All sizes are measured in PDF points (1/72 inch)
+   - When placed on the document, 20 points = ~0.22 inches
+   - These are absolute measurements in document-space, not relative to screen zoom
+
+5. **Coordinate System and DPI Scaling**
+   - Document uses PDF points (72 DPI) for coordinate storage
+   - Internal rendering at 300 DPI requires scaling: `DPI_SCALE = 300 / 72 ≈ 4.167`
+   - All sizes converted to 300 DPI pixels during rendering:
+     - Checkmark/Cross: 20pt × 4.167 ≈ 83 pixels
+     - Arrows: 40pt × 4.167 ≈ 167 pixels
+     - Font: 11pt × 4.167 ≈ 46 pixels
+   - Settings store sizes in PDF points; rendering applies DPI scaling automatically
+   - Serialization preserves PDF points for compatibility
 
 # Assumptions
 1. Signature has a transparent background.

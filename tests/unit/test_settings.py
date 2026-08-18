@@ -17,9 +17,9 @@ class TestAppSettings:
         settings = AppSettings()
         
         assert settings.recent_color == "#cc0000"
-        assert settings.recent_line_width == 1.5
+        assert settings.recent_line_width_pt == 1.5
         assert settings.recent_font_family == "Arial"
-        assert settings.recent_font_size_px == 48
+        assert settings.recent_font_size_pt == 11
         assert settings.last_signature_path is None
         assert settings.last_open_document_path is None
         assert settings.last_save_directory is None
@@ -31,9 +31,9 @@ class TestAppSettings:
         """Test custom values."""
         settings = AppSettings(
             recent_color="#ff0000",
-            recent_line_width=2.0,
+            recent_line_width_pt=2.0,
             recent_font_family="Times",
-            recent_font_size_px=36,
+            recent_font_size_pt=36,
             last_signature_path="/path/sig.png",
             last_open_document_path="/path/doc.pdf",
             last_save_directory="/output",
@@ -43,9 +43,9 @@ class TestAppSettings:
         )
         
         assert settings.recent_color == "#ff0000"
-        assert settings.recent_line_width == 2.0
+        assert settings.recent_line_width_pt == 2.0
         assert settings.recent_font_family == "Times"
-        assert settings.recent_font_size_px == 36
+        assert settings.recent_font_size_pt == 36
         assert settings.last_signature_path == "/path/sig.png"
         assert settings.last_open_document_path == "/path/doc.pdf"
         assert settings.last_save_directory == "/output"
@@ -59,7 +59,7 @@ class TestAppSettings:
         data = settings.__dict__
         
         assert data["recent_color"] == "#ff0000"
-        assert "recent_line_width" in data
+        assert "recent_line_width_pt" in data
         assert "recent_signature_paths" in data
 
 
@@ -97,9 +97,9 @@ class TestSettingsStore:
         
         original = AppSettings(
             recent_color="#ff0000",
-            recent_line_width=2.0,
+            recent_line_width_pt=2.0,
             recent_font_family="Times",
-            recent_font_size_px=36,
+            recent_font_size_pt=11,
             last_signature_path="/path/sig.png",
             last_open_document_path="/path/doc.pdf",
             last_save_directory="/output",
@@ -112,9 +112,9 @@ class TestSettingsStore:
         loaded = store.load()
         
         assert loaded.recent_color == original.recent_color
-        assert loaded.recent_line_width == original.recent_line_width
+        assert loaded.recent_line_width_pt == original.recent_line_width_pt
         assert loaded.recent_font_family == original.recent_font_family
-        assert loaded.recent_font_size_px == original.recent_font_size_px
+        assert loaded.recent_font_size_pt == original.recent_font_size_pt
         assert loaded.last_signature_path == original.last_signature_path
         assert loaded.last_open_document_path == original.last_open_document_path
         assert loaded.last_save_directory == original.last_save_directory
@@ -146,7 +146,7 @@ class TestSettingsStore:
         settings = store.load()
         
         assert settings.recent_color == "#ff0000"
-        assert settings.recent_line_width == 1.5  # default
+        assert settings.recent_line_width_pt == 1.5  # default
         assert settings.recent_font_family == "Arial"  # default
     
     def test_load_extra_keys_ignored(self, temp_dir):

@@ -78,23 +78,25 @@ class TestBoundingBox:
     
     def test_vector_annotation_bounding_box(self):
         """Test VectorAnnotation bounding box."""
-        # Checkmark has default base size 100x100
+        # Checkmark has default base size 20 points, scaled to 300 DPI (20 * 300/72 ≈ 83.33 px)
         ann = VectorAnnotation(AnnotationType.CHECKMARK, 50, 50, 0)
         
         assert ann.x == 50
         assert ann.y == 50
-        assert ann._base_width == 100
-        assert ann._base_height == 100
-        assert ann.scaled_width == 100
-        assert ann.scaled_height == 100
+        # 20 * 300/72 = 83.3333...
+        assert abs(ann._base_width - 83.33) < 0.01
+        assert abs(ann._base_height - 83.33) < 0.01
+        assert abs(ann.scaled_width - 83.33) < 0.01
+        assert abs(ann.scaled_height - 83.33) < 0.01
     
     def test_arrow_annotation_bounding_box(self):
         """Test Arrow annotation bounding box (larger default)."""
         ann = VectorAnnotation(AnnotationType.ARROW_N, 0, 0, 0)
         
-        # Arrows have base size 200x200
-        assert ann._base_width == 200
-        assert ann._base_height == 200
+        # Arrows have base size 40 points, scaled to 300 DPI (40 * 300/72 ≈ 166.67 px)
+        # 40 * 300/72 = 166.6666...
+        assert abs(ann._base_width - 166.67) < 0.01
+        assert abs(ann._base_height - 166.67) < 0.01
     
     def test_text_annotation_bounding_box(self, qapp):
         """Test Text annotation bounding box."""

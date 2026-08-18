@@ -177,14 +177,14 @@ class TestScaleCalculations:
     def test_set_scaled_size_proportional(self):
         """Test proportional resize (non-text annotations)."""
         obj = VectorAnnotation(AnnotationType.CHECKMARK, 0, 0, 0)
-        # Default base size for checkmark is 100x100
+        # Default base size for checkmark is 20 points, scaled to 300 DPI: 83.33 px
         
-        # Resize to 200x200 (2x scale)
-        obj.set_scaled_size(200, 200)
+        # Resize to 166.67 (2x scale)
+        obj.set_scaled_size(166.67, 166.67)
         
-        assert obj.scale == 2.0
-        assert obj.scaled_width == 200.0
-        assert obj.scaled_height == 200.0
+        assert abs(obj.scale - 2.0) < 0.01
+        assert abs(obj.scaled_width - 166.67) < 0.01
+        assert abs(obj.scaled_height - 166.67) < 0.01
     
     def test_set_scaled_size_free_resize(self):
         """Test free resize (text annotations)."""
@@ -202,16 +202,17 @@ class TestScaleCalculations:
     def test_set_scaled_size_min_max_clamp(self):
         """Test scale clamping to min/max."""
         obj = VectorAnnotation(AnnotationType.CHECKMARK, 0, 0, 0)
-        # Base size for CHECKMARK is 100x100, minimum width/height is 8
-        # So minimum scale is 8/100 = 0.08
+        # Base size for CHECKMARK is 20 points, scaled to 300 DPI: 83.33 px
+        # Minimum width/height is 8 pixels, so minimum scale is 8/83.33 ≈ 0.096
         
         # Try to scale too small
         obj.set_scaled_size(1, 1)
-        assert obj.scale == 0.08  # Minimum scale (8/100)
+        # Expected: 8 / 83.33 ≈ 0.096 (clamped to min 0.05, but 0.096 > 0.05)
+        assert abs(obj.scale - 0.096) < 0.01
         
         # Try to scale too large
         obj.set_scaled_size(10000, 10000)
-        assert obj.scale == 10.0  # Maximum scale
+        assert obj.scale == 10.0  # Maximum scale (clamped to max 10.0)
 
 
 if __name__ == "__main__":

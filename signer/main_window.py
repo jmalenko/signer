@@ -34,9 +34,10 @@ from .compositor import (
 )
 from .objects import (
     AnnotationType,
+    CanvasObject,
     DEFAULT_FONT_FAMILY,
     DEFAULT_LINE_WIDTH_FACTOR,
-    DEFAULT_TEXT_FONT_PX,
+    DEFAULT_TEXT_FONT_PT,
     SignatureObject,
     VectorAnnotation,
 )
@@ -486,11 +487,13 @@ class MainWindow(QMainWindow):
         if not self.canvas.has_document:
             QMessageBox.warning(self, "No document", "Open a document first.")
             return
+        # Convert absolute line width (points) to relative factor for the default annotation size
+        line_width_factor = self._settings.recent_line_width_pt / CanvasObject.DEFAULT_BASE_SIZE
         obj = VectorAnnotation(
             ann_type, 0, 0, self.canvas.current_page,
             font_family=self._settings.recent_font_family,
-            font_size_px=self._settings.recent_font_size_px,
-            line_width_factor=self._settings.recent_line_width,
+            font_size_px=self._settings.recent_font_size_pt,
+            line_width_factor=line_width_factor,
         )
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)
@@ -512,11 +515,13 @@ class MainWindow(QMainWindow):
         # Track recent text strings (excluding predefined date/time)
         self._update_recent_text_strings(preset_text)
         self._save_settings_safe()
+        # Convert absolute line width (points) to relative factor for the default annotation size
+        line_width_factor = self._settings.recent_line_width_pt / CanvasObject.DEFAULT_BASE_SIZE
         obj = VectorAnnotation(
             AnnotationType.TEXT, 0, 0, self.canvas.current_page, preset_text,
             font_family=self._settings.recent_font_family,
-            font_size_px=self._settings.recent_font_size_px,
-            line_width_factor=self._settings.recent_line_width,
+            font_size_px=self._settings.recent_font_size_pt,
+            line_width_factor=line_width_factor,
         )
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)

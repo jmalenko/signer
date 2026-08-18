@@ -22,7 +22,10 @@ from PySide6.QtGui import (
 )
 
 
-DEFAULT_TEXT_FONT_PX: int = 48
+DEFAULT_TEXT_FONT_PT: int = 11
+# Document is internally rendered at 300 DPI, PDF standard is 72 DPI
+# DPI_SCALE is used to convert PDF points to 300 DPI pixels for rendering
+DPI_SCALE: float = 300.0 / 72.0  # 4.16667
 DEFAULT_FONT_FAMILY: str = "Arial"
 DEFAULT_LINE_WIDTH_FACTOR: float = 0.07
 
@@ -74,7 +77,7 @@ HANDLE_SIZE = 10.0
 class CanvasObject:
     """Base class for all objects placed on the canvas (document-space coordinates)."""
 
-    DEFAULT_BASE_SIZE: float = 100.0
+    DEFAULT_BASE_SIZE: float = 20.0  # Annotation size in PDF points
 
     def __init__(self, x: float, y: float, width: float, height: float, page: int = 0) -> None:
         self.x = x
@@ -237,24 +240,26 @@ class VectorAnnotation(CanvasObject):
         page: int = 0,
         text: str = "",
         font_family: str = DEFAULT_FONT_FAMILY,
-        font_size_px: int = DEFAULT_TEXT_FONT_PX,
+        font_size_px: int = DEFAULT_TEXT_FONT_PT,
         line_width_factor: float = DEFAULT_LINE_WIDTH_FACTOR,
     ) -> None:
         self._font_family = font_family
         self._font_size_px = font_size_px
         self._line_width_factor = line_width_factor
         if ann_type == AnnotationType.TEXT:
-            super().__init__(x, y, 180.0, 36.0, page)
+            # Text box: 180×36 points, scale for 300 DPI rendering
+            super().__init__(x, y, 180.0 * DPI_SCALE, 36.0 * DPI_SCALE, page)
             self.ann_type = ann_type
             self.text = text
             self.fit_text_box()
         else:
-            base = 200.0 if ann_type in ARROW_TYPES else self.DEFAULT_BASE_SIZE
-            super().__init__(x, y, base, base, page)
+            base = 2.0 * self.DEFAULT_BASE_SIZE if ann_type in ARROW_TYPES else self.DEFAULT_BASE_SIZE
+            # Base sizes are in PDF points, scale for 300 DPI rendering
+            super().__init__(x, y, base * DPI_SCALE, base * DPI_SCALE, page)
             self.ann_type = ann_type
             self.text = text
-            self._natural_width = float(base)
-            self._natural_height = float(base)
+            self._natural_width = float(base * DPI_SCALE)
+            self._natural_height = float(base * DPI_SCALE)
 
     def supports_free_resize(self) -> bool:
         return self.ann_type == AnnotationType.TEXT
@@ -263,7 +268,8 @@ class VectorAnnotation(CanvasObject):
 
     def _make_font(self) -> QFont:
         f = QFont(self._font_family)
-        f.setPixelSize(int(round(self._font_size_px)))
+        # Font size is stored in PDF points; scale to pixels for 300 DPI rendering
+        f.setPixelSize(int(round(self._font_size_px * DPI_SCALE)))
         return f
 
     def fit_text_box(self) -> None:
@@ -322,7 +328,8 @@ class VectorAnnotation(CanvasObject):
                 self.scaled_height / max(1.0, self._natural_height),
             )
             font = self._make_font()
-            font.setPixelSize(max(1, int(round(self._font_size_px * factor * doc_scale))))
+            # Font size already includes DPI_SCALE from _make_font(), multiply by factor and doc_scale
+            font.setPixelSize(max(1, int(round(font.pixelSize() * factor * doc_scale))))
             painter.setFont(font)
             painter.setPen(self.color)
             painter.setBrush(Qt.NoBrush)
@@ -407,7 +414,7 @@ class VectorAnnotation(CanvasObject):
             data["page"],
             data.get("text", ""),
             font_family=data.get("font_family", DEFAULT_FONT_FAMILY),
-            font_size_px=data.get("font_size_px", DEFAULT_TEXT_FONT_PX),
+            font_size_px=data.get("font_size_px", DEFAULT_TEXT_FONT_PT),
             line_width_factor=data.get("line_width_factor", DEFAULT_LINE_WIDTH_FACTOR),
         )
         obj._base_width = data["base_width"]
