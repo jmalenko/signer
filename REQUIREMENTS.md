@@ -194,39 +194,6 @@ The following details clarify the test implementation requirements:
    - Temporary directories for test outputs
    - Sample PDF and signature files
 
-## Version 1.2.19 - Annotation and text sizing
-
-Motivation: The sizes should be a appropriate for documents using text size 11 points. 
-
-1. Default font size for text annotations: **11 points**
-
-2. Default annotation size (width/height) for vector annotations: **20 points**
-   - Checkmark: 20×20 points
-   - Cross: 20×20 points  
-   - Arrows: 40×40 points (2× base size)
-
-3. Default line width for annotations: **1.5 points**
-   - Proportional to the annotation size for visual consistency
-
-4. All sizes are measured in PDF points (1/72 inch)
-   - When placed on the document, 20 points = ~0.22 inches
-   - These are absolute measurements in document-space, not relative to screen zoom
-
-5. **Coordinate System and DPI Scaling**
-   - Document uses PDF points (72 DPI) for coordinate storage
-   - Internal rendering at 300 DPI requires scaling: `DPI_SCALE = 300 / 72 ≈ 4.167`
-   - All sizes converted to 300 DPI pixels during rendering:
-     - Checkmark/Cross: 20pt × 4.167 ≈ 83 pixels
-     - Arrows: 40pt × 4.167 ≈ 167 pixels
-     - Font: 11pt × 4.167 ≈ 46 pixels
-   - Settings store sizes in PDF points; rendering applies DPI scaling automatically
-   - Serialization preserves PDF points for compatibility
-
-## Version 1.2.20 - Terminology standardization
-
-1. Rename the "Cross" annotation to "Crossmark" for consistency with "Checkmark".
-2. All documentation, code, and user-facing text shall use "Crossmark" instead of "Cross". 
-
 ## Version 1.2.6 - Application icon
 
 1. The application icon shall depict a document with a pen writing a blue cursive signature. The pencil tip should touch the signature line to indicate active writing.
@@ -935,6 +902,39 @@ When multiple annotations are selected, the following operations shall apply to 
 This prevents accidental triggering of hotkeys while the user is typing or confirming actions.
 
 3. **Note on annotation addition hotkeys**: Hotkeys for directly adding specific annotation types (Checkmark, Cross, Arrows, Text, Signature) are not provided; these are accessed via the Annotations menu or toolbar button.
+
+## Version 1.2.19 - Annotation and text sizing
+
+Motivation: The sizes should be a appropriate for documents using text size 11 points. 
+
+1. Default font size for text annotations: **11 points**
+
+2. Default annotation size (width/height) for vector annotations: **20 points**
+   - Checkmark: 20×20 points
+   - Cross: 20×20 points  
+   - Arrows: 40×40 points (2× base size)
+
+3. Default line width for annotations: **1.5 points**
+   - Proportional to the annotation size for visual consistency
+
+4. All sizes are measured in PDF points (1/72 inch)
+   - When placed on the document, 20 points = ~0.22 inches
+   - These are absolute measurements in document-space, not relative to screen zoom
+
+5. **Coordinate System and DPI Scaling**
+   - Document uses PDF points (72 DPI) for coordinate storage
+   - Internal rendering at 300 DPI requires scaling: `DPI_SCALE = 300 / 72 ≈ 4.167`
+   - All sizes converted to 300 DPI pixels during rendering:
+     - Checkmark/Cross: 20pt × 4.167 ≈ 83 pixels
+     - Arrows: 40pt × 4.167 ≈ 167 pixels
+     - Font: 11pt × 4.167 ≈ 46 pixels
+   - Settings store sizes in PDF points; rendering applies DPI scaling automatically
+   - Serialization preserves PDF points for compatibility
+
+## Version 1.2.20 - Terminology standardization
+
+1. Rename the "Cross" annotation to "Crossmark" for consistency with "Checkmark".
+2. All documentation, code, and user-facing text shall use "Crossmark" instead of "Cross". 
 
 # Assumptions
 1. Signature has a transparent background.
