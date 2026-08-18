@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples/document1.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "crossmark",
+      "page": 0,
+      "x": 275,
+      "y": 770
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}

@@ -28,13 +28,13 @@ def organize_test_output(
     Creates:
         test-results/
             └── {test_name}/
-                ├── {test_name}.png (actual output)
-                ├── {test_name}_expected.png (reference)
-                ├── {test_name}_diff.png (pixel-level diff: white=same, red=different)
+                ├── {expected_base}_actual.png (actual output, named after expected file)
+                ├── {expected_base}_expected.png (reference)
+                ├── {expected_base}_diff.png (pixel-level diff: white=same, red=different)
                 └── info.json (metadata including pass/fail status)
     
     Args:
-        test_name: Name of the test
+        test_name: Name of the test (used for diff and directory)
         actual_image: Path to actual output image
         expected_image: Path to expected reference image
         diff_image: Path to diff visualization
@@ -49,24 +49,29 @@ def organize_test_output(
     
     from shutil import copy2
     
-    # Simple result tracking - only match status
+    # Extract base filename from expected image (e.g., "document1-signed" from "document1-signed.png")
+    expected_image_path = Path(expected_image)
+    expected_base = expected_image_path.stem  # Filename without extension
+    
+    # Simple result tracking - only match status and expected base name for report generation
     results = {
         "match": match,
+        "expected_base": expected_base,  # Store for HTML report file lookup
     }
     
-    # Copy actual image with _actual suffix
+    # Copy actual image with _actual suffix, named after expected file
     if actual_image:
-        dest = test_dir / f"{test_name}_actual.png"
+        dest = test_dir / f"{expected_base}_actual.png"
         copy2(actual_image, dest)
     
     # Copy expected image with _expected suffix
     if expected_image:
-        dest = test_dir / f"{test_name}_expected.png"
+        dest = test_dir / f"{expected_base}_expected.png"
         copy2(expected_image, dest)
     
-    # Copy diff image to test directory with unique name per test
+    # Copy diff image to test directory with name matching expected base
     if diff_image:
-        dest = test_dir / f"{test_name}_diff.png"
+        dest = test_dir / f"{expected_base}_diff.png"
         copy2(diff_image, dest)
     
     # Save info file in test directory
@@ -128,10 +133,13 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
         match = result.get("match", True)
         test_dir = results_dir / test_name
         
-        # Find image files in test directory
-        actual_file = test_dir / f"{test_name}_actual.png"
-        expected_file = test_dir / f"{test_name}_expected.png"
-        diff_file = test_dir / f"{test_name}_diff.png"
+        # Get expected base name (for file lookup), fallback to test_name for old results
+        expected_base = result.get("expected_base", test_name)
+        
+        # Find image files in test directory (all using expected base name for consistency)
+        actual_file = test_dir / f"{expected_base}_actual.png"
+        expected_file = test_dir / f"{expected_base}_expected.png"
+        diff_file = test_dir / f"{expected_base}_diff.png"
         
         # Create status badge
         status_class = "status-pass" if match else "status-fail"

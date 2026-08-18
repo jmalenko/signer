@@ -10,16 +10,14 @@ from PIL import Image, ImageChops, ImageDraw
 def compare_images(
     actual_path: str | Path,
     expected_path: str | Path,
-    tolerance: int = 0,
     diff_output_path: Optional[str | Path] = None,
 ) -> Tuple[bool, Optional[Image.Image]]:
     """
-    Compare two images pixel by pixel.
+    Compare two images pixel by pixel (exact match required).
     
     Args:
         actual_path: Path to the actual (generated) image
         expected_path: Path to the expected (reference) image
-        tolerance: Maximum allowed difference per channel (0-255). Default 0 = pixel-perfect.
         diff_output_path: Optional path to save diff image (always generated for visualization)
         
     Returns:
@@ -44,17 +42,8 @@ def compare_images(
     if diff_output_path:
         diff_img.save(diff_output_path)
     
-    # Check if images are identical (within tolerance)
-    if tolerance == 0:
-        # Pixel-perfect comparison
-        if diff.getbbox() is None:
-            return True, diff_img
-    else:
-        # Tolerance-based comparison
-        for pixel in diff.getdata():
-            # Check if any channel exceeds tolerance
-            if any(c > tolerance for c in pixel[:3]):  # For RGB, only 3 channels
-                return False, diff_img
+    # Pixel-perfect comparison (exact match required)
+    if diff.getbbox() is None:
         return True, diff_img
     
     return False, diff_img
@@ -98,17 +87,16 @@ def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Imag
 def assert_images_equal(
     actual_path: str | Path,
     expected_path: str | Path,
-    tolerance: int = 0,
     diff_output_path: Optional[str | Path] = None,
 ) -> None:
     """
-    Assert that two images are equal (pixel-perfect by default).
+    Assert that two images are equal (pixel-perfect, exact match required).
     
     Raises:
         AssertionError: If images don't match, with details about the mismatch
     """
     match, diff_img = compare_images(
-        actual_path, expected_path, tolerance, diff_output_path
+        actual_path, expected_path, diff_output_path
     )
     
     if not match:
@@ -143,7 +131,6 @@ def assert_images_equal_with_results(
     actual_path: str | Path,
     expected_path: str | Path,
     test_name: str,
-    tolerance: int = 0,
     save_results: bool = True,
 ) -> None:
     """
@@ -157,7 +144,6 @@ def assert_images_equal_with_results(
         actual_path: Path to the actual (generated) image
         expected_path: Path to the expected (reference) image
         test_name: Name for organizing results (stored in actual/ subdirectory)
-        tolerance: Pixel difference tolerance (default 0 = pixel-perfect)
         save_results: Whether to save results even on pass
         
     Raises:
@@ -174,9 +160,9 @@ def assert_images_equal_with_results(
         tmpdir = Path(tmpdir)
         diff_path = tmpdir / "diff.png"
         
-        # Compare images and always generate diff for visualization
+        # Compare images and always generate diff for visualization (pixel-perfect)
         match, _ = compare_images(
-            actual_path, expected_path, tolerance, diff_output_path=diff_path
+            actual_path, expected_path, diff_output_path=diff_path
         )
         
         # Organize results (always save diff if save_results=True)

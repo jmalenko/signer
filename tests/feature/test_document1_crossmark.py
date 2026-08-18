@@ -1,4 +1,4 @@
-"""Feature test for checkmark annotation workflow."""
+"""Feature test for crossmark annotation workflow."""
 
 import json
 from pathlib import Path
@@ -13,8 +13,8 @@ from tests.utils.image_comparison import assert_images_equal_with_results
 from PySide6.QtWidgets import QApplication
 
 
-class TestDocument1Checkmark:
-    """Test checkmark annotation workflow on document1.pdf."""
+class TestDocument1Crossmark:
+    """Test crossmark annotation workflow on document1.pdf."""
 
     @pytest.fixture
     def main_window(self, qapp, temp_dir):
@@ -32,10 +32,10 @@ class TestDocument1Checkmark:
         yield window
         window.close()
 
-    def test_document1_checkmark_pixel_perfect(self, main_window, temp_dir):
-        """Test that checkmark annotation renders correctly and matches reference."""
-        actions_file = FIXTURES_DIR / "document1_checkmark.json"
-        expected_image = FIXTURES_DIR / "document1_checkmark" / "document1-signed.png"
+    def test_document1_crossmark_pixel_perfect(self, main_window, temp_dir):
+        """Test that crossmark annotation renders correctly and matches reference."""
+        actions_file = FIXTURES_DIR / "document1_crossmark.json"
+        expected_image = FIXTURES_DIR / "document1_crossmark" / "document1-signed.png"
         output_image = temp_dir / "document1-signed.png"
 
         # Play actions with output path
@@ -47,13 +47,13 @@ class TestDocument1Checkmark:
         assert_images_equal_with_results(
             output_image,
             expected_image,
-            test_name="document1_checkmark",
+            test_name="document1_crossmark",
             save_results=True
         )
 
-    def test_document1_checkmark_actions_file_structure(self):
+    def test_document1_crossmark_actions_file_structure(self):
         """Verify actions JSON file has correct structure."""
-        actions_file = FIXTURES_DIR / "document1_checkmark.json"
+        actions_file = FIXTURES_DIR / "document1_crossmark.json"
         assert actions_file.exists(), f"Actions file not found: {actions_file}"
 
         with open(actions_file) as f:
@@ -64,9 +64,9 @@ class TestDocument1Checkmark:
         assert isinstance(data["actions"], list), "'actions' must be a list"
         assert len(data["actions"]) > 0, "Actions list cannot be empty"
 
-    def test_document1_checkmark_actions_include_required_types(self):
+    def test_document1_crossmark_actions_include_required_types(self):
         """Verify all actions have required 'type' field."""
-        actions_file = FIXTURES_DIR / "document1_checkmark.json"
+        actions_file = FIXTURES_DIR / "document1_crossmark.json"
         
         with open(actions_file) as f:
             data = json.load(f)
@@ -77,7 +77,7 @@ class TestDocument1Checkmark:
 
     def test_annotation_positions_are_valid(self):
         """Verify annotation positions are valid coordinates."""
-        actions_file = FIXTURES_DIR / "document1_checkmark.json"
+        actions_file = FIXTURES_DIR / "document1_crossmark.json"
         
         with open(actions_file) as f:
             data = json.load(f)

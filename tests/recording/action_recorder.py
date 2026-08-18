@@ -6,6 +6,7 @@ when the SIGNER_RECORD_ACTIONS environment variable is set.
 
 import os
 import json
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 

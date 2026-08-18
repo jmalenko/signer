@@ -449,9 +449,9 @@ Each feature test shall:
 
 #### Image Comparison
 - Use PIL/Pillow for pixel-by-pixel comparison
-- Allow configurable tolerance (default: 0 for pixel-perfect)
+- Enforce pixel-perfect matching (exact images required)
 - Generate diff image on failure
-- Report mismatch percentage
+- Report pixel-level differences visually
 
 ### 14.6 Test Dependencies
 - `pytest>=7.0.0`: Test framework
@@ -616,7 +616,7 @@ The following actions are automatically captured when recording is enabled:
 1. **Use descriptive test names**: `test_document1_signature_checkmark_pixel_perfect`
 2. **Keep tests focused**: One test per feature scenario
 3. **Use fixtures**: Leverage `conftest.py` fixtures for common setup
-4. **Test pixel-perfect by default**: Use `tolerance=0` for exact matching
+4. **Test pixel-perfect**: All comparisons require exact pixel matching
 5. **Document the scenario**: Add docstrings explaining what the test verifies
 6. **Verify recording is enabled**: Check console output for "ACTION RECORDING ENABLED" message
 7. **Use relative paths**: Recorded paths are often absolute; normalize to relative in test fixtures
@@ -807,7 +807,6 @@ class TestCrossAnnotation(unittest.TestCase):
             output_image,
             self.expected_image,
             test_name="cross_actions",
-            tolerance=0,  # Pixel-perfect
             save_results=True
         )
 ```
@@ -955,7 +954,6 @@ class TestCrossmarkAnnotation(unittest.TestCase):
             output_image,
             self.expected_image,
             test_name="cross_actions",
-            tolerance=0,
             save_results=True
         )
 ```
@@ -1003,7 +1001,111 @@ git commit -m "Add feature test for cross annotation"
 5. **Forgetting to call `assert_images_equal_with_results()`**: Without this, test will pass but not verify output
    - Call this function in every pixel-perfect test ✓
 
-### 14.11 Quick Workflow: Creating a Feature Test (Practical)
+### 14.11 Coordinate System Best Practices (Important)
+
+**Problem:** Coordinates can be placed in wrong positions if the PDF coordinate system (bottom-left origin, y increases upward) is confused with the screen coordinate system (top-left origin, y increases downward).
+
+**Root Cause:** PDF stores annotation positions in "PDF points" at 72 DPI with origin at page bottom-left. Screen rendering uses "viewport coordinates" at screen DPI with origin at top-left. Forgetting the coordinate transformation causes annotations to render at the wrong location.
+
+#### Coordinate Systems Reference
+
+**PDF Coordinate System (Storage in `objects.py`)**
+- Origin: Bottom-left corner (0, 0)
+- Y-axis: Increases upward ↑
+- Storage: Points at 72 DPI
+- Page height: Standard PDF = 792 points (11 inches)
+- Transformation: `screen_y = (page_height_points - pdf_y) × DPI_scale`
+
+**Screen Coordinate System (Rendering)**
+- Origin: Top-left corner (0, 0)
+- Y-axis: Increases downward ↓
+- Rendering: Pixels at 300 DPI (or screen DPI)
+- Canvas height: Varies with window/zoom
+- Applied automatically by canvas rendering
+
+#### Common Mistakes That Cause Coordinate Swaps
+
+1. **Forgetting coordinate transformation** — Using PDF y-coordinate directly as screen y
+2. **X/Y transposition** — Assigning x value to y parameter or vice versa
+3. **Page height miscalculation** — Not subtracting from page height when converting
+4. **DPI scale confusion** — Mixing 72 DPI (PDF) with 300 DPI (screen) without proper scaling
+5. **Hard-coding screen coordinates** — Testing with rendered positions instead of PDF storage values
+
+#### Best Practice: Never Calculate Test Coordinates Manually
+
+**❌ DON'T** – Guessing coordinates from visual inspection:
+```python
+# WRONG: Looking at rendered image and trying to place crossmark at "Two"
+# "Two looks like it's at pixel 100, 300" → Wrong absolute coordinates
+"x": 100,
+"y": 300,
+```
+
+**✅ DO** – Generate reference images from actual rendering:
+```python
+# 1. Use action_player to execute actions and render
+from tests.recording.action_player import play_actions_from_file
+play_actions_from_file(main_window, fixture_json, output_path=reference_image)
+
+# 2. The output becomes the expected image
+# 3. Test fixture contains PDF coordinates that produce that rendering
+```
+
+#### Why This Works
+
+1. **ActionPlayer directly sets annotation coordinates** → `obj.x = x; obj.y = y` (PDF points)
+2. **Canvas rendering applies transformation** → Internal coordinate conversion handles PDF→screen
+3. **Reference image captures correct rendering** → Visual position is guaranteed by rendering engine
+4. **Test fixture coordinates match rendering** → No manual calculation needed
+
+#### Example: Document1 Crossmark Test
+
+**File: `tests/fixtures/document1_crossmark.json`**
+```json
+{
+  "actions": [
+    {"type": "open_document", "path": "examples/document1.pdf"},
+    {"type": "add_annotation", "annotation_type": "crossmark", "page": 0, "x": 65, "y": 606},
+    {"type": "save_document"}
+  ]
+}
+```
+
+**Why these coordinates?**
+- `x: 65, y: 606` are PDF points that produce the crossmark next to "Two" checkbox
+- Not screen pixels or guesses from visual inspection
+- Generated by rendering through ActionPlayer and capturing output
+- Guaranteed to work because coordinates come from actual rendering
+
+#### Workflow to Prevent Coordinate Mistakes
+
+1. **Plan your test scenario** (e.g., "Add crossmark next to 'Two' checkbox")
+2. **Run the app with RECORDING enabled** and manually place annotation where you want it
+3. **Capture the recorded coordinates** from action_recorder output (printed to stdout)
+4. **Use those recorded coordinates** in your fixture JSON
+5. **Regenerate reference image** using ActionPlayer with those exact coordinates
+6. **Test passes** because both fixture and reference come from the same rendering
+
+#### Troubleshooting Coordinate Mismatches
+
+| Symptom | Root Cause | Fix |
+|---------|-----------|-----|
+| Annotation appears at top-left | Y-coordinate treating PDF as screen | Check page height subtraction logic |
+| Annotation too far down/up | DPI scale miscalculation (72 vs 300) | Verify scaling factor in coordinate transform |
+| X position correct, Y inverted | Screen vs. PDF coordinate system swap | Use action_player to regenerate fixture |
+| Test fails with visual mismatch | Coordinates guessed, not recorded | Re-run app with RECORDING, capture real coordinates |
+| Different position on different PDFs | Page height not accounted for | Ensure `page_height_points` is PDF-specific, not hard-coded |
+
+#### Prevention Checklist
+
+- [ ] Never manually calculate coordinates from visual inspection
+- [ ] Always use ActionPlayer to generate reference images from fixture coordinates
+- [ ] Test fixture coordinates come from recording actual user placement
+- [ ] Reference image is output from ActionPlayer with those exact coordinates
+- [ ] If visual mismatch occurs, regenerate both fixture and reference from scratch
+- [ ] Ensure test environment has consistent rendering (fonts, anti-aliasing, DPI)
+
+### 14.12 Quick Workflow: Creating a Feature Test (Practical)
 
 This is the **fast, practical workflow** for creating a new feature test. Use this when you want to quickly add a test by performing actions in the app.
 
@@ -1012,7 +1114,7 @@ This is the **fast, practical workflow** for creating a new feature test. Use th
 **Step 1: Tell the AI the test name**
 ```
 I want to create a feature test called "document1-checkmark".
-Follow the section "14.11 Quick Workflow: Creating a Feature Test (Practical)" of DESIGN.md to do that.
+Follow the section "14.12 Quick Workflow: Creating a Feature Test (Practical)" of DESIGN.md to do that.
 ```
 
 **Step 2: Get the command**
@@ -1108,14 +1210,14 @@ After running tests, results are automatically organized and a visual report is 
 tests/
 ├── test-results/
 │   ├── document1_checkmark/
-│   │   ├── document1_checkmark_actual.png      # Generated test output
-│   │   ├── document1_checkmark_expected.png    # Reference image
-│   │   ├── document1_checkmark_diff.png        # Pixel-level diff visualization
+│   │   ├── document1-signed_actual.png         # Generated test output (named after expected file)
+│   │   ├── document1-signed_expected.png       # Reference image
+│   │   ├── document1-signed_diff.png           # Pixel-level diff visualization (all use expected base)
 │   │   └── info.json                           # Test metadata: {"match": true/false}
-│   ├── document1_actions/
-│   │   ├── document1_actions_actual.png
-│   │   ├── document1_actions_expected.png
-│   │   ├── document1_actions_diff.png
+│   ├── document1_crossmark/
+│   │   ├── document1-signed_actual.png         # Actual output uses expected file's base name
+│   │   ├── document1-signed_expected.png       # Reference baseline
+│   │   ├── document1-signed_diff.png           # Diff also uses expected base name
 │   │   └── info.json
 │   └── report.html                             # Interactive HTML report
 ```
@@ -1160,9 +1262,9 @@ xdg-open report.html
 **Alternative: Direct file browser**
 
 Browse `tests/test-results/` to manually inspect:
-- `{test_name}/{test_name}_actual.png` - Generated output
-- `{test_name}/{test_name}_expected.png` - Reference baseline
-- `{test_name}/{test_name}_diff.png` - Red/white pixel diff
+- `{test_name}/{expected_base}_actual.png` - Generated output (named after expected image)
+- `{test_name}/{expected_base}_expected.png` - Reference baseline
+- `{test_name}/{expected_base}_diff.png` - Red/white pixel diff
 - `{test_name}/info.json` - Pass/fail status
 - `report.html` - Interactive comparison viewer
 
@@ -1186,13 +1288,13 @@ If you intentionally modified expected behavior and verified the output is corre
 Key functions in test infrastructure:
 
 **image_comparison.py**:
-- `compare_images()` - Compares two images pixel-by-pixel, always generates diff; returns (match, mismatch_pct, diff_img)
+- `compare_images()` - Compares two images pixel-by-pixel (exact match required); always generates diff for visualization
 - `_create_diff_image()` - Creates white background with red pixels marking differences
-- `assert_images_equal_with_results()` - Assertion with auto-save to test-results directory; supports tolerance (0 = pixel-perfect)
+- `assert_images_equal_with_results()` - Assertion with auto-save to test-results directory; enforces pixel-perfect matching
 
 **test_results.py**:
 - `get_test_results_dir()` - Returns/creates `tests/test-results/` directory
-- `organize_test_output()` - Saves actual, expected, and diff images; stores match status in info.json
+- `organize_test_output()` - Saves actual/expected/diff images named after expected filename base; stores match status in info.json
 - `create_comparison_report()` - Generates HTML report from test-results directory
 - `_generate_html_report()` - Renders HTML with summary list, test cards, and side-by-side viewer
 
@@ -1301,7 +1403,7 @@ If a pixel-perfect test fails:
 6. Determine if:
    - **App code is wrong**: Fix implementation, re-run
    - **Changes are intentional**: Copy actual to expected, re-run
-   - **Test is flaky**: Add small tolerance (e.g., `tolerance=1`), or investigate timing issues
+   - **Rendering mismatch**: Investigate DPI settings, font rendering, or timing; may need to regenerate reference
 
 #### Next Feature Tests to Add
 
