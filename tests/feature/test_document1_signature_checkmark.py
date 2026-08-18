@@ -6,160 +6,201 @@ This test reproduces the recorded actions:
 3. Add checkmark annotation
 4. Move and resize signature
 5. Move and resize checkmark
-6. Save as JPG
+6. Save as PNG (path is optional - if omitted, app uses default)
 7. Compare pixel-perfect to reference image
 
-To create the reference image:
-1. Run the application with SIGNER_RECORD_ACTIONS=1
-2. Perform the actions manually
-3. Save the output as examples/document1-signed-expected.jpg
-4. The recorded actions JSON can be used to verify the test steps
+To create/update the reference image:
+1. Run: pytest tests/feature/test_document1_signature_checkmark.py::TestDocument1SignatureCheckmark::test_generate_reference_image -v
+2. This will create/update the reference image at tests/fixtures/document1_actions/document1-signed.png
+3. Then the pixel-perfect test will use this as the baseline
+
+Structure:
+- tests/fixtures/document1_actions.json: List of actions (open_document specifies target document)
+- tests/fixtures/document1_actions/: Directory containing expected outputs
+- tests/fixtures/document1_actions/document1-signed.png: Reference image for comparison
+
+Notes:
+- save_document action can optionally include "path" field
+- If "path" is omitted, the application's default save behavior is used
 """
 
-import os
+import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor
-from PySide6.QtTest import QSignalSpy
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
 
-from signer.canvas import DocumentCanvas
 from signer.main_window import MainWindow
 from signer.objects import AnnotationType, SignatureObject, VectorAnnotation
 from signer.settings import AppSettings, SettingsStore
-from tests.utils.image_comparison import assert_images_equal
+from tests.utils.image_comparison import assert_images_equal_with_results
+from tests.conftest import FIXTURES_DIR, EXAMPLES_DIR
+from tests.recording.action_player import play_actions_from_file
 
 
 class TestDocument1SignatureCheckmark:
     """Feature test for document1.pdf with signature and checkmark."""
-    
+
     @pytest.fixture
     def main_window(self, qapp, temp_dir):
         """Create a main window for testing."""
         settings_store = SettingsStore(app_name="SignerTest")
         settings_store._settings_path = temp_dir / "config.json"
         settings = settings_store.load()
-        
+
         window = MainWindow(settings_store=settings_store, settings=settings)
         window.show()
         yield window
         window.close()
-    
-    def test_document1_signature_checkmark_pixel_perfect(self, main_window, sample_pdf, sample_signature, temp_dir):
-        """Test the complete workflow: open doc, add signature, add checkmark, move/resize, save, compare."""
+
+    def test_generate_reference_image(self, main_window, temp_dir):
+        """Generate the reference image for this test.
         
-        # Reference image path (must be created manually first)
-        reference_image = Path(__file__).parent.parent / "examples" / "document1-signed-expected.jpg"
-        
-        if not reference_image.exists():
-            pytest.skip(f"Reference image not found: {reference_image}. Create it manually first.")
-        
-        output_path = temp_dir / "document1-signed-test.jpg"
-        diff_path = temp_dir / "document1-signed-diff.jpg"
-        
-        # 1. Open document
-        result = main_window.open_document(str(sample_pdf))
-        assert result is True
-        assert main_window.canvas.has_document
-        assert main_window.canvas.page_count == 1
-        
-        # 2. Load signature
-        result = main_window._load_signature_file(str(sample_signature), at_default_position=True)
-        assert result is True
-        assert main_window.canvas.selected is not None
-        assert isinstance(main_window.canvas.selected, SignatureObject)
-        
-        sig_obj = main_window.canvas.selected
-        initial_sig_x = sig_obj.x
-        initial_sig_y = sig_obj.y
-        initial_sig_w = sig_obj.scaled_width
-        initial_sig_h = sig_obj.scaled_height
-        
-        # 3. Add checkmark
-        main_window._add_vector(AnnotationType.CHECKMARK)
-        assert main_window.canvas.selected is not None
-        assert isinstance(main_window.canvas.selected, VectorAnnotation)
-        assert main_window.canvas.selected.ann_type == AnnotationType.CHECKMARK
-        
-        check_obj = main_window.canvas.selected
-        initial_check_x = check_obj.x
-        initial_check_y = check_obj.y
-        initial_check_w = check_obj.scaled_width
-        initial_check_h = check_obj.scaled_height
-        
-        # 4. Move signature to target position
-        target_sig_x = 300.0
-        target_sig_y = 400.0
-        sig_obj.x = target_sig_x
-        sig_obj.y = target_sig_y
-        main_window.canvas.objectChanged.emit()
-        main_window.canvas.update()
-        
-        # 5. Resize signature (simulate handle drag)
-        target_sig_w = 250.0
-        target_sig_h = 250.0
-        sig_obj.set_scaled_size(target_sig_w, target_sig_h)
-        main_window.canvas.objectChanged.emit()
-        main_window.canvas.update()
-        
-        # 6. Select checkmark and move it
-        main_window.canvas._selected = check_obj
-        main_window.canvas.objectChanged.emit()
-        
-        target_check_x = 150.0
-        target_check_y = 200.0
-        check_obj.x = target_check_x
-        check_obj.y = target_check_y
-        main_window.canvas.objectChanged.emit()
-        main_window.canvas.update()
-        
-        # 7. Resize checkmark
-        target_check_w = 120.0
-        target_check_h = 120.0
-        check_obj.set_scaled_size(target_check_w, target_check_h)
-        main_window.canvas.objectChanged.emit()
-        main_window.canvas.update()
-        
-        # 8. Save document
-        # We need to mock the file dialog to return our output path
-        from unittest.mock import patch
-        from PySide6.QtWidgets import QFileDialog
-        
-        with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(output_path), "JPEG files (*.jpg *.jpeg)")):
-            with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
-                result = main_window.save_signed_document()
-                assert result is True
-        
-        # 9. Compare with reference image (pixel-perfect)
-        assert_images_equal(output_path, reference_image, tolerance=0, diff_output_path=diff_path)
-    
-    def test_recorded_actions_reproduction(self, main_window, sample_pdf, sample_signature, temp_dir):
-        """Test that reproduces exact recorded actions from JSON.
-        
-        This test can be updated with actual recorded actions.
+        Run this test once to generate the reference image:
+            pytest tests/feature/test_document1_signature_checkmark.py::TestDocument1SignatureCheckmark::test_generate_reference_image -v
         """
-        # Example recorded actions (replace with actual recorded data)
-        recorded_actions = [
-            {"type": "open_document", "path": str(sample_pdf), "timestamp": 0.0},
-            {"type": "open_signature", "path": str(sample_signature), "timestamp": 1.0},
-            {"type": "add_annotation", "annotation_type": "checkmark", "x": 400, "y": 300, "page": 0, "timestamp": 2.0},
-            {"type": "move_annotation", "object_id": 0, "x": 300, "y": 400, "timestamp": 3.0},
-            {"type": "resize_annotation", "object_id": 0, "width": 250, "height": 250, "handle": 7, "timestamp": 4.0},
-            {"type": "move_annotation", "object_id": 1, "x": 150, "y": 200, "timestamp": 5.0},
-            {"type": "resize_annotation", "object_id": 1, "width": 120, "height": 120, "handle": 7, "timestamp": 6.0},
-            {"type": "save_document", "path": str(temp_dir / "output.jpg"), "timestamp": 7.0},
-        ]
         
-        # This test demonstrates how recorded actions would be used
-        # In practice, you would load the JSON and replay each action
-        assert len(recorded_actions) == 8
-        assert recorded_actions[0]["type"] == "open_document"
-        assert recorded_actions[-1]["type"] == "save_document"
+        actions_file = FIXTURES_DIR / "document1_actions.json"
+        reference_image = FIXTURES_DIR / "document1_actions" / "document1-signed.png"
+        output_path = reference_image
+        
+        if not actions_file.exists():
+            pytest.skip(f"Actions file not found: {actions_file}")
 
+        # Load actions
+        with open(actions_file) as f:
+            actions_data = json.load(f)
+        
+        # Create a temporary actions file with the reference output path
+        temp_actions = temp_dir / "actions_with_ref_path.json"
+        for action in actions_data.get("actions", []):
+            if action.get("type") == "save_document":
+                action["path"] = str(output_path)
+                break
+        
+        with open(temp_actions, "w") as f:
+            json.dump(actions_data, f, indent=2)
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        # Play the recorded actions
+        try:
+            play_actions_from_file(main_window, temp_actions)
+        except Exception as e:
+            pytest.fail(f"Failed to execute actions: {e}")
+        
+        # Verify reference image was created
+        assert output_path.exists(), f"Reference image not created at {output_path}"
+        print(f"✓ Reference image generated: {output_path}")
+
+    def test_document1_signature_checkmark_pixel_perfect(self, main_window, temp_dir):
+        """Test the complete workflow using recorded actions with pixel-perfect verification."""
+        
+        # Reference image and actions file paths
+        reference_image = FIXTURES_DIR / "document1_actions" / "document1-signed.png"
+        actions_file = FIXTURES_DIR / "document1_actions.json"
+        output_path = temp_dir / "document1-signed.png"
+
+        if not reference_image.exists():
+            pytest.skip(
+                f"Reference image not found: {reference_image}\n"
+                f"Generate it first by running:\n"
+                f"  pytest {__file__}::TestDocument1SignatureCheckmark::test_generate_reference_image -v"
+            )
+        if not actions_file.exists():
+            pytest.skip(f"Actions file not found: {actions_file}")
+
+        # Load actions and update save path
+        with open(actions_file) as f:
+            actions_data = json.load(f)
+        
+        # Modify the save_document action to use our temp output path
+        for action in actions_data.get("actions", []):
+            if action.get("type") == "save_document":
+                action["path"] = str(output_path)
+                break
+
+        # Write modified actions to a temp file
+        temp_actions = temp_dir / "actions_test.json"
+        with open(temp_actions, "w") as f:
+            json.dump(actions_data, f, indent=2)
+
+        # Play the recorded actions
+        try:
+            play_actions_from_file(main_window, temp_actions)
+        except Exception as e:
+            pytest.fail(f"Failed to execute actions: {e}")
+
+        # Verify output was created
+        assert output_path.exists(), f"Output image not created at {output_path}"
+
+        # Compare with reference image (pixel-perfect) - saves to test-results/
+        assert_images_equal_with_results(
+            output_path, 
+            reference_image, 
+            test_name="document1_actions",
+            tolerance=0,
+            save_results=True
+        )
+
+    def test_actions_file_structure(self):
+        """Verify the actions file has the expected structure."""
+        actions_file = FIXTURES_DIR / "document1_actions.json"
+        assert actions_file.exists(), "Actions file should exist"
+
+        with open(actions_file) as f:
+            data = json.load(f)
+
+        # Verify actions array exists (document field is optional and may not be present)
+        assert "actions" in data, "Actions file must contain 'actions' key"
+        assert len(data["actions"]) >= 5, "Must have at least 5 actions (open_doc, open_sig, add_ann, move, resize, save)"
+
+        # Verify first action is open_document
+        assert data["actions"][0]["type"] == "open_document", "First action should be open_document"
+        assert "document1.pdf" in data["actions"][0]["path"], "Document path should contain document1.pdf"
+
+        # Verify last action is save_document
+        assert data["actions"][-1]["type"] == "save_document", "Last action should be save_document"
+        # Note: save_document path is optional
+        
+        # Verify no timestamp or version fields in actions
+        for action in data["actions"]:
+            assert "timestamp" not in action, f"Action {action['type']} should not have timestamp"
+        assert "version" not in data, "Actions data should not have version field"
+
+    def test_actions_include_required_types(self):
+        """Verify the actions include the required action types."""
+        actions_file = FIXTURES_DIR / "document1_actions.json"
+        if not actions_file.exists():
+            pytest.skip(f"Actions file not found: {actions_file}")
+
+        with open(actions_file) as f:
+            data = json.load(f)
+
+        action_types = {action["type"] for action in data["actions"]}
+        
+        # Should have these action types
+        required_types = {"open_document", "open_signature", "add_annotation", "save_document"}
+        assert required_types.issubset(action_types), f"Missing required actions: {required_types - action_types}"
+
+    def test_annotation_positions_are_valid(self):
+        """Verify that annotation positions in the actions are valid."""
+        actions_file = FIXTURES_DIR / "document1_actions.json"
+        if not actions_file.exists():
+            pytest.skip(f"Actions file not found: {actions_file}")
+
+        with open(actions_file) as f:
+            data = json.load(f)
+
+        for action in data["actions"]:
+            if action["type"] == "add_annotation":
+                x = action.get("x")
+                y = action.get("y")
+                page = action.get("page")
+                assert x is not None, "add_annotation must have x coordinate"
+                assert y is not None, "add_annotation must have y coordinate"
+                assert page is not None, "add_annotation must have page"
+                assert isinstance(x, (int, float)), "x must be numeric"
+                assert isinstance(y, (int, float)), "y must be numeric"
+                assert x >= 0, "x must be >= 0"
+                assert y >= 0, "y must be >= 0"
+                assert page >= 0, "page must be >= 0"

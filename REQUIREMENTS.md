@@ -161,11 +161,39 @@ Feedback after implementation, round 3:
 
 7. How the automated feature tests shall be created: I as a developer want to record the actions (move, scale, add text, add checkmark) by using the application. Update the code that captures these actions. You will then use the record output to write the test case. Then the code may be disabled; it will be used only in development later to create feature tests.
 
---
+8. Feature tests shall cover each annotation type (checkmark, cross, arrows, text, signature) using document1.pdf.
 
-Feedback after implementation:
+### Details added by AI
 
-1. I noticed that the tests run the application. That's ok, but the application remains open and I (user) have to close it manually so the tests continues. Thus happens when a dialog (saved 3 pages) was open. Make the test such that tey do not require user interaction.
+The following details clarify the test implementation requirements:
+
+1. **Non-Interactive Testing**: Tests must run without user interaction. Any file save dialogs or other blocking UI elements must be automatically dismissed or handled programmatically. The test process must not require manual intervention.
+
+2. **Action Recording and Persistence**: The action recording system shall:
+   - Be triggered via environment variable `SIGNER_RECORD_ACTIONS=1`
+   - Persist recorded actions to a JSON file in the current working directory or a specified output path
+   - Record action details without version or timestamp fields (version management is handled via test code, not action records)
+   - Execute recorded actions sequentially when replayed
+
+3. **Recorded Action Format**: Each action shall include:
+   - `type`: Action type (open_document, add_annotation, move_annotation, resize_annotation, select_annotation, change_color, change_page, save_document)
+   - `annotation_type` (for add_annotation): checkmark, cross, arrow_n/ne/e/se/s/sw/w/nw, text, signature
+   - Page index (for page-specific actions)
+   - Position coordinates, dimensions, colors, or other relevant parameters
+   - NO `version` or `timestamp` fields
+
+4. **Annotation Placement**: New annotations shall be placed in the middle of the visible screen:
+   - X = (canvas_width - annotation_width) / 2
+   - Y = (canvas_height - annotation_height) / 2
+   - Within page bounds
+
+5. **Test Framework**: Use pytest with pytest-qt for Qt widget testing. Fixtures shall provide:
+   - QApplication instance
+   - MainWindow instance
+   - DocumentCanvas instance
+   - Temporary directories for test outputs
+   - Sample PDF and signature files
+
 
 # Assumptions
 1. Signature has a transparent background.

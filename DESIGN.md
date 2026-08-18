@@ -319,3 +319,996 @@ Distribute the app as a single Windows executable for non-technical users.
 - App runs on a clean Windows machine with no Python installed.
 - CLI args `-document` and `-signature` work in packaged form.
 - PDF render, drag placement, and JPG export behavior match development mode.
+
+## 14. Test Architecture and Strategy (v1.2.5+)
+
+### 14.1 Overview
+The test suite includes:
+1. Unit tests for core functionality (coordinate transforms, bounding boxes, serialization)
+2. Feature tests with action recording capability for end-to-end workflows
+3. Image comparison for pixel-perfect verification against reference images
+
+### 14.2 Test Structure
+```
+tests/
+├── __init__.py
+├── conftest.py                  # Pytest fixtures and configuration
+├── unit/
+│   ├── __init__.py
+│   ├── test_coordinate_transforms.py
+│   ├── test_bounding_box.py
+│   ├── test_annotation_serialization.py
+│   └── test_settings.py
+├── feature/
+│   ├── __init__.py
+│   ├── test_document1_annotations.py     # Signature + annotation type tests
+│   ├── test_multipage_annotations.py
+│   └── test_undo_redo.py                 # Future
+├── fixtures/
+│   ├── document1.pdf
+│   ├── document1-signed-expected.jpg
+│   ├── document.pdf
+│   └── signature.png
+├── recording/
+│   ├── __init__.py
+│   ├── action_recorder.py       # Records user actions for test creation
+│   └── action_player.py         # Plays back recorded actions
+└── utils/
+    ├── __init__.py
+    ├── image_comparison.py      # Pixel-perfect image comparison
+    └── test_helpers.py          # Common test utilities
+```
+
+### 14.3 Action Recording System
+
+The action recording system enables developers to:
+1. Enable recording mode via environment variable `SIGNER_RECORD_ACTIONS=1`
+2. Perform actions in the application (add annotations, move, resize, etc.)
+3. Persist recorded actions to a JSON file
+4. Use that output to create automated feature tests
+
+#### Supported Action Types
+- `open_document`: Load a PDF document
+- `open_signature`: Load a signature image
+- `add_annotation`: Add an annotation (type, position, page)
+- `move_annotation`: Move annotation to new position
+- `resize_annotation`: Resize annotation (width, height, handle)
+- `select_annotation`: Select an annotation
+- `change_color`: Change annotation or default color
+- `change_page`: Navigate to page
+- `save_document`: Save active page to JPG
+
+#### Recording Output Format (JSON)
+```json
+{
+  "actions": [
+    {"type": "open_document", "path": "examples/document1.pdf"},
+    {"type": "open_signature", "path": "examples/signature.png"},
+    {"type": "add_annotation", "annotation_type": "checkmark", "page": 0, "x": 100, "y": 200},
+    {"type": "move_annotation", "object_id": 1, "x": 150, "y": 250},
+    {"type": "resize_annotation", "object_id": 1, "width": 200, "height": 200, "handle": 7},
+    {"type": "save_document", "path": "output/test.jpg"}
+  ]
+}
+```
+
+**Note:** Version and timestamp fields are omitted. Test version management is handled via test code, not action records. Actions execute sequentially when replayed.
+
+### 14.4 Unit Tests
+
+#### Coordinate Transformations
+- Viewport to document coordinate conversion
+- Document to viewport coordinate conversion
+- Fit scale calculation
+- Page offset calculation
+- Handle position calculations
+
+#### Bounding Box Calculations
+- Object bounding box in document space
+- Object bounding box in viewport space
+- Handle rect calculations
+- Clamp to page bounds
+- Text box fitting
+
+#### Annotation Serialization
+- SignatureObject serialization/deserialization
+- VectorAnnotation serialization/deserialization
+- Settings persistence
+- Recent lists LRU behavior
+
+#### Settings Tests
+- Settings load/save
+- Default values
+- Path resolution (Windows/Linux)
+- Recent lists management
+
+### 14.5 Feature Tests
+
+#### Test Coverage
+Each feature test shall:
+1. Operate non-interactively (automatically handle dialogs)
+2. Use recorded action sequences
+3. Verify expected output against reference images (pixel-perfect comparison)
+4. Cover all annotation types (signature, checkmark, cross, arrows, text)
+
+#### Main Feature Tests
+1. **document1.pdf with Signature and Annotations**
+   - Open document1.pdf
+   - Add signature from examples/signature.png
+   - Add one annotation of each supported type
+   - Move and resize each item
+   - Save to JPG
+   - Compare pixel-perfect to reference image
+
+2. **Multi-page Document Annotations**
+   - Open document.pdf (multi-page)
+   - Add different annotations on different pages
+   - Navigate between pages
+   - Verify annotations persist per page
+   - Export all pages with individual verification
+
+#### Image Comparison
+- Use PIL/Pillow for pixel-by-pixel comparison
+- Allow configurable tolerance (default: 0 for pixel-perfect)
+- Generate diff image on failure
+- Report mismatch percentage
+
+### 14.6 Test Dependencies
+- `pytest>=7.0.0`: Test framework
+- `pytest-qt>=4.2.0`: Qt widget testing
+- `pytest-cov>=4.0.0`: Coverage reporting
+- `Pillow>=9.0.0`: Image comparison and manipulation
+
+### 14.7 Test Fixtures
+- `qapp`: QApplication instance
+- `main_window`: MainWindow instance
+- `canvas`: DocumentCanvas instance
+- `sample_pdf`: Path to test PDF
+- `sample_signature`: Path to test signature
+- `temp_dir`: Temporary directory for outputs
+
+### 14.8 Running Tests
+```bash
+# Run all tests
+pytest
+
+# Run unit tests only
+pytest tests/unit/
+
+# Run feature tests only
+pytest tests/feature/
+
+# Run with coverage
+pytest --cov=signer --cov-report=html
+
+# Run specific test
+pytest tests/feature/test_document1_annotations.py -v
+```
+
+### 14.9 Recording Feature Tests
+
+The action recording system allows developers to record manual interactions in the application and convert them into automated test scenarios.
+
+#### Enabling Recording
+
+Set the environment variable `SIGNER_RECORD_ACTIONS=1` before running the application:
+
+```bash
+# Linux/macOS
+export SIGNER_RECORD_ACTIONS=1
+python -m signer
+
+# Windows PowerShell
+$env:SIGNER_RECORD_ACTIONS=1
+python -m signer
+
+# Windows CMD
+set SIGNER_RECORD_ACTIONS=1
+python -m signer
+```
+
+#### What Gets Recorded
+
+The following actions are automatically captured when recording is enabled:
+
+| Action | Recorded Data |
+|--------|---------------|
+| Open document | File path |
+| Open signature | File path |
+| Add annotation (vector) | Type, position (x,y), page |
+| Add text annotation | Text content, position, page |
+| Move annotation | Object ID, new position (x,y) |
+| Resize annotation | Object ID, new size (width,height), handle used |
+| Change color | Object ID, color hex value |
+| Change page | Page index |
+| Save document | Output file path |
+
+#### Recording Workflow
+
+1. **Start the application with recording enabled**
+   ```bash
+   SIGNER_RECORD_ACTIONS=1 python -m signer
+   ```
+
+2. **Perform your test scenario**
+   - Open a document
+   - Add signatures, checkmarks, text, arrows
+   - Move and resize annotations
+   - Change colors
+   - Navigate between pages
+   - Save the document
+
+3. **Close the application**
+   - The recorded actions will be printed to stdout
+   - A JSON file will be saved to `tests/recorded_actions/recorded_actions_<timestamp>.json`
+
+4. **Create the reference image**
+   - The saved output from step 2 becomes your reference image
+   - Copy it to `tests/fixtures/{testname}_actions-expected/{testname}-output.png`
+
+5. **Create the feature test**
+   - Use the recorded actions JSON as a guide
+   - Write or update a test in `tests/feature/` that reproduces the steps
+   - Use `assert_images_equal_with_results()` to compare output with reference
+
+#### Recorded Actions Format (JSON)
+
+```json
+{
+  "version": "1.0",
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "/path/to/document.pdf",
+      "timestamp": 1234567890.123
+    },
+    {
+      "type": "open_signature",
+      "path": "/path/to/signature.png",
+      "timestamp": 1234567891.456
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "checkmark",
+      "x": 400.0,
+      "y": 300.0,
+      "page": 0,
+      "object_id": 0,
+      "timestamp": 1234567892.789
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 0,
+      "x": 300.0,
+      "y": 400.0,
+      "timestamp": 1234567893.012
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 0,
+      "width": 250.0,
+      "height": 250.0,
+      "handle": 7,
+      "timestamp": 1234567894.345
+    },
+    {
+      "type": "change_color",
+      "object_id": 0,
+      "color": "#ff0000",
+      "timestamp": 1234567895.678
+    },
+    {
+      "type": "change_page",
+      "page": 1,
+      "timestamp": 1234567896.901
+    },
+    {
+      "type": "save_document",
+      "path": "/path/to/output.jpg",
+      "timestamp": 1234567897.234
+    }
+  ]
+}
+```
+
+#### Best Practices for Recording
+
+1. **Use descriptive test names**: `test_document1_signature_checkmark_pixel_perfect`
+2. **Keep tests focused**: One test per feature scenario
+3. **Use fixtures**: Leverage `conftest.py` fixtures for common setup
+4. **Test pixel-perfect by default**: Use `tolerance=0` for exact matching
+5. **Document the scenario**: Add docstrings explaining what the test verifies
+6. **Verify recording is enabled**: Check console output for "ACTION RECORDING ENABLED" message
+7. **Use relative paths**: Recorded paths are often absolute; normalize to relative in test fixtures
+
+#### Troubleshooting Recording
+
+| Problem | Solution |
+|---------|----------|
+| Recording not working | Ensure `SIGNER_RECORD_ACTIONS=1` is set BEFORE starting application |
+| Actions not captured | Check console for "ACTION RECORDING ENABLED" message; verify patched methods are being called |
+| File not found in JSON | Paths may be absolute; convert to relative for portability (e.g., `examples/document1.pdf`) |
+| Output not saved | Ensure you called save_document action before closing app |
+
+#### Disabling Recording
+
+Simply don't set the environment variable, or set it to 0:
+
+```bash
+# Normal run without recording
+python -m signer
+
+# Explicitly disable
+SIGNER_RECORD_ACTIONS=0 python -m signer
+```
+
+#### Extending the Recorder
+
+To record additional actions:
+
+1. Add a new `record_*` method to `ActionRecorder` in `tests/recording/action_recorder.py`
+2. Add the corresponding patch in the recording initialization
+3. Update the action type documentation above
+
+### 14.10 Step-by-Step: Adding a New Feature Test
+
+This section guides developers through the complete process of adding a new feature test. We'll use the example of creating a test for the "checkmark annotation" (this test already exists, but the process applies to any new test).
+
+#### Step 1: Plan Your Test
+Define what workflow you want to test:
+- Document to use (PDF path)
+- Annotations/signature to add
+- Actions to perform (move, resize, etc.)
+- Expected outcome
+
+**Example: Cross Annotation Test**
+- Document: `examples/document.pdf`
+- Action: Add a cross annotation, move it, resize it, save
+- Expected output: JPG with cross at specific position/size
+
+#### Step 2: Create Fixture Directory Structure
+
+Create a directory for your test fixture images:
+```
+tests/fixtures/
+├── {testname}_actions-expected/
+│   ├── {testname}-output.png           # Reference image
+│   └── ...other pages if multi-page
+```
+
+**Example for cross annotation:**
+```
+tests/fixtures/
+├── cross_actions-expected/
+│   └── cross-output.png
+```
+
+If using the example PDF documents, they're already in `tests/fixtures/`.
+
+#### Step 3: Generate a Reference Image
+
+You have two options:
+
+**Option A: Use the App to Generate Output (Recommended)**
+1. Open the application manually
+2. Open your test document
+3. Add annotations and position them as your test will
+4. Save the JPG
+5. Copy to `tests/fixtures/{testname}_actions-expected/`
+6. Rename to `{testname}-output.png` (use underscore format)
+
+**Option B: Manual Composition (for pixel-perfect control)**
+Use `signer.objects.py` and `signer.compositor.py` to create reference images programmatically.
+
+**Example path:**
+```
+tests/fixtures/cross_actions-expected/cross-output.png
+```
+
+#### Step 4: Create Actions JSON File
+
+Create a JSON fixture file with the action sequence:
+
+**Location:** `tests/fixtures/{testname}_actions.json`
+
+**Format:**
+```json
+{
+  "actions": [
+    {"type": "open_document", "path": "examples/document.pdf"},
+    {"type": "add_annotation", "annotation_type": "cross", "page": 0, "x": 300, "y": 400},
+    {"type": "move_annotation", "object_id": 0, "x": 350, "y": 450},
+    {"type": "resize_annotation", "object_id": 0, "width": 120, "height": 120, "handle": 7},
+    {"type": "save_document", "path": "output.jpg"}
+  ]
+}
+```
+
+**Annotation Types:**
+- `signature`: Load from file
+- `checkmark`: ✓ symbol
+- `cross`: ✗ symbol
+- `arrow`: One of N, NE, E, SE, S, SW, W, NW
+- `text`: Free text string
+
+**Handle Positions (for resizing):**
+```
+0 1 2
+3   4
+5 6 7
+```
+
+**Example for cross annotation:**
+```json
+{
+  "actions": [
+    {"type": "open_document", "path": "examples/document.pdf"},
+    {"type": "add_annotation", "annotation_type": "cross", "page": 0, "x": 300, "y": 400},
+    {"type": "save_document"}
+  ]
+}
+```
+
+**Naming Convention:**
+- File: `tests/fixtures/cross_actions.json`
+- This name becomes the `test_name` used in results organization
+- Results appear in: `test-results/actual/cross_actions/`
+
+#### Step 5: Create the Feature Test Class
+
+Create a new test file or add to existing: `tests/feature/test_{feature_name}.py`
+
+**Template Structure:**
+```python
+import unittest
+from pathlib import Path
+
+from signer.app import MainWindow
+from signer.settings import SettingsStore
+from tests.recording.action_player import ActionPlayer
+from tests.utils.image_comparison import assert_images_equal_with_results
+
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
+
+
+class TestCrossAnnotation(unittest.TestCase):
+    """Test cross annotation workflow."""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Set up fixtures once for the class."""
+        cls.actions_file = FIXTURES_DIR / "cross_actions.json"
+        cls.expected_image = FIXTURES_DIR / "cross_actions-expected" / "cross-output.png"
+    
+    def setUp(self):
+        """Create a fresh MainWindow for each test."""
+        from tempfile import TemporaryDirectory
+        self.temp_dir = TemporaryDirectory()
+        
+        # Isolated settings for this test
+        settings_store = SettingsStore(Path(self.temp_dir.name))
+        self.main_window = MainWindow(settings_store=settings_store)
+        self.main_window.show()
+    
+    def tearDown(self):
+        """Clean up after each test."""
+        if self.main_window:
+            self.main_window.close()
+        self.temp_dir.cleanup()
+    
+    def test_cross_annotation_pixel_perfect(self):
+        """Test that cross annotation renders correctly."""
+        # Play recorded actions
+        player = ActionPlayer(self.main_window)
+        output_image = player.play_from_file(self.actions_file)
+        
+        # Verify against reference
+        assert_images_equal_with_results(
+            output_image,
+            self.expected_image,
+            test_name="cross_actions",
+            tolerance=0,  # Pixel-perfect
+            save_results=True
+        )
+```
+
+**Key Points:**
+- Class name: `Test{FeatureName}` (e.g., `TestCrossAnnotation`)
+- Test method name: `test_{feature}_pixel_perfect`
+- Use `test_name="cross_actions"` (matches JSON filename without .json)
+- Import fixtures from: `FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"`
+- Use `ActionPlayer` to execute recorded actions
+- Use `assert_images_equal_with_results()` for image verification
+
+#### Step 6: Run Your Test
+
+```bash
+# Run just your new test
+pytest tests/feature/test_cross_annotation.py -v
+
+# Run all feature tests
+pytest tests/feature/ -v
+
+# Check results in the browser
+python tests/utils/review_results.py open
+```
+
+#### Step 7: Inspect Results
+
+After running the test:
+1. **HTML Report** opens automatically at: `tests/test-results/report.html`
+2. **Test Summary List** shows your test with status badge
+3. **Comparison View** shows Expected vs Actual side-by-side
+4. **Global Diff** visualization shows pixel differences in red/white
+
+**Directory Structure After Test:**
+```
+tests/test-results/
+├── actual/
+│   └── cross_actions/
+│       ├── cross_actions.png          # Generated output
+│       ├── cross_actions_expected.png # Reference
+│       └── info.json                  # Metadata with PASS/FAIL status
+├── diff.png                           # Pixel-level diff (global)
+└── report.html                        # Interactive report
+```
+
+#### Step 8: Fix Mismatches (If Any)
+
+**If test FAILS:**
+
+Option A: Update reference image (if output is correct):
+```bash
+python tests/utils/review_results.py copy-to-expected cross_actions
+```
+This copies the actual output to the reference and re-runs tests.
+
+Option B: Debug the implementation (if output is wrong):
+1. Open `tests/test-results/actual/cross_actions/` to inspect images
+2. Check `diff.png` for pixel-level differences
+3. Fix the app code
+4. Re-run test
+
+#### Step 9: Add Additional Validation Tests (Optional)
+
+You can add more test methods to the same class for different aspects:
+
+```python
+class TestCrossAnnotation(unittest.TestCase):
+    # ... previous code ...
+    
+    def test_cross_actions_file_structure(self):
+        """Verify actions JSON has required fields."""
+        import json
+        with open(self.actions_file) as f:
+            data = json.load(f)
+        
+        assert "actions" in data
+        assert isinstance(data["actions"], list)
+        assert len(data["actions"]) > 0
+    
+    def test_cross_actions_include_required_types(self):
+        """Verify all actions have type field."""
+        import json
+        with open(self.actions_file) as f:
+            data = json.load(f)
+        
+        for action in data["actions"]:
+            assert "type" in action, "Action missing 'type' field"
+```
+
+#### Example: Complete Cross Annotation Test
+
+Here's a complete working example:
+
+**File: `tests/fixtures/cross_actions.json`**
+```json
+{
+  "actions": [
+    {"type": "open_document", "path": "examples/document.pdf"},
+    {"type": "add_annotation", "annotation_type": "cross", "page": 0, "x": 300, "y": 400},
+    {"type": "move_annotation", "object_id": 0, "x": 350, "y": 450},
+    {"type": "save_document"}
+  ]
+}
+```
+
+**File: `tests/feature/test_cross_annotation.py`**
+```python
+import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from signer.app import MainWindow
+from signer.settings import SettingsStore
+from tests.recording.action_player import ActionPlayer
+from tests.utils.image_comparison import assert_images_equal_with_results
+
+FIXTURES_DIR = Path(__file__).parent.parent / "fixtures"
+
+
+class TestCrossAnnotation(unittest.TestCase):
+    """Test cross annotation workflow."""
+    
+    @classmethod
+    def setUpClass(cls):
+        cls.actions_file = FIXTURES_DIR / "cross_actions.json"
+        cls.expected_image = FIXTURES_DIR / "cross_actions-expected" / "cross-output.png"
+    
+    def setUp(self):
+        self.temp_dir = TemporaryDirectory()
+        settings_store = SettingsStore(Path(self.temp_dir.name))
+        self.main_window = MainWindow(settings_store=settings_store)
+        self.main_window.show()
+    
+    def tearDown(self):
+        if self.main_window:
+            self.main_window.close()
+        self.temp_dir.cleanup()
+    
+    def test_cross_annotation_pixel_perfect(self):
+        """Test that cross annotation renders correctly."""
+        player = ActionPlayer(self.main_window)
+        output_image = player.play_from_file(self.actions_file)
+        
+        assert_images_equal_with_results(
+            output_image,
+            self.expected_image,
+            test_name="cross_actions",
+            tolerance=0,
+            save_results=True
+        )
+```
+
+**File: `tests/fixtures/cross_actions-expected/cross-output.png`**
+- Generate via running the app manually, or
+- Use reference image generator utility
+
+#### Step 10: Commit to Repository
+
+```bash
+git add tests/fixtures/cross_actions.json
+git add tests/fixtures/cross_actions-expected/
+git add tests/feature/test_cross_annotation.py
+git commit -m "Add feature test for cross annotation"
+```
+
+#### Checklist for New Feature Test
+
+- [ ] Test fixture directory created: `tests/fixtures/{name}_actions-expected/`
+- [ ] Reference image saved: `tests/fixtures/{name}_actions-expected/{name}-output.png`
+- [ ] Actions JSON created: `tests/fixtures/{name}_actions.json`
+- [ ] Test class created: `tests/feature/test_{name}.py`
+- [ ] Test runs and passes: `pytest tests/feature/test_{name}.py -v`
+- [ ] HTML report shows PASS status with green badge
+- [ ] Optional: Additional validation tests added
+- [ ] Committed to repository
+
+#### Common Pitfalls
+
+1. **Naming mismatch**: JSON file name must match `test_name` parameter
+   - File: `cross_actions.json` ✓
+   - Parameter: `test_name="cross_actions"` ✓
+
+2. **Missing expected image**: File must exist before test runs
+   - Path: `tests/fixtures/cross_actions-expected/cross-output.png` ✓
+
+3. **Wrong object IDs**: Action player uses 0-based indexing for objects
+   - First object: `object_id: 0` ✓
+
+4. **Absolute vs relative paths**: Use relative paths in JSON
+   - `"path": "examples/document.pdf"` ✓
+   - NOT `"path": "C:\\full\\path\\document.pdf"` ✗
+
+5. **Forgetting to call `assert_images_equal_with_results()`**: Without this, test will pass but not verify output
+   - Call this function in every pixel-perfect test ✓
+
+### 14.11 Quick Workflow: Creating a Feature Test (Practical)
+
+This is the **fast, practical workflow** for creating a new feature test. Use this when you want to quickly add a test by performing actions in the app.
+
+#### The 4-Step Process
+
+**Step 1: Tell the AI the test name**
+```
+I want to create a feature test called "document1-checkmark".
+Follow the section "14.11 Quick Workflow: Creating a Feature Test (Practical)" of DESIGN.md to do that.
+```
+
+**Step 2: Get the command**
+I will respond with a command to run that captures your actions:
+```bash
+SIGNER_RECORD_ACTIONS=1 python main.py -document examples/document1.pdf
+```
+
+**Step 3: Run the command and perform actions**
+```bash
+# Copy and run the command above
+# Then in the app:
+# 1. Open the document (already done via -document flag)
+# 2. Perform your actions (add annotations, move, resize, etc.)
+# 3. Save the file
+# 4. Close the app
+```
+
+The saved files and recorded actions go to a temp location.
+
+**Step 4: I create the test**
+I will:
+1. Extract the recorded actions → `tests/fixtures/{testname}_actions.json`
+2. Take your saved output → `tests/fixtures/{testname}_actions-expected/{testname}-output.png`
+3. Generate the complete test class → `tests/feature/test_{testname}.py`
+4. Run all tests to verify they pass
+
+**Result:** New feature test is ready with 5+ test methods, all passing ✅
+
+#### Example
+
+**You:** "Create feature test called 'arrow-north'"
+
+**Me:** "Run this command:"
+```bash
+SIGNER_RECORD_ACTIONS=1 python main.py -document examples/document1.pdf -signature examples/signature.png
+```
+
+**You:** "Running... [performs actions in the app, saves as arrow-north-output.png, closes app]"
+
+**Me:** [Creates everything automatically]
+- ✅ `tests/fixtures/arrow_actions.json` (from recorded actions)
+- ✅ `tests/fixtures/arrow_actions-expected/arrow-output.png` (your saved file)
+- ✅ `tests/feature/test_arrow_annotation.py` (complete test class)
+- ✅ All tests passing
+- ✅ HTML report shows new test in summary
+
+#### What Gets Created Automatically
+
+All of these are generated from your one saved output file:
+
+```
+tests/
+├── fixtures/
+│   ├── arrow_actions.json                    # Recorded actions
+│   └── arrow_actions-expected/
+│       └── arrow-output.png                  # Your saved file (reference)
+└── feature/
+    └── test_arrow_annotation.py              # Complete test class with:
+                                              # - test_generate_reference_image
+                                              # - test_arrow_annotation_pixel_perfect
+                                              # - test_arrow_actions_file_structure
+                                              # - test_arrow_actions_include_required_types
+                                              # - test_annotation_positions_are_valid
+```
+
+#### Key Points
+
+- **One-time setup**: Just perform the workflow once
+- **Minimal naming**: Tell me the test name, I handle the rest
+- **Automatic validation**: Test is created ready to pass
+- **HTML report ready**: New test appears in the report with status badge immediately
+- **Extensible**: Easy to add more test methods later if needed
+
+#### Next Feature Tests to Create Using This Method
+
+1. Arrow annotation (N, NE, E, SE, S, SW, W, NW)
+2. Text annotation (free text)
+3. Date annotation
+4. Time annotation
+5. Color changes
+6. Multi-page workflows
+7. Duplicate annotations
+8. Undo/redo functionality
+
+### 14.12 Test Results Inspection and Diff Workflow
+
+After running tests, results are automatically organized and a visual report is generated for inspection.
+
+#### Directory Structure
+
+```
+tests/
+├── test-results/
+│   ├── document1_checkmark/
+│   │   ├── document1_checkmark_actual.png      # Generated test output
+│   │   ├── document1_checkmark_expected.png    # Reference image
+│   │   ├── document1_checkmark_diff.png        # Pixel-level diff visualization
+│   │   └── info.json                           # Test metadata: {"match": true/false}
+│   ├── document1_actions/
+│   │   ├── document1_actions_actual.png
+│   │   ├── document1_actions_expected.png
+│   │   ├── document1_actions_diff.png
+│   │   └── info.json
+│   └── report.html                             # Interactive HTML report
+```
+
+#### Pixel-Level Diff Visualization
+
+The diff image provides visual comparison:
+- **White pixels**: Identical between actual and expected images
+- **Red pixels**: Different pixels detected
+
+This enables quick visual inspection of exactly which pixels differ.
+
+#### HTML Report Features
+
+The auto-generated interactive HTML report includes:
+
+- **Test Summary List** at the top with color-coded status badges:
+  - **✓ PASS** (green) = Images match perfectly
+  - **✗ FAIL** (red) = Images have differences (with mismatch %)
+- **Clickable test names** - Click any test in the summary to jump directly to that test's detailed view
+- **Test cards** showing:
+  - Test name and status badge
+  - Side-by-side comparison: Expected | Actual | Diff
+  - Mismatch percentage for failed tests
+- **Responsive layout** that adapts as more tests are added
+
+#### Viewing Results
+
+**Recommended: Open HTML report in browser**
+
+After running tests, view results:
+```bash
+cd tests/test-results
+# On Windows:
+start report.html
+# On macOS:
+open report.html
+# On Linux:
+xdg-open report.html
+```
+
+**Alternative: Direct file browser**
+
+Browse `tests/test-results/` to manually inspect:
+- `{test_name}/{test_name}_actual.png` - Generated output
+- `{test_name}/{test_name}_expected.png` - Reference baseline
+- `{test_name}/{test_name}_diff.png` - Red/white pixel diff
+- `{test_name}/info.json` - Pass/fail status
+- `report.html` - Interactive comparison viewer
+
+#### Accepting Changes
+
+If you intentionally modified expected behavior and verified the output is correct:
+
+1. Visually confirm the new output in the HTML report looks correct
+2. Copy the actual output to become the new reference:
+   ```bash
+   # Copy actual to expected in tests/fixtures/
+   cp tests/test-results/{test_name}/{test_name}_actual.png tests/fixtures/{test_name}_actions-expected/{test_name}-output.png
+   ```
+3. Re-run tests - they should now pass:
+   ```bash
+   pytest tests/feature/ -v
+   ```
+
+#### Implementation Details
+
+Key functions in test infrastructure:
+
+**image_comparison.py**:
+- `compare_images()` - Compares two images pixel-by-pixel, always generates diff; returns (match, mismatch_pct, diff_img)
+- `_create_diff_image()` - Creates white background with red pixels marking differences
+- `assert_images_equal_with_results()` - Assertion with auto-save to test-results directory; supports tolerance (0 = pixel-perfect)
+
+**test_results.py**:
+- `get_test_results_dir()` - Returns/creates `tests/test-results/` directory
+- `organize_test_output()` - Saves actual, expected, and diff images; stores match status in info.json
+- `create_comparison_report()` - Generates HTML report from test-results directory
+- `_generate_html_report()` - Renders HTML with summary list, test cards, and side-by-side viewer
+
+**conftest.py**:
+- Auto-generates HTML report after test session completes
+
+#### Workflow Example
+
+1. Run tests:
+   ```bash
+   pytest tests/feature/ -v
+   ```
+2. Open HTML report:
+   ```bash
+   start tests/test-results/report.html
+   ```
+3. Inspect results visually - color-coded badges show pass/fail instantly
+4. Click test name to view detailed comparison (Expected | Actual | Diff)
+5. If differences are intentional and verified as correct, copy actual to expected:
+   ```bash
+   cp tests/test-results/{test_name}/{test_name}_actual.png tests/fixtures/{test_name}_actions-expected/{test_name}-output.png
+   ```
+6. Re-run tests to confirm they pass
+
+#### Tips
+
+- **Status badges at a glance**: Green ✓ PASS / Red ✗ FAIL makes it easy to see test health instantly
+- **Mismatch percentage**: Failed tests show exact percentage of pixels that differ
+- **Diff is visual**: White/red visualization works on any image type and is immediately clear
+- **Check diff.png**: Fastest way to spot pixel differences; white background with red marks
+- **Selectable test names**: Test names in the report are selectable/copyable for easy reference
+- **Vertical test list**: Tests display one per row for easy scanning
+- **Persistent results**: Results persist across runs, useful for comparing history
+- **Results not committed**: Add `tests/test-results/` to `.gitignore` (already present)
+
+### 14.13 Naming Conventions and Common Pitfalls
+
+#### Naming Convention Table
+
+Follow these patterns when creating tests:
+
+| Item | Pattern | Example |
+|------|---------|---------|
+| JSON file | `{name}_actions.json` | `cross_actions.json` |
+| Test class | `Test{Name}` | `TestCrossAnnotation` |
+| Test method | `test_{feature}_{type}` | `test_cross_annotation_pixel_perfect` |
+| test_name param | `{name}_actions` | `test_name="cross_actions"` |
+| Expected dir | `{name}_actions-expected/` | `cross_actions-expected/` |
+| Output image | `{name}-output.png` | `cross-output.png` |
+| Results appear in | `test-results/{name}_actions/` | `test-results/cross_actions/` |
+
+#### Object IDs in Actions
+
+Objects are tracked by creation order (0-based indexing):
+
+- First added object: `object_id: 0`
+- Second added object: `object_id: 1`
+- Third added object: `object_id: 2`
+- etc.
+
+Example workflow:
+```json
+[
+  {"type": "open_signature", "path": "examples/signature.png"},           // → object_id: 0 (signature)
+  {"type": "add_annotation", "annotation_type": "cross", "page": 0},     // → object_id: 1 (cross)
+  {"type": "move_annotation", "object_id": 1, "x": 200, "y": 300},       // Refers to cross (id 1)
+  {"type": "add_annotation", "annotation_type": "checkmark", "page": 0}, // → object_id: 2 (checkmark)
+  {"type": "resize_annotation", "object_id": 2, "width": 100, "height": 100}  // Refers to checkmark
+]
+```
+
+#### Common Pitfalls and Solutions
+
+| Problem | Solution |
+|---------|----------|
+| Reference image not created | Ensure `test_generate_reference_image()` test method runs first. This creates the expected baseline in fixtures/ |
+| Image path errors in JSON | Use relative paths: `"examples/document.pdf"` ✓ <br> NOT absolute paths: `"C:\\Users\\...\\document.pdf"` ✗ |
+| save_document action has no path | Specify absolute path in actions: `"path": "C:\\Users\\...\\output.png"` (agent automatically sets this) |
+| Objects not found in move/resize | Check object_id matches creation order. Count which object was created (0-indexed) |
+| GUI not updating after actions | Add `QApplication.processEvents()` after `play_actions_from_file()` to flush pending events |
+| Test skipped with "Actions file not found" | Ensure `{name}_actions.json` exists in `tests/fixtures/` |
+| Test skipped with "Reference image not found" | Run `test_generate_reference_image()` first to create baseline in `tests/fixtures/{name}_actions-expected/` |
+| Mismatch percentage high | Check that your expected image is correct. If yes, and changes are intentional, copy actual to expected. If no, debug app rendering |
+
+#### Best Practices
+
+✓ Always add both `test_generate_reference_image()` and pixel-perfect test methods  
+✓ Use `document1.pdf` for consistency with existing tests  
+✓ Include signature first (object_id: 0) before adding annotations  
+✓ Use absolute paths when saving test outputs (agent handles this)  
+✓ Run full test suite after adding new tests: `pytest tests/ -q`  
+✓ Check HTML report for visual verification before committing  
+✓ Keep fixture directory structure organized by test name  
+✓ Commit fixture JSON files and images to repository  
+✓ Do NOT commit test-results/ directory (transient, regenerated each run)  
+
+#### Debugging Test Failures
+
+If a pixel-perfect test fails:
+
+1. Open `tests/test-results/report.html` in browser
+2. Find your test in the summary list (red ✗ FAIL badge)
+3. Click test name to jump to detailed view
+4. Compare Expected vs Actual images side-by-side
+5. Check Diff image (red pixels show differences)
+6. Determine if:
+   - **App code is wrong**: Fix implementation, re-run
+   - **Changes are intentional**: Copy actual to expected, re-run
+   - **Test is flaky**: Add small tolerance (e.g., `tolerance=1`), or investigate timing issues
+
+#### Next Feature Tests to Add
+
+Based on REQUIREMENTS.md and DESIGN.md scope:
+
+1. **Arrow annotations**: Create one test for arrow direction (e.g., N). Use as template for remaining 7 directions (NE, E, SE, S, SW, W, NW)
+2. **Text annotations**: Create separate tests for free text, current date, current time, date+time
+3. **Color changes**: Test changing annotation colors before save
+4. **Multi-page workflows**: Test placing annotations on different pages, verifying independence
+5. **Advanced workflows**: Duplicate, delete, undo/redo, mixed annotations

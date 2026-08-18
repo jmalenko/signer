@@ -680,12 +680,20 @@ class MainWindow(QMainWindow):
         )
         chosen, _ = QFileDialog.getSaveFileName(
             self, "Save Document with Signature", str(default_path),
-            "JPEG files (*.jpg *.jpeg)",
+            "JPEG files (*.jpg *.jpeg);;PNG files (*.png)",
         )
         if not chosen:
             return False
         output = Path(chosen)
-        if output.suffix.lower() not in {".jpg", ".jpeg"}:
+        
+        # Determine format from file extension
+        suffix = output.suffix.lower()
+        if suffix == ".png":
+            file_format = "PNG"
+        elif suffix in {".jpg", ".jpeg"}:
+            file_format = "JPEG"
+        else:
+            file_format = "JPEG"
             output = output.with_suffix(".jpg")
 
         # Derive the base stem: strip any trailing -pNN the user may have kept.
@@ -700,9 +708,9 @@ class MainWindow(QMainWindow):
             objects = self.canvas.page_objects_at(idx)
             if page_image is None:
                 continue
-            out_path = build_page_output_path(base_stem, idx, total, directory)
+            out_path = build_page_output_path(base_stem, idx, total, directory, file_format)
             try:
-                composite_objects_to_jpg(page_image, objects, out_path)
+                composite_objects_to_jpg(page_image, objects, out_path, file_format=file_format)
             except Exception as exc:
                 QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                 return False

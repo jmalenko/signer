@@ -6,7 +6,6 @@ when the SIGNER_RECORD_ACTIONS environment variable is set.
 
 import os
 import json
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -69,8 +68,7 @@ class ApplicationActionRecorder(QObject):
             self._recorder.record_change_page(current)
             self.actionRecorded.emit({
                 "type": "change_page",
-                "page": current,
-                "timestamp": time.time()
+                "page": current
             })
     
     def record_open_document(self, path: str) -> None:
@@ -78,8 +76,7 @@ class ApplicationActionRecorder(QObject):
         self._recorder.record_open_document(path)
         self.actionRecorded.emit({
             "type": "open_document",
-            "path": path,
-            "timestamp": time.time()
+            "path": path
         })
     
     def record_open_signature(self, path: str) -> None:
@@ -87,8 +84,7 @@ class ApplicationActionRecorder(QObject):
         self._recorder.record_open_signature(path)
         self.actionRecorded.emit({
             "type": "open_signature",
-            "path": path,
-            "timestamp": time.time()
+            "path": path
         })
     
     def record_add_annotation(self, annotation_type: str, x: float, y: float, page: int, obj=None) -> None:
@@ -99,8 +95,7 @@ class ApplicationActionRecorder(QObject):
             "annotation_type": annotation_type,
             "x": x,
             "y": y,
-            "page": page,
-            "timestamp": time.time()
+            "page": page
         })
     
     def record_move_annotation(self, obj, x: float, y: float) -> None:
@@ -110,8 +105,7 @@ class ApplicationActionRecorder(QObject):
             "type": "move_annotation",
             "object_id": id(obj),
             "x": x,
-            "y": y,
-            "timestamp": time.time()
+            "y": y
         })
     
     def record_resize_annotation(self, obj, width: float, height: float, handle: int) -> None:
@@ -122,8 +116,7 @@ class ApplicationActionRecorder(QObject):
             "object_id": id(obj),
             "width": width,
             "height": height,
-            "handle": handle,
-            "timestamp": time.time()
+            "handle": handle
         })
     
     def record_change_color(self, obj, color: QColor) -> None:
@@ -133,8 +126,7 @@ class ApplicationActionRecorder(QObject):
         self.actionRecorded.emit({
             "type": "change_color",
             "object_id": id(obj) if obj else "default",
-            "color": color_str,
-            "timestamp": time.time()
+            "color": color_str
         })
     
     def record_save_document(self, path: str) -> None:
@@ -142,8 +134,7 @@ class ApplicationActionRecorder(QObject):
         self._recorder.record_save_document(path)
         self.actionRecorded.emit({
             "type": "save_document",
-            "path": path,
-            "timestamp": time.time()
+            "path": path
         })
     
     def get_recorded_actions(self) -> List[Dict[str, Any]]:

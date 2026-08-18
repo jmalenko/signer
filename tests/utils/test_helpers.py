@@ -1,7 +1,6 @@
 """Common test helpers for Signer tests."""
 
 import json
-import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
@@ -48,7 +47,6 @@ def create_test_annotation_data(annotation_type: str, x: float, y: float, page: 
         "x": x,
         "y": y,
         "page": page,
-        "timestamp": time.time(),
         **kwargs
     }
 
@@ -59,8 +57,7 @@ def create_test_move_data(object_id: int, x: float, y: float) -> Dict[str, Any]:
         "type": "move_annotation",
         "object_id": object_id,
         "x": x,
-        "y": y,
-        "timestamp": time.time()
+        "y": y
     }
 
 
@@ -71,8 +68,7 @@ def create_test_resize_data(object_id: int, width: float, height: float, handle:
         "object_id": object_id,
         "width": width,
         "height": height,
-        "handle": handle,
-        "timestamp": time.time()
+        "handle": handle
     }
 
 
@@ -81,7 +77,6 @@ def save_recorded_actions(actions: List[Dict[str, Any]], output_path: str | Path
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     data = {
-        "version": "1.0",
         "actions": actions
     }
     output_path.write_text(json.dumps(data, indent=2))
@@ -130,8 +125,7 @@ class ActionRecorder:
             return
         self.actions.append({
             "type": "open_document",
-            "path": path,
-            "timestamp": time.time()
+            "path": path
         })
     
     def record_open_signature(self, path: str):
@@ -139,8 +133,7 @@ class ActionRecorder:
             return
         self.actions.append({
             "type": "open_signature",
-            "path": path,
-            "timestamp": time.time()
+            "path": path
         })
     
     def record_add_annotation(self, annotation_type: str, x: float, y: float, page: int, obj=None):
@@ -153,8 +146,7 @@ class ActionRecorder:
             "x": x,
             "y": y,
             "page": page,
-            "object_id": obj_id,
-            "timestamp": time.time()
+            "object_id": obj_id
         })
     
     def record_move_annotation(self, obj, x: float, y: float):
@@ -165,8 +157,7 @@ class ActionRecorder:
             "type": "move_annotation",
             "object_id": obj_id,
             "x": x,
-            "y": y,
-            "timestamp": time.time()
+            "y": y
         })
     
     def record_resize_annotation(self, obj, width: float, height: float, handle: int):
@@ -178,8 +169,7 @@ class ActionRecorder:
             "object_id": obj_id,
             "width": width,
             "height": height,
-            "handle": handle,
-            "timestamp": time.time()
+            "handle": handle
         })
     
     def record_change_color(self, obj, color: str):
@@ -192,8 +182,7 @@ class ActionRecorder:
         self.actions.append({
             "type": "change_color",
             "object_id": obj_id,
-            "color": color,
-            "timestamp": time.time()
+            "color": color
         })
     
     def record_change_page(self, page_index: int):
@@ -201,8 +190,7 @@ class ActionRecorder:
             return
         self.actions.append({
             "type": "change_page",
-            "page": page_index,
-            "timestamp": time.time()
+            "page": page_index
         })
     
     def record_save_document(self, path: str):
@@ -210,8 +198,7 @@ class ActionRecorder:
             return
         self.actions.append({
             "type": "save_document",
-            "path": path,
-            "timestamp": time.time()
+            "path": path
         })
     
     def get_actions(self) -> List[Dict[str, Any]]:

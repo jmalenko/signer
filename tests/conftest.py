@@ -53,16 +53,25 @@ def sample_signature():
 
 @pytest.fixture
 def settings_store(temp_dir):
-    """Create a SettingsStore with a temporary config file."""
-    config_path = temp_dir / "config.json"
+    """Create a SettingsStore that ONLY uses default settings (no user config).
+    
+    This ensures tests are reproducible and don't depend on the user's installed settings.
+    """
+    # Use a config path in temp_dir that will never exist, forcing defaults
+    config_path = temp_dir / "config_never_exists.json"
     store = SettingsStore(app_name="SignerTest")
     store._settings_path = config_path
+    # Verify the path doesn't exist (so load() returns defaults)
+    assert not store._settings_path.exists(), "Settings file should not exist for clean test environment"
     return store
 
 
 @pytest.fixture
 def app_settings():
-    """Create default AppSettings for testing."""
+    """Create default AppSettings for testing (no user config loaded).
+    
+    This ensures tests are reproducible and consistent.
+    """
     return AppSettings()
 
 
@@ -111,6 +120,7 @@ def arrow_annotation():
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "fixtures"
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 
 
@@ -118,8 +128,17 @@ def pytest_configure(config):
     """Configure pytest with custom markers."""
     config.addinivalue_line("markers", "unit: Unit tests")
     config.addinivalue_line("markers", "feature: Feature tests")
-    config.addinivalue_line("markers", "slow: Slow tests")
-    config.addinivalue_line("markers", "gui: Tests requiring GUI")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Auto-generate test results report after test session."""
+    try:
+        from tests.utils.test_results import create_comparison_report
+        report_path = create_comparison_report()
+        if (Path(__file__).parent / "test-results").exists():
+            print(f"\n📊 Test comparison report: {report_path}")
+    except Exception:
+        pass  # Silently skip if report generation fails
 
 
 def pytest_collection_modifyitems(config, items):

@@ -43,9 +43,11 @@ def build_page_output_path(
     page_index: int,
     total_pages: int,
     directory: str | Path,
+    file_format: str = "JPEG",
 ) -> Path:
     directory = Path(directory)
-    return directory / f"{base_stem}{_page_suffix(page_index, total_pages)}.jpg"
+    ext = ".png" if file_format.upper() == "PNG" else ".jpg"
+    return directory / f"{base_stem}{_page_suffix(page_index, total_pages)}{ext}"
 
 
 def composite_objects_to_jpg(
@@ -53,8 +55,17 @@ def composite_objects_to_jpg(
     objects: list[CanvasObject],
     output_path: str | Path,
     jpg_quality: int = 95,
+    file_format: str = "JPEG",
 ) -> None:
-    """Composite all objects over the page image and save as JPEG."""
+    """Composite all objects over the page image and save as JPEG or PNG.
+    
+    Args:
+        page_image: The page image to composite onto
+        objects: List of canvas objects to composite
+        output_path: Output file path
+        jpg_quality: JPEG quality (1-100, ignored for PNG)
+        file_format: Output format ("JPEG" or "PNG")
+    """
     base = page_image.convert("RGBA")
     pw, ph = base.size
 
@@ -70,4 +81,7 @@ def composite_objects_to_jpg(
         y = max(0, min(y, ph - 1))
         base.alpha_composite(overlay, dest=(x, y))
 
-    base.convert("RGB").save(str(output_path), format="JPEG", quality=jpg_quality, optimize=True)
+    if file_format.upper() == "PNG":
+        base.convert("RGBA").save(str(output_path), format="PNG", optimize=True)
+    else:
+        base.convert("RGB").save(str(output_path), format="JPEG", quality=jpg_quality, optimize=True)

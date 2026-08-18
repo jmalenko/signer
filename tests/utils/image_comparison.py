@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Optional, Tuple
+from shutil import copy2
 
 from PIL import Image, ImageChops, ImageDraw
 
@@ -19,47 +20,47 @@ def compare_images(
         actual_path: Path to the actual (generated) image
         expected_path: Path to the expected (reference) image
         tolerance: Maximum allowed difference per channel (0-255). Default 0 = pixel-perfect.
-        diff_output_path: Optional path to save diff image on mismatch
+        diff_output_path: Optional path to save diff image (always generated for visualization)
         
     Returns:
         Tuple of (images_match, mismatch_percentage, diff_image)
     """
-    actual = Image.open(actual_path).convert("RGBA")
-    expected = Image.open(expected_path).convert("RGBA")
+    actual = Image.open(actual_path).convert("RGB")
+    expected = Image.open(expected_path).convert("RGB")
     
     # Check dimensions
     if actual.size != expected.size:
         if diff_output_path:
-            diff_img = _create_size_diff_image(actual, expected)
+            diff_img = _create_diff_image(actual, expected)
             diff_img.save(diff_output_path)
         return False, 100.0, None
     
     # Calculate difference
     diff = ImageChops.difference(actual, expected)
     
+    # Create diff image for visualization (always, regardless of match/mismatch)
+    diff_img = _create_diff_image(actual, expected)
+    
+    if diff_output_path:
+        diff_img.save(diff_output_path)
+    
     # Check if images are identical (within tolerance)
     if tolerance == 0:
         # Pixel-perfect comparison
         if diff.getbbox() is None:
-            return True, 0.0, None
+            return True, 0.0, diff_img
     else:
         # Tolerance-based comparison
         diff_pixels = 0
         total_pixels = actual.width * actual.height
         for pixel in diff.getdata():
             # Check if any channel exceeds tolerance
-            if any(c > tolerance for c in pixel[:3]):  # Ignore alpha for tolerance
+            if any(c > tolerance for c in pixel[:3]):  # For RGB, only 3 channels
                 diff_pixels += 1
         
         mismatch_pct = (diff_pixels / total_pixels) * 100
         if mismatch_pct == 0:
-            return True, 0.0, None
-    
-    # Create diff image for visualization
-    diff_img = _create_diff_image(actual, expected, diff)
-    
-    if diff_output_path:
-        diff_img.save(diff_output_path)
+            return True, 0.0, diff_img
     
     # Calculate mismatch percentage
     diff_bbox = diff.getbbox()
@@ -73,65 +74,39 @@ def compare_images(
     return False, mismatch_pct, diff_img
 
 
-def _create_diff_image(actual: Image.Image, expected: Image.Image, diff: Image.Image) -> Image.Image:
-    """Create a visualization of the differences between two images."""
-    # Create a side-by-side comparison with diff highlighted
-    width = actual.width * 3 + 20
-    height = max(actual.height, expected.height) + 40
+def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Image:
+    """Create a pixel-level diff visualization for pixel-perfect comparison.
     
-    result = Image.new("RGBA", (width, height), (255, 255, 255, 255))
+    Args:
+        actual: Actual rendered image (RGB)
+        expected: Expected reference image (RGB)
+        
+    Returns:
+        Diff image with white pixels for matches, red pixels for differences
+    """
+    # Create white background (same size as images)
+    diff_img = Image.new("RGB", actual.size, (255, 255, 255))
     
-    # Paste actual
-    result.paste(actual, (0, 40))
-    # Paste expected
-    result.paste(expected, (actual.width + 10, 40))
-    # Paste diff (highlighted in red)
-    diff_highlighted = _highlight_diff(diff)
-    result.paste(diff_highlighted, (actual.width * 2 + 20, 40))
+    # Ensure images are RGB (they should be, but be defensive)
+    actual_rgb = actual if actual.mode == "RGB" else actual.convert("RGB")
+    expected_rgb = expected if expected.mode == "RGB" else expected.convert("RGB")
     
-    # Add labels
-    draw = ImageDraw.Draw(result)
-    draw.text((0, 10), "Actual", fill=(0, 0, 0, 255))
-    draw.text((actual.width + 10, 10), "Expected", fill=(0, 0, 0, 255))
-    draw.text((actual.width * 2 + 20, 10), "Difference", fill=(0, 0, 0, 255))
+    # Load pixel data
+    actual_pixels = actual_rgb.load()
+    expected_pixels = expected_rgb.load()
+    diff_pixels = diff_img.load()
     
-    return result
-
-
-def _highlight_diff(diff: Image.Image) -> Image.Image:
-    """Highlight differences in red."""
-    highlighted = Image.new("RGBA", diff.size, (0, 0, 0, 0))
-    pixels = diff.load()
-    highlight_pixels = highlighted.load()
+    # Compare pixel by pixel
+    for y in range(actual.height):
+        for x in range(actual.width):
+            actual_pixel = actual_pixels[x, y]
+            expected_pixel = expected_pixels[x, y]
+            
+            # Mark RED where pixels differ, WHITE where they match
+            if actual_pixel != expected_pixel:
+                diff_pixels[x, y] = (255, 0, 0)  # RED for different pixels
     
-    for y in range(diff.height):
-        for x in range(diff.width):
-            r, g, b, a = pixels[x, y]
-            if r > 0 or g > 0 or b > 0:
-                # Difference found - highlight in red with intensity based on difference
-                intensity = max(r, g, b)
-                highlight_pixels[x, y] = (255, 0, 0, min(255, intensity * 2))
-            else:
-                highlight_pixels[x, y] = (0, 0, 0, 0)
-    
-    return highlighted
-
-
-def _create_size_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Image:
-    """Create a diff image showing size mismatch."""
-    width = max(actual.width, expected.width) * 2 + 10
-    height = max(actual.height, expected.height) + 40
-    
-    result = Image.new("RGBA", (width, height), (255, 255, 255, 255))
-    result.paste(actual, (0, 40))
-    result.paste(expected, (max(actual.width, expected.width) + 10, 40))
-    
-    draw = ImageDraw.Draw(result)
-    draw.text((0, 10), f"Actual: {actual.size}", fill=(0, 0, 0, 255))
-    draw.text((max(actual.width, expected.width) + 10, 10), f"Expected: {expected.size}", fill=(0, 0, 0, 255))
-    draw.text((0, height - 25), "SIZE MISMATCH", fill=(255, 0, 0, 255))
-    
-    return result
+    return diff_img
 
 
 def assert_images_equal(
@@ -176,3 +151,64 @@ def create_reference_image(
         composite_objects_to_jpg(page_image, annotations, output_path)
     else:
         page_image.save(output_path, format="JPEG", quality=95, optimize=True)
+
+
+def assert_images_equal_with_results(
+    actual_path: str | Path,
+    expected_path: str | Path,
+    test_name: str,
+    tolerance: int = 0,
+    save_results: bool = True,
+) -> None:
+    """
+    Assert images are equal and automatically save comparison results.
+    
+    Saves to test-results/:
+    - actual/ subdirectory: Contains the generated test images
+    - diff.png: Pixel-level diff visualization (white=same, red=different)
+    
+    Args:
+        actual_path: Path to the actual (generated) image
+        expected_path: Path to the expected (reference) image
+        test_name: Name for organizing results (stored in actual/ subdirectory)
+        tolerance: Pixel difference tolerance (default 0 = pixel-perfect)
+        save_results: Whether to save results even on pass
+        
+    Raises:
+        AssertionError: If images don't match
+    """
+    from . import test_results as tr
+    import tempfile
+    
+    actual_path = Path(actual_path)
+    expected_path = Path(expected_path)
+    
+    # Create temp directory for diff file
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        diff_path = tmpdir / "diff.png"
+        
+        # Compare images and always generate diff for visualization
+        match, mismatch_pct, _ = compare_images(
+            actual_path, expected_path, tolerance, diff_output_path=diff_path
+        )
+        
+        # Organize results (always save diff if save_results=True)
+        if not match or save_results:
+            tr.organize_test_output(
+                test_name,
+                actual_image=actual_path if actual_path.exists() else None,
+                expected_image=expected_path if expected_path.exists() else None,
+                diff_image=diff_path if diff_path.exists() else None,
+                match=match,
+                mismatch_pct=mismatch_pct,
+            )
+        
+        # Raise assertion error if mismatch
+        if not match:
+            results_dir = tr.get_test_results_dir()
+            msg = (
+                f"Images do not match (mismatch: {mismatch_pct:.2f}%)\n"
+                f"Results saved to: {results_dir}/{test_name}/"
+            )
+            raise AssertionError(msg)
