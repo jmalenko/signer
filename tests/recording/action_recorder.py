@@ -236,20 +236,26 @@ def patch_main_window_for_recording(main_window) -> None:
     
     def recorded_mouse_move(event):
         original_mouse_move(event)
-        if recorder.is_enabled() and canvas._dragging and canvas._selected:
-            obj = canvas._selected
-            if canvas._drag_handle == -1:
-                # Move operation
-                recorder.record_move_annotation(obj, obj.x, obj.y)
-            else:
-                # Resize operation
-                recorder.record_resize_annotation(
-                    obj, obj.scaled_width, obj.scaled_height, canvas._drag_handle
-                )
+        # Track that a drag operation is happening
+        if canvas._dragging and canvas._selected:
+            canvas._was_dragging = True
     
     def recorded_mouse_release(event):
         original_mouse_release(event)
-        # Could record final position here if needed
+        # Record the final position only when mouse is released
+        if recorder.is_enabled() and canvas._selected:
+            obj = canvas._selected
+            # Check if this was a drag operation that just ended
+            if hasattr(canvas, '_was_dragging') and canvas._was_dragging:
+                if canvas._drag_handle == -1:
+                    # Move operation - record final position
+                    recorder.record_move_annotation(obj, obj.x, obj.y)
+                else:
+                    # Resize operation - record final size
+                    recorder.record_resize_annotation(
+                        obj, obj.scaled_width, obj.scaled_height, canvas._drag_handle
+                    )
+                canvas._was_dragging = False
     
     canvas.mouseMoveEvent = recorded_mouse_move
     canvas.mouseReleaseEvent = recorded_mouse_release

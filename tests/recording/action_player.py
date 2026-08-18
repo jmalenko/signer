@@ -39,6 +39,8 @@ class ActionPlayer:
             self._execute_open_document(action)
         elif action_type == "open_signature":
             self._execute_open_signature(action)
+        elif action_type == "add_signature":
+            self._execute_add_signature(action)
         elif action_type == "add_annotation":
             self._execute_add_annotation(action)
         elif action_type == "move_annotation":
@@ -65,6 +67,17 @@ class ActionPlayer:
 
     def _execute_open_signature(self, action: Dict[str, Any]) -> None:
         """Load a signature file."""
+        path = action["path"]
+        result = self.main_window._load_signature_file(path, at_default_position=True)
+        if not result:
+            raise RuntimeError(f"Failed to load signature: {path}")
+        
+        # Track the created object
+        if self.canvas.selected:
+            self._register_object(0, self.canvas.selected)
+
+    def _execute_add_signature(self, action: Dict[str, Any]) -> None:
+        """Add a signature file (same as open_signature)."""
         path = action["path"]
         result = self.main_window._load_signature_file(path, at_default_position=True)
         if not result:

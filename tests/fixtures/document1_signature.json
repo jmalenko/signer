@@ -1,0 +1,28 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples/document1.pdf"
+    },
+    {
+      "type": "add_signature",
+      "path": "examples/signature.png"
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 0,
+      "width": 640.0906170768903,
+      "height": 312.55010224948865,
+      "handle": 2
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 0,
+      "x": 1495.207566462168,
+      "y": 1567.927402862986
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}
