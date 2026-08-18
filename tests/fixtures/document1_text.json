@@ -1,0 +1,26 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples/document1.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "text",
+      "text": "Joe Smith",
+      "x": 1137.0,
+      "y": 1728.5,
+      "page": 0,
+      "object_id": 0
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 0,
+      "x": 1560.3762781186094,
+      "y": 1732.087934560327
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}

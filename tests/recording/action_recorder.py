@@ -330,7 +330,7 @@ def setup_recording_if_enabled(main_window) -> Optional[ApplicationActionRecorde
     print("="*60)
     print("Perform your test actions in the application.")
     print("When done, close the application.")
-    print("Recorded actions will be printed to stdout.")
+    print("Recorded actions will be saved to: tests/recorded_actions/")
     print("="*60 + "\n")
     
     # Hook into application aboutToQuit to export actions
@@ -340,19 +340,13 @@ def setup_recording_if_enabled(main_window) -> Optional[ApplicationActionRecorde
     def on_quit():
         actions = recorder.get_recorded_actions()
         if actions:
-            print("\n" + "="*60)
-            print("RECORDED ACTIONS:")
-            print("="*60)
-            print(json.dumps({"version": "1.0", "actions": actions}, indent=2))
-            print("="*60 + "\n")
-            
-            # Also save to file
+            # Save to file (no stdout printing to avoid duplication)
             output_dir = Path(__file__).parent.parent / "recorded_actions"
             output_dir.mkdir(exist_ok=True)
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             output_file = output_dir / f"recorded_actions_{timestamp}.json"
             recorder.export_to_file(output_file)
-            print(f"Actions saved to: {output_file}")
+            print(f"\n✓ Actions saved to: {output_file}\n")
     
     app.aboutToQuit.connect(on_quit)
     

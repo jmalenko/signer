@@ -26,6 +26,7 @@ ANNOTATION_TEST_CASES = [
     ("arrow", "document1_arrow", "arrow_"),
     ("checkmark", "document1_checkmark", "checkmark"),
     ("crossmark", "document1_crossmark", "crossmark"),
+    ("text", "document1_text", "text"),
     ("signature", "document1_signature", "add_signature"),  # Signatures use add_signature action
 ]
 
