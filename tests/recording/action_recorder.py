@@ -138,11 +138,11 @@ class ApplicationActionRecorder(QObject):
             "path": path
         })
     
-    def record_keystrokes(self, obj, text: str) -> None:
-        """Record keystroke input to a text annotation."""
-        self._recorder.record_keystrokes(obj, text)
+    def record_set_text(self, obj, text: str) -> None:
+        """Record set_text input to a text annotation."""
+        self._recorder.record_set_text(obj, text)
         self.actionRecorded.emit({
-            "type": "keystrokes",
+            "type": "set_text",
             "text": text
         })
     

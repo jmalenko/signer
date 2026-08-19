@@ -201,13 +201,13 @@ class ActionRecorder:
             "path": path
         })
     
-    def record_keystrokes(self, obj, text: str):
-        """Record keystroke input to a text annotation."""
+    def record_set_text(self, obj, text: str):
+        """Record set_text input to a text annotation."""
         if not self._enabled:
             return
         obj_id = self._get_object_id(obj) if obj else None
         self.actions.append({
-            "type": "keystrokes",
+            "type": "set_text",
             "object_id": obj_id,
             "text": text
         })

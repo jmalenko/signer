@@ -53,8 +53,8 @@ class ActionPlayer:
             self._execute_change_color(action)
         elif action_type == "change_page":
             self._execute_change_page(action)
-        elif action_type == "keystrokes":
-            self._execute_keystrokes(action)
+        elif action_type == "set_text":
+            self._execute_set_text(action)
         elif action_type == "save_document":
             self._execute_save_document(action)
         else:
@@ -244,24 +244,24 @@ class ActionPlayer:
                 result = self.main_window.save_signed_document()
                 if not result:
                     raise RuntimeError("Failed to save document")
-    def _execute_keystrokes(self, action: Dict[str, Any]) -> None:
-        """Execute keystrokes on a text annotation.
+    def _execute_set_text(self, action: Dict[str, Any]) -> None:
+        """Execute set_text on a text annotation.
         
-        This method simulates typing text into a text annotation.
+        This method simulates setting text on a text annotation.
         """
         obj_id = action.get("object_id")
         text = action.get("text", "")
         
-        # If no object_id, use the last selected object (for typing into current selection)
+        # If no object_id, use the last selected object (for setting text on current selection)
         if obj_id is not None:
             obj = self._get_object(obj_id)
             if obj is None:
-                raise RuntimeError(f"Object with id {obj_id} not found for keystrokes")
+                raise RuntimeError(f"Object with id {obj_id} not found for set_text")
         else:
             # Use currently selected object if available
             obj = self.canvas.selected
             if obj is None:
-                raise RuntimeError("No object selected for keystrokes")
+                raise RuntimeError("No object selected for set_text")
         
         # Set the text content
         if hasattr(obj, 'text'):
