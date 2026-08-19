@@ -1,0 +1,228 @@
+{
+  "actions": [
+    {
+      "type": "change_page",
+      "page": 0
+    },
+    {
+      "type": "open_document",
+      "path": "examples/document.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "checkmark",
+      "x": 1198.8333333333333,
+      "y": 1712.8333333333333,
+      "page": 0,
+      "object_id": 0
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 0,
+      "x": 273.146216768916,
+      "y": 826.6134969325154
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "crossmark",
+      "x": 1198.8333333333333,
+      "y": 1712.8333333333333,
+      "page": 0,
+      "object_id": 1
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 1,
+      "x": 287.4979550102249,
+      "y": 952.1912065439674
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_e",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 0,
+      "object_id": 2
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 2,
+      "x": 73.61042944785294,
+      "y": 2080.1912065439674
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "text",
+      "x": 1137.0,
+      "y": 1728.5,
+      "page": 0,
+      "object_id": 3
+    },
+    {
+      "type": "keystrokes",
+      "object_id": 3,
+      "text": "Joe Smith"
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 3,
+      "x": 1538.848670756646,
+      "y": 1936.6002044989773
+    },
+    {
+      "type": "open_signature",
+      "path": "C:/Users/jaro/My Drive/Drive/data/prog/signer/examples/signature.png"
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 4,
+      "x": 1566.9662576687117,
+      "y": 1944.2607361963187
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 4,
+      "x": 1882.7402862985687,
+      "y": 2098.450162353989
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 4,
+      "x": 1384.0173824130877,
+      "y": 1965.6965836218828
+    },
+    {
+      "type": "change_page",
+      "page": 1
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_n",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 1,
+      "object_id": 5
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 5,
+      "x": 1157.17,
+      "y": 1571.17
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_ne",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 1,
+      "object_id": 6
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 6,
+      "x": 1257.17,
+      "y": 1571.17
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_e",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 1,
+      "object_id": 7
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 7,
+      "x": 1257.17,
+      "y": 1671.17
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_se",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 1,
+      "object_id": 8
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 8,
+      "x": 1257.17,
+      "y": 1771.17
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_s",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 1,
+      "object_id": 9
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 9,
+      "x": 1157.17,
+      "y": 1771.17
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_sw",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 1,
+      "object_id": 10
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 10,
+      "x": 1057.17,
+      "y": 1771.17
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_w",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 1,
+      "object_id": 11
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 11,
+      "x": 1057.17,
+      "y": 1671.17
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "arrow_nw",
+      "x": 1157.1666666666667,
+      "y": 1671.1666666666667,
+      "page": 1,
+      "object_id": 12
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 12,
+      "x": 1057.17,
+      "y": 1571.17
+    },
+    {
+      "type": "change_page",
+      "page": 2
+    },
+    {
+      "type": "open_signature",
+      "path": "C:\\Users\\jaro\\My Drive\\Drive\\data\\prog\\signer\\examples\\signature.png"
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 13,
+      "x": 1534.674846625767,
+      "y": 1133.3875255623723
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}

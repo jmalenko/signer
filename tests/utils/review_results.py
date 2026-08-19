@@ -46,16 +46,22 @@ def list_results():
             file_count = len([k for k in files.keys() if k != "info"])
             print(f"\n  {test_dir.name}")
             print(f"    Timestamp: {info.get('timestamp', 'N/A')}")
-            print(f"    Files: {file_count}")
             
-            if files.get("actual"):
-                print(f"    ✓ actual.png")
-            if files.get("expected"):
-                print(f"    ✓ expected.png")
-            if files.get("diff"):
-                print(f"    ✓ diff.png")
-            if files.get("side-by-side"):
-                print(f"    ✓ side-by-side.png")
+            # Check for multi-page results
+            page_files = sorted([f for f in test_dir.glob("*_actual-p*.png")])
+            if page_files:
+                print(f"    Pages: {len(page_files)}")
+                for page_file in page_files:
+                    page_num = page_file.stem.split('-p')[-1]
+                    print(f"      Page {page_num}: ✓ actual, expected, diff")
+            else:
+                # Single-page display
+                if (test_dir / f"{info.get('expected_base', test_dir.name)}_actual.png").exists():
+                    print(f"    ✓ actual.png")
+                if (test_dir / f"{info.get('expected_base', test_dir.name)}_expected.png").exists():
+                    print(f"    ✓ expected.png")
+                if (test_dir / f"{info.get('expected_base', test_dir.name)}_diff.png").exists():
+                    print(f"    ✓ diff.png")
 
 
 def generate_report():
@@ -75,34 +81,54 @@ def open_report():
 def copy_to_expected(test_name):
     """Copy actual result to expected reference.
     
-    This is useful when you've verified the changes are correct
-    and want to make them the new reference.
+    Supports both single-page and multi-page results.
+    For multi-page, copies all page files (e.g., *-p1.png, *-p2.png, etc.)
     """
+    from pathlib import Path
     results_dir = get_test_results_dir()
     test_dir = results_dir / test_name
     
-    actual = test_dir / "actual.png"
-    expected = test_dir / "expected.png"
-    
-    if not actual.exists():
-        print(f"❌ No actual.png found for test '{test_name}'")
+    if not test_dir.exists():
+        print(f"❌ No results found for test '{test_name}'")
         return
     
-    # Backup original expected
-    if expected.exists():
-        backup = expected.with_stem(expected.stem + "-backup")
-        copy2(expected, backup)
-        print(f"  Backup created: {backup.name}")
+    # Check for multi-page results (e.g., actual_actual-p1.png, actual_actual-p2.png, etc.)
+    actual_pages = sorted([f for f in test_dir.glob("*_actual-p*.png")])
     
-    # Copy actual to expected
-    copy2(actual, expected)
-    print(f"✓ Copied actual.png → expected.png for test '{test_name}'")
-    
-    # Also update reference in fixtures if it exists
-    fixture_expected = Path(__file__).parent.parent / "fixtures" / f"{test_name}_actions-expected" / f"{test_name.split('_')[0]}-signed.png"
-    if fixture_expected.exists():
-        copy2(expected, fixture_expected)
-        print(f"✓ Also updated fixture: {fixture_expected.name}")
+    if actual_pages:
+        # Multi-page copy
+        print(f"✓ Copying {len(actual_pages)} pages for test '{test_name}':")
+        for actual_page in actual_pages:
+            # Convert actual_actual-p1.png → actual_expected-p1.png
+            expected_page = actual_page.parent / actual_page.name.replace("_actual-", "_expected-")
+            
+            # Backup original expected if it exists
+            if expected_page.exists():
+                backup = expected_page.with_stem(expected_page.stem + "-backup")
+                copy2(expected_page, backup)
+            
+            # Copy actual to expected
+            copy2(actual_page, expected_page)
+            page_num = actual_page.stem.split('-p')[-1]
+            print(f"  Page {page_num}: {actual_page.name} → {expected_page.name}")
+    else:
+        # Single-page copy (legacy)
+        actual = test_dir / "actual.png"
+        expected = test_dir / "expected.png"
+        
+        if not actual.exists():
+            print(f"❌ No actual results found for test '{test_name}'")
+            return
+        
+        # Backup original expected
+        if expected.exists():
+            backup = expected.with_stem(expected.stem + "-backup")
+            copy2(expected, backup)
+            print(f"  Backup created: {backup.name}")
+        
+        # Copy actual to expected
+        copy2(actual, expected)
+        print(f"✓ Copied actual.png → expected.png for test '{test_name}'")
 
 
 def main():

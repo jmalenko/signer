@@ -57,7 +57,8 @@ def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Imag
         expected: Expected reference image (RGB)
         
     Returns:
-        Diff image with white pixels for matches, red pixels for differences
+        Diff image with white pixels for matches, red pixels for differences,
+        and a red border box around the region containing differences
     """
     # Create white background (same size as images)
     diff_img = Image.new("RGB", actual.size, (255, 255, 255))
@@ -71,6 +72,11 @@ def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Imag
     expected_pixels = expected_rgb.load()
     diff_pixels = diff_img.load()
     
+    # Track bounding box of all differences
+    min_x, max_x = actual.width, -1
+    min_y, max_y = actual.height, -1
+    has_differences = False
+    
     # Compare pixel by pixel
     for y in range(actual.height):
         for x in range(actual.width):
@@ -80,6 +86,26 @@ def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Imag
             # Mark RED where pixels differ, WHITE where they match
             if actual_pixel != expected_pixel:
                 diff_pixels[x, y] = (255, 0, 0)  # RED for different pixels
+                # Track bounding box
+                min_x = min(min_x, x)
+                max_x = max(max_x, x)
+                min_y = min(min_y, y)
+                max_y = max(max_y, y)
+                has_differences = True
+    
+    # Draw a red border box around the diff region to make it more visible
+    if has_differences:
+        draw = ImageDraw.Draw(diff_img)
+        # Expand box slightly for visibility (add 10 pixel margin)
+        margin = 10
+        box_coords = [
+            max(0, min_x - margin),
+            max(0, min_y - margin),
+            min(actual.width - 1, max_x + margin),
+            min(actual.height - 1, max_y + margin)
+        ]
+        # Draw red rectangle with thick border (width=3)
+        draw.rectangle(box_coords, outline=(255, 0, 0), width=3)
     
     return diff_img
 

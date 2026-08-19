@@ -53,6 +53,8 @@ class ActionPlayer:
             self._execute_change_color(action)
         elif action_type == "change_page":
             self._execute_change_page(action)
+        elif action_type == "keystrokes":
+            self._execute_keystrokes(action)
         elif action_type == "save_document":
             self._execute_save_document(action)
         else:
@@ -72,9 +74,9 @@ class ActionPlayer:
         if not result:
             raise RuntimeError(f"Failed to load signature: {path}")
         
-        # Track the created object
+        # Track the created object - use next available ID
         if self.canvas.selected:
-            self._register_object(0, self.canvas.selected)
+            self._register_object(self._next_object_id, self.canvas.selected)
 
     def _execute_add_signature(self, action: Dict[str, Any]) -> None:
         """Add a signature file (same as open_signature)."""
@@ -83,9 +85,9 @@ class ActionPlayer:
         if not result:
             raise RuntimeError(f"Failed to load signature: {path}")
         
-        # Track the created object
+        # Track the created object - use next available ID
         if self.canvas.selected:
-            self._register_object(0, self.canvas.selected)
+            self._register_object(self._next_object_id, self.canvas.selected)
 
     def _execute_add_annotation(self, action: Dict[str, Any]) -> None:
         """Add a vector annotation."""
@@ -214,6 +216,14 @@ class ActionPlayer:
             path_str = str(path)
             # Determine the file format from the path extension
             ext = Path(path_str).suffix.lower()
+            
+            # For multi-page documents with PNG/JPG/BMP, add placeholder if not present
+            if self.canvas.page_count > 1 and ext in ['.png', '.jpg', '.jpeg', '.bmp']:
+                path_obj = Path(path_str)
+                # Add -p# placeholder if not already present
+                if '#' not in path_obj.stem:
+                    path_str = str(path_obj.parent / f"{path_obj.stem}-p#{ext}")
+            
             if ext == '.png':
                 format_filter = "PNG files (*.png)"
             elif ext in ['.jpg', '.jpeg']:
@@ -234,7 +244,34 @@ class ActionPlayer:
                 result = self.main_window.save_signed_document()
                 if not result:
                     raise RuntimeError("Failed to save document")
-
+    def _execute_keystrokes(self, action: Dict[str, Any]) -> None:
+        """Execute keystrokes on a text annotation.
+        
+        This method simulates typing text into a text annotation.
+        """
+        obj_id = action.get("object_id")
+        text = action.get("text", "")
+        
+        # If no object_id, use the last selected object (for typing into current selection)
+        if obj_id is not None:
+            obj = self._get_object(obj_id)
+            if obj is None:
+                raise RuntimeError(f"Object with id {obj_id} not found for keystrokes")
+        else:
+            # Use currently selected object if available
+            obj = self.canvas.selected
+            if obj is None:
+                raise RuntimeError("No object selected for keystrokes")
+        
+        # Set the text content
+        if hasattr(obj, 'text'):
+            obj.text = text
+            # Resize annotation to fit the text if available
+            if hasattr(obj, 'fit_text_box'):
+                obj.fit_text_box()
+        
+        self.canvas.objectChanged.emit()
+        self.canvas.update()
     def _register_object(self, obj_id: int, obj: CanvasObject) -> None:
         """Register an object with an ID."""
         self._object_map[obj_id] = obj

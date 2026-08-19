@@ -201,6 +201,17 @@ class ActionRecorder:
             "path": path
         })
     
+    def record_keystrokes(self, obj, text: str):
+        """Record keystroke input to a text annotation."""
+        if not self._enabled:
+            return
+        obj_id = self._get_object_id(obj) if obj else None
+        self.actions.append({
+            "type": "keystrokes",
+            "object_id": obj_id,
+            "text": text
+        })
+    
     def get_actions(self) -> List[Dict[str, Any]]:
         return self.actions.copy()
     

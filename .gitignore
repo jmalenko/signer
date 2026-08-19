@@ -26,8 +26,8 @@ test-results/
 .vscode/*.log
 
 # Local app/runtime outputs
-document-signed.*
-document-signed-p*.*
+examples/*-signed*.*
+tests/recorded_actions/
 
 # OS files
 .DS_Store

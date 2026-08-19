@@ -122,68 +122,205 @@ def create_comparison_report(output_file: Optional[str | Path] = None) -> str:
 
 
 def _generate_html_report(test_results: list, results_dir: Path) -> str:
-    """Generate HTML content for test comparison report."""
+    """Generate HTML content for test comparison report (supports multi-page results)."""
+    import re
     
     # Build test summary list at top
-    test_list_items = ""
-    test_cards = ""
+    # First, group results by test name (handling page suffixes)
+    grouped_results = {}
+    page_pattern = r'(.+)_page(\d+)$'
     
     for result in test_results:
         test_name = result["test_name"]
-        match = result.get("match", True)
-        test_dir = results_dir / test_name
+        match = re.match(page_pattern, test_name)
         
-        # Get expected base name (for file lookup), fallback to test_name for old results
-        expected_base = result.get("expected_base", test_name)
-        
-        # Find image files in test directory (all using expected base name for consistency)
-        actual_file = test_dir / f"{expected_base}_actual.png"
-        expected_file = test_dir / f"{expected_base}_expected.png"
-        diff_file = test_dir / f"{expected_base}_diff.png"
-        
-        # Create status badge
+        if match:
+            # This is a page result - group it under parent test
+            parent_name = match.group(1)
+            page_num = match.group(2)
+            
+            # Check if parent already exists and is single-page - convert it to multi-page
+            if parent_name in grouped_results and grouped_results[parent_name]["type"] == "singlepage":
+                # Convert existing single-page entry to multi-page (keep parent card, just remove from page list)
+                grouped_results[parent_name] = {
+                    "type": "multipage",
+                    "match": grouped_results[parent_name]["match"],
+                    "pages": {}
+                }
+            elif parent_name not in grouped_results:
+                grouped_results[parent_name] = {
+                    "type": "multipage",
+                    "match": True,  # Will be recalculated after all pages are added
+                    "pages": {}
+                }
+            
+            grouped_results[parent_name]["pages"][page_num] = {
+                "test_name": test_name,
+                "result": result,
+                "match": result.get("match", True)
+            }
+        else:
+            # Regular single-page result
+            if test_name not in grouped_results:
+                grouped_results[test_name] = {
+                    "type": "singlepage",
+                    "match": result.get("match", True),
+                    "result": result
+                }
+    
+    # Recalculate parent test match status - parent fails if ANY page fails
+    for test_name_key, group in grouped_results.items():
+        if group["type"] == "multipage":
+            # Parent test passes only if ALL pages pass
+            group["match"] = all(page_info["match"] for page_info in group["pages"].values())
+    
+    test_list_items = ""
+    test_cards = ""
+    
+    for test_name_key in sorted(grouped_results.keys()):
+        group = grouped_results[test_name_key]
+        match = group["match"]
         status_class = "status-pass" if match else "status-fail"
         status_text = "✓ PASS" if match else "✗ FAIL"
         
-        # Add to summary list
-        test_list_items += f"""
-        <li class="test-list-item {status_class}">
-            <a href="#{test_name}" class="test-link">
+        if group["type"] == "multipage":
+            # Multi-page: create parent item and nested page items
+            test_list_items += f"""
+        <li class="test-list-item {status_class} test-list-parent">
+            <a href="#{test_name_key}" class="test-link">
                 <span class="status-badge {status_class}">{status_text}</span>
-                <span class="test-name" style="user-select: text;">{test_name}</span>
+                <span class="test-name" style="user-select: text;">{test_name_key}</span>
+            </a>
+            <ul class="nested-page-list">
+"""
+            for page_num in sorted(group["pages"].keys(), key=lambda x: int(x)):
+                page_info = group["pages"][page_num]
+                page_match = page_info["match"]
+                page_status_class = "status-pass" if page_match else "status-fail"
+                page_status_text = "✓" if page_match else "✗"
+                test_list_items += f"""                <li class="test-list-item {page_status_class} test-list-page">
+                    <a href="#{page_info['test_name']}" onclick="showPageFromList('{page_info['test_name']}'); return false;" class="test-link page-link">
+                        <span class="status-badge {page_status_class}">{page_status_text}</span>
+                        <span class="test-name" style="user-select: text;">Page {page_num}</span>
+                    </a>
+                </li>
+"""
+            test_list_items += """            </ul>
+        </li>
+        """
+        else:
+            # Single-page: regular item
+            result = group["result"]
+            test_list_items += f"""
+        <li class="test-list-item {status_class}">
+            <a href="#{test_name_key}" class="test-link">
+                <span class="status-badge {status_class}">{status_text}</span>
+                <span class="test-name" style="user-select: text;">{test_name_key}</span>
             </a>
         </li>
         """
+    
+    # Now add cards for all results
+    for result in test_results:
+        test_name = result["test_name"]
         
-        # Create relative paths for HTML
-        actual_rel = f"{test_name}/{actual_file.name}" if actual_file.exists() else ""
-        expected_rel = f"{test_name}/{expected_file.name}" if expected_file.exists() else ""
-        diff_rel = f"{test_name}/{diff_file.name}" if diff_file.exists() else ""
+        # Skip parent tests that have multipage variants - only show individual page cards
+        if grouped_results.get(test_name, {}).get("type") == "multipage" and not re.match(page_pattern, test_name):
+            continue
         
-        # Build detailed test card with 3 columns: Expected, Actual, Diff
-        card = f"""
-        <div class="test-card" id="{test_name}">
-            <div class="test-header">
-                <h2 class="test-name-header" style="user-select: text;">{test_name}</h2>
-                <span class="status-badge {status_class}">{status_text}</span>
+        match = result.get("match", True)
+        status_class = "status-pass" if match else "status-fail"
+        status_text = "✓ PASS" if match else "✗ FAIL"
+        
+        test_dir = results_dir / test_name
+        expected_base = result.get("expected_base", test_name)
+        
+        page_files = sorted([f for f in test_dir.glob(f"{expected_base}_actual-p*.png")])
+        
+        if page_files:
+            # Multi-page card
+            page_tabs = ""
+            page_contents = ""
+            
+            for page_file in page_files:
+                page_num = page_file.stem.split('-p')[-1]
+                expected_file = test_dir / f"{expected_base}_expected-p{page_num}.png"
+                diff_file = test_dir / f"{expected_base}_diff-p{page_num}.png"
+                
+                active_class = "active" if page_num == sorted([f.stem.split('-p')[-1] for f in page_files])[0] else ""
+                page_tabs += f'<button class="page-tab {active_class}" onclick="showPage(event, \'{test_name}-page{page_num}\')" data-page="{page_num}">Page {page_num}</button>'
+                
+                actual_rel = f"{test_name}/{page_file.name}" if page_file.exists() else ""
+                expected_rel = f"{test_name}/{expected_file.name}" if expected_file.exists() else ""
+                diff_rel = f"{test_name}/{diff_file.name}" if diff_file.exists() else ""
+                
+                display_style = "display: block;" if page_num == sorted([f.stem.split('-p')[-1] for f in page_files])[0] else "display: none;"
+                page_content = f"""
+                <div id="{test_name}-page{page_num}" class="page-content" style="{display_style}">
+                    <div class="image-comparison">
+                        <div class="image-item">
+                            <h4>Expected</h4>
+                            {f'<img src="{expected_rel}" alt="Expected P{page_num}" class="comparison-image clickable-image" data-full-src="{expected_rel}">' if expected_rel else '<p>N/A</p>'}
+                        </div>
+                        <div class="image-item">
+                            <h4>Actual</h4>
+                            {f'<img src="{actual_rel}" alt="Actual P{page_num}" class="comparison-image clickable-image" data-full-src="{actual_rel}">' if actual_rel else '<p>N/A</p>'}
+                        </div>
+                        <div class="image-item">
+                            <h4>Diff (Red = Different)</h4>
+                            {f'<img src="{diff_rel}" alt="Diff P{page_num}" class="comparison-image clickable-image" data-full-src="{diff_rel}">' if diff_rel else '<p>N/A</p>'}
+                        </div>
+                    </div>
+                </div>
+                """
+                page_contents += page_content
+            
+            card = f"""
+            <div class="test-card" id="{test_name}">
+                <div class="test-header">
+                    <h2 class="test-name-header" style="user-select: text;">{test_name}</h2>
+                    <span class="status-badge {status_class}">{status_text}</span>
+                </div>
+                <div class="page-tabs-container">
+                    {page_tabs}
+                </div>
+                {page_contents}
             </div>
-            <div class="image-comparison">
-                <div class="image-item">
-                    <h4>Expected</h4>
-                    {f'<img src="{expected_rel}" alt="Expected" class="comparison-image clickable-image" data-full-src="{expected_rel}">' if expected_rel else '<p>N/A</p>'}
+            """
+            test_cards += card
+        else:
+            # Single-page card
+            actual_file = test_dir / f"{expected_base}_actual.png"
+            expected_file = test_dir / f"{expected_base}_expected.png"
+            diff_file = test_dir / f"{expected_base}_diff.png"
+            
+            actual_rel = f"{test_name}/{actual_file.name}" if actual_file.exists() else ""
+            expected_rel = f"{test_name}/{expected_file.name}" if expected_file.exists() else ""
+            diff_rel = f"{test_name}/{diff_file.name}" if diff_file.exists() else ""
+            
+            card = f"""
+            <div class="test-card" id="{test_name}">
+                <div class="test-header">
+                    <h2 class="test-name-header" style="user-select: text;">{test_name}</h2>
+                    <span class="status-badge {status_class}">{status_text}</span>
                 </div>
-                <div class="image-item">
-                    <h4>Actual</h4>
-                    {f'<img src="{actual_rel}" alt="Actual" class="comparison-image clickable-image" data-full-src="{actual_rel}">' if actual_rel else '<p>N/A</p>'}
-                </div>
-                <div class="image-item">
-                    <h4>Diff (Red = Different)</h4>
-                    {f'<img src="{diff_rel}" alt="Diff" class="comparison-image clickable-image" data-full-src="{diff_rel}">' if diff_rel else '<p>N/A</p>'}
+                <div class="image-comparison">
+                    <div class="image-item">
+                        <h4>Expected</h4>
+                        {f'<img src="{expected_rel}" alt="Expected" class="comparison-image clickable-image" data-full-src="{expected_rel}">' if expected_rel else '<p>N/A</p>'}
+                    </div>
+                    <div class="image-item">
+                        <h4>Actual</h4>
+                        {f'<img src="{actual_rel}" alt="Actual" class="comparison-image clickable-image" data-full-src="{actual_rel}">' if actual_rel else '<p>N/A</p>'}
+                    </div>
+                    <div class="image-item">
+                        <h4>Diff (Red = Different)</h4>
+                        {f'<img src="{diff_rel}" alt="Diff" class="comparison-image clickable-image" data-full-src="{diff_rel}">' if diff_rel else '<p>N/A</p>'}
+                    </div>
                 </div>
             </div>
-        </div>
-        """
-        test_cards += card
+            """
+            test_cards += card
     
     html = f"""
     <!DOCTYPE html>
@@ -275,6 +412,31 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                 background: #f8d7da;
                 color: #721c24;
             }}
+            .test-list-parent {{
+                margin-bottom: 8px;
+            }}
+            .nested-page-list {{
+                list-style: none;
+                margin-top: 8px;
+                margin-left: 20px;
+                padding: 8px 0;
+                border-left: 2px solid #ddd;
+                padding-left: 16px;
+            }}
+            .test-list-page {{
+                margin-bottom: 6px;
+            }}
+            .test-list-page .test-link {{
+                padding: 8px 10px;
+                font-size: 0.95em;
+                border-left: 2px solid #bbb;
+            }}
+            .test-list-page .test-link:hover {{
+                border-left-color: #666;
+            }}
+            .page-link {{
+                cursor: pointer;
+            }}
             .test-card h2 {{
                 margin: 0;
                 color: #2c3e50;
@@ -309,6 +471,35 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                 display: grid;
                 grid-template-columns: 1fr 1fr 1fr;
                 gap: 20px;
+                margin-top: 15px;
+            }}
+            .page-tabs-container {{
+                display: flex;
+                gap: 10px;
+                margin-top: 12px;
+                padding: 0;
+                border-bottom: 2px solid #e0e0e0;
+                flex-wrap: wrap;
+            }}
+            .page-tab {{
+                padding: 10px 16px;
+                border: none;
+                background: transparent;
+                cursor: pointer;
+                font-size: 0.95em;
+                color: #666;
+                border-bottom: 3px solid transparent;
+                transition: all 0.2s;
+            }}
+            .page-tab:hover {{
+                color: #2c3e50;
+                background: #f9f9f9;
+            }}
+            .page-tab.active {{
+                color: #2980b9;
+                border-bottom-color: #2980b9;
+            }}
+            .page-content {{
                 margin-top: 15px;
             }}
             .image-item {{
@@ -429,6 +620,61 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                     modal.classList.remove('open');
                 }}
             }});
+            
+            // Show/hide page tabs
+            function showPage(event, pageId) {{
+                // Prevent default link behavior
+                if (event && event.preventDefault) {{
+                    event.preventDefault();
+                }}
+                
+                // Get the test card - could be from tab button or from list link
+                let card;
+                if (event && event.target) {{
+                    card = event.target.closest('.test-card');
+                }}
+                
+                // If not found from event, extract test name from pageId and find card
+                if (!card) {{
+                    const testName = pageId.split('-page')[0];
+                    card = document.getElementById(testName);
+                }}
+                
+                if (!card) return;
+                
+                // Hide all page contents in this card
+                const pages = card.querySelectorAll('.page-content');
+                pages.forEach(page => {{
+                    page.style.display = 'none';
+                }});
+                
+                // Remove active class from all tabs
+                const tabs = card.querySelectorAll('.page-tab');
+                tabs.forEach(tab => {{
+                    tab.classList.remove('active');
+                }});
+                
+                // Show the selected page
+                const selectedPage = document.getElementById(pageId);
+                if (selectedPage) {{
+                    selectedPage.style.display = 'block';
+                    // Mark the corresponding tab as active if it exists
+                    const pageNum = pageId.split('-page')[1];
+                    const activeTab = card.querySelector(`[data-page="${{pageNum}}""]`);
+                    if (activeTab) {{
+                        activeTab.classList.add('active');
+                    }}
+                }}
+            }}
+            
+            // Navigate to a page from the list and scroll to it
+            function showPageFromList(testName) {{
+                // Scroll to the test card
+                const card = document.getElementById(testName);
+                if (card) {{
+                    card.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+                }}
+            }}
         </script>
     </body>
     </html>

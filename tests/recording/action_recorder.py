@@ -138,6 +138,14 @@ class ApplicationActionRecorder(QObject):
             "path": path
         })
     
+    def record_keystrokes(self, obj, text: str) -> None:
+        """Record keystroke input to a text annotation."""
+        self._recorder.record_keystrokes(obj, text)
+        self.actionRecorded.emit({
+            "type": "keystrokes",
+            "text": text
+        })
+    
     def get_recorded_actions(self) -> List[Dict[str, Any]]:
         """Get all recorded actions."""
         return self._recorder.get_actions()
