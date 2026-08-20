@@ -28,6 +28,9 @@
       "type": "undo"
     },
     {
+      "type": "redo"
+    },
+    {
       "type": "add_annotation",
       "annotation_type": "crossmark",
       "x": 1198.8333333333333,
@@ -59,6 +62,12 @@
       "type": "undo"
     },
     {
+      "type": "redo"
+    },
+    {
+      "type": "redo"
+    },
+    {
       "type": "add_annotation",
       "annotation_type": "arrow_n",
       "x": 1157.1666666666667,
@@ -77,6 +86,12 @@
     },
     {
       "type": "undo"
+    },
+    {
+      "type": "redo"
+    },
+    {
+      "type": "redo"
     },
     {
       "type": "add_annotation",
@@ -125,6 +140,18 @@
     },
     {
       "type": "undo"
+    },
+    {
+      "type": "redo"
+    },
+    {
+      "type": "redo"
+    },
+    {
+      "type": "redo"
+    },
+    {
+      "type": "redo"
     },
     {
       "type": "save_document"
