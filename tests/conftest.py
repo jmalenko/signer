@@ -159,6 +159,23 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "feature: Feature tests")
 
 
+def pytest_sessionstart(session):
+    """Clear test-results directory at start of each test session.
+    
+    This ensures each test run starts fresh without accumulated stale results
+    from previous runs, keeping the report clean and current.
+    """
+    import shutil
+    test_results_dir = Path(__file__).parent / "test-results"
+    if test_results_dir.exists():
+        try:
+            shutil.rmtree(test_results_dir, ignore_errors=True)
+            print(">> Cleared test-results directory for fresh results")
+        except Exception as e:
+            # If cleanup fails, continue anyway - don't block tests
+            print(f"WARNING: Could not clear test-results directory: {e}")
+
+
 def pytest_sessionfinish(session, exitstatus):
     """Auto-generate test results report after test session."""
     try:
