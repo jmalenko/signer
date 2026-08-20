@@ -644,7 +644,7 @@ tests/
 │   ├── __init__.py
 │   ├── test_document1_annotations.py     # Signature + annotation type tests
 │   ├── test_multipage_annotations.py
-│   └── test_undo_redo.py                 # Future
+│   └── test_document_undo_redo.py        # Undo/redo feature tests
 ├── fixtures/
 │   ├── document1.pdf
 │   ├── document1-signed-expected.jpg
@@ -1299,6 +1299,516 @@ git commit -m "Add feature test for cross annotation"
    - `"path": "examples/document.pdf"` ✓
    - NOT `"path": "C:\\full\\path\\document.pdf"` ✗
 
+## 5.15 Undo/Redo History (v1.2.21)
+
+### Requirement Clarification
+
+Version 1.2.21 introduces unlimited undo/redo history with action coalescing:
+
+1. **Unlimited History**: The current document session maintains an unlimited undo/redo stack. History is **not persisted** to disk; it is cleared when:
+   - A new document is opened
+   - The application is closed
+   - The user explicitly clears history (not required for v1)
+
+2. **Action Coalescing**: Consecutive move/resize operations on the same annotation(s) are coalesced into a single history entry. Only the initial and final states are stored, reducing memory usage and simplifying undo semantics.
+   - **Definition of "consecutive"**: Move or resize actions on the same object(s) with no other user actions (add, delete, color change, page navigation) in between
+   - **Timing**: A move/resize is considered "consecutive" if triggered by continuous user drag gestures (mouseDown → mouseMove* → mouseUp = one history entry)
+   - **Same object(s)**: If user drags Object A then Object B, each gets its own entry (different objects)
+   - **Example flow**:
+     - Drag Object A from (100, 100) to (200, 200) → history entry stores (100, 100) and (200, 200)
+     - Drag same Object A from (200, 200) to (300, 300) → history entry UPDATES to store (100, 100) and (300, 300)
+     - Add annotation B → history entry closes for Object A; Object B gets new entry
+     - Undo → removes annotation B
+     - Undo → reverts Object A to (100, 100)
+
+3. **Unified Mechanism**: The undo/redo history system uses the same **action format** as the existing action recording system (used for tests). This enables:
+   - Recording actions (partial format: target state only) are compatible with undo/redo
+   - The action system gracefully handles both partial and full formats
+   - Initial state can be captured at runtime by undo/redo when needed, or pre-stored in full format
+   - Future feature: export undo/redo history to JSON for debugging or batch processing
+
+### Design: Unified Action-Based History
+
+#### Core Concept
+
+Both the **action recording system** (for tests) and the **undo/redo history** use the same action format:
+
+```python
+class Action:
+    """Base class for all recorded/undoable actions."""
+    type: str  # "add_annotation", "move_annotation", "resize_annotation", etc.
+    def execute(self, state: CanvasState) -> None: ...
+    def undo(self, state: CanvasState) -> None: ...
+    def serialize(self) -> dict: ...
+    @staticmethod
+    def deserialize(data: dict) -> "Action": ...
+```
+
+#### Action Format: Partial vs Full
+
+Actions can be stored in two forms depending on their purpose:
+
+**Partial Action Format (Recording)**:
+- Used by the action recording system for test creation
+- Contains only target state and essential parameters
+- Suitable for recording user actions and replaying them in tests
+- Example: `{type: "move_annotation", object_id: 0, x: 300, y: 400}`
+- Lightweight and easy to manually edit in fixture files
+
+**Full Action Format (Undo/Redo)**:
+- Used by the undo/redo history system
+- Contains both initial and final states for proper undo capability
+- Example: `{type: "move_annotation", object_id: 0, from_x: 100, from_y: 100, to_x: 300, to_y: 400}`
+- Enables precise restoration of previous states
+
+**Graceful Format Handling**:
+- The action system accepts both formats; serialization/deserialization handles both
+- Undo/redo stack works seamlessly with either format:
+  - If both `from_*` and `to_*` fields present: use them directly
+  - If only target state present: reconstruct initial state from current object state when undo is triggered
+- This enables test actions (partial format) to be compatible with undo/redo while maintaining backward compatibility with existing action recording
+- No special conversion needed; the same action classes work for both cases
+
+**Action Types**:
+- `AddAnnotationAction`: Creates a new annotation
+- `MoveAnnotationAction`: Moves an annotation to new coordinates
+- `ResizeAnnotationAction`: Resizes an annotation
+- `DeleteAnnotationAction`: Removes an annotation
+- `ChangeColorAction`: Changes annotation or default color
+- `ChangePageAction`: Navigate to a different page
+- `DuplicateAnnotationAction`: Create copy of annotation
+- `CutAnnotationAction`: Cut annotation to clipboard
+- `PasteAnnotationAction`: Paste annotation from clipboard
+- `SelectAnnotationAction`: Select or deselect annotation
+- `RotatePageAction`: Rotate current page or all pages
+- `Multi-selection operations**: Delete, Copy, Cut, Paste, Duplicate as compound actions
+
+#### Action Coalescing Strategy
+
+**Goal**: Merge consecutive move/resize operations on the same object into a single history entry by updating the last stack element instead of pushing new actions.
+
+**Mechanism** (Simplified - No Pending Action):
+
+```python
+class HistoryStack:
+    def __init__(self):
+        self.undo_stack: list[Action] = []
+        self.redo_stack: list[Action] = []
+    
+    def record_action(self, action: Action) -> None:
+        """Record an action, coalescing with last stack element if compatible."""
+        
+        # Only merge move/resize actions
+        if isinstance(action, (MoveAnnotationAction, ResizeAnnotationAction)):
+            # Check if last action on stack is compatible (same type and object)
+            if (self.undo_stack and 
+                self.can_coalesce(self.undo_stack[-1], action)):
+                # Merge with last action by updating only its target state
+                self.undo_stack[-1].merge(action)
+                return  # Update in-place; don't push new action
+        
+        # Non-mergeable action or first in sequence: push to stack
+        self.undo_stack.append(action)
+        self.redo_stack.clear()  # Clear redo when new action recorded
+    
+    def can_coalesce(self, last_action: Action, new_action: Action) -> bool:
+        """Check if new action can coalesce with last action on stack."""
+        return (
+            type(last_action) == type(new_action) and
+            hasattr(last_action, 'object_id') and
+            hasattr(new_action, 'object_id') and
+            last_action.object_id == new_action.object_id
+        )
+```
+
+**Key Differences from Previous Design**:
+- **No pending_action variable**: Actions are pushed directly to undo_stack
+- **No finalize_pending_action() call**: Coalescing happens automatically via merge
+- **Simpler logic**: If compatible, merge; otherwise, push
+- **Cleaner state**: Only the undo_stack exists; no separate pending state to manage
+- **Same behavior**: Consecutive moves on same object still result in single history entry
+
+**Example Timeline** (Simplified):
+
+```
+User Action                          History Stack              Action
+─────────────────────────────────────────────────────────────────────────────
+1. Click Object A (start)             []                         Create MoveA (from 100, to 100)
+2. Push MoveA                          [MoveA (100→100)]          
+3. Drag to (150, 150)                  [MoveA (100→150)] merged   Merge MoveA target
+4. Drag to (200, 200)                  [MoveA (100→200)] merged   Merge MoveA target
+5. Release                             [MoveA (100→200)]          (no action)
+6. Click Object B                      [MoveA]                    
+7. Drag to (250, 250)                  [MoveA, MoveB (50→250)]    Create & push MoveB
+8. Release                             [MoveA, MoveB]             (no action)
+```
+
+The initial state (from_x, from_y) is captured when the action is first created in mousePressEvent, and only the target state (to_x, to_y) is updated during merge.
+
+#### MergeableAction Mixin
+
+For actions that support coalescing:
+
+```python
+class MergeableAction(Action):
+    """Action that can be merged with subsequent actions of same type on same object.
+    
+    Supports both partial format (target state only for recording) and full format 
+    (both initial and final states for undo/redo).
+    
+    Partial format: {"type": "move_annotation", "object_id": 0, "x": 300, "y": 400}
+    Full format: {"type": "move_annotation", "object_id": 0, "from_x": 100, "from_y": 100, "to_x": 300, "to_y": 400}
+    
+    For undo/redo workflows, initial state is captured at action creation time (e.g., mousePressEvent),
+    and only the target state is updated during merge operations (e.g., mouseMoveEvent).
+    """
+    
+    def can_merge_with(self, other: "Action") -> bool:
+        """Check if this action can merge with another."""
+        return (
+            isinstance(other, self.__class__) and
+            self.object_id == other.object_id
+        )
+    
+    def merge(self, other: "Action") -> None:
+        """Merge another action into this one (update only target state).
+        
+        The initial state (from_x, from_y) is preserved from the first action.
+        Only the target state (to_x, to_y) is updated from the new action.
+        
+        Works seamlessly with both partial and full formats:
+        - Partial format during recording: update target x/y
+        - Full format during undo/redo: update to_x/to_y while preserving from_x/from_y
+        """
+        # Get target state from the new action and update this action's target
+        target = other.get_target_state()
+        self.set_target_state(target)
+    
+    def has_initial_state(self) -> bool:
+        """Check if action has full state information (initial + final)."""
+        return "from_x" in self.data or "from_y" in self.data
+    
+    def get_target_state(self) -> dict:
+        """Get target state from either partial or full format."""
+        if self.has_initial_state():
+            return {"x": self.data["to_x"], "y": self.data["to_y"]}
+        else:
+            return {"x": self.data["x"], "y": self.data["y"]}
+    
+    def set_target_state(self, target: dict) -> None:
+        """Update target state in both formats."""
+        if self.has_initial_state():
+            self.data["to_x"] = target["x"]
+            self.data["to_y"] = target["y"]
+        else:
+            self.data["x"] = target["x"]
+            self.data["y"] = target["y"]
+```
+
+#### History Restoration
+
+When undoing/redoing:
+
+```python
+class HistoryStack:
+    def undo(self) -> None:
+        """Undo the last action."""
+        if self.undo_stack:
+            action = self.undo_stack.pop()
+            action.undo(self.canvas_state)
+            self.redo_stack.append(action)
+    
+    def redo(self) -> None:
+        """Redo the last undone action."""
+        if self.redo_stack:
+            action = self.redo_stack.pop()
+            action.execute(self.canvas_state)
+            self.undo_stack.append(action)
+```
+
+#### Format Workflow Summary
+
+**Recording Workflow (for tests)**:
+1. Action is created in **partial format** (target state only)
+   - Example: `move_annotation` with `{x: 300, y: 400}`
+2. Action is serialized to JSON fixture file as-is
+3. Action player deserializes and executes actions sequentially
+4. No coalescing during playback; each action executes independently
+
+**Undo/Redo Workflow (for editing)**:
+1. User presses mouse on object → `mousePressEvent` captures current state
+2. Create MoveAnnotationAction with **full format** (initial + current as target)
+   - Example: `{from_x: 100, from_y: 100, to_x: 100, to_y: 100}`
+3. Action is pushed to undo_stack
+4. User drags → `mouseMoveEvent` creates new MoveAnnotationAction with new target
+5. `record_action()` checks if last stack element is compatible
+6. If compatible, **merge**: update only the target state (to_x/to_y)
+   - Example: Last action becomes `{from_x: 100, from_y: 100, to_x: 300, to_y: 300}`
+7. If not compatible (different object or action type), push new action
+8. User releases mouse → no special handling needed; action already on stack with final state
+9. On undo: action's `undo()` method uses `from_x/from_y` to restore
+10. On redo: action's `execute()` method uses `to_x/to_y` to restore
+
+**Key Difference from Previous Design**:
+- No pending_action variable or finalization phase
+- Initial state captured at creation time (mousePressEvent)
+- Coalescing happens immediately via merge of last stack element
+- Simpler state management: only undo_stack and redo_stack exist
+
+**Compatibility**:
+- Recording workflow produces partial-format JSON files (unchanged)
+- Undo/redo workflow uses full format (initial captured at creation)
+- Both use same Action classes and merge logic
+- No special promotion or conversion needed
+
+### Implementation Architecture
+
+#### Module Structure
+
+**New files**:
+- `signer/history/action.py`: Base action class and all action subclasses
+- `signer/history/history_stack.py`: HistoryStack implementation with coalescing logic
+- `signer/history/__init__.py`: Module init
+
+**Modified files**:
+- `signer/canvas.py`: Integrate HistoryStack, record actions on user interactions
+- `signer/recording/action_player.py`: Refactor to use unified action format from `history.action`
+- `signer/main_window.py`: Wire Undo/Redo menu items to HistoryStack methods
+
+#### Canvas Integration
+
+All user interactions in `DocumentCanvas` record actions (no pending_action needed):
+
+```python
+class DocumentCanvas(QWidget):
+    def __init__(self):
+        self.history = HistoryStack()
+        self.dragging_object = None
+        self.drag_start_pos = None
+    
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """User clicks an object or canvas."""
+        selected = self.hit_test(event.pos())
+        if selected:
+            # Select the object
+            self.history.record_action(SelectAnnotationAction(selected))
+            # Prepare for drag with initial state captured
+            self.dragging_object = selected
+            self.drag_start_pos = event.pos()
+    
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """User drags selected object."""
+        if self.dragging_object and self.drag_start_pos:
+            # Create action with current position as target
+            # Coalescing happens automatically in record_action
+            new_pos = event.pos()
+            
+            # On first move, create action with initial state
+            if not self.history.undo_stack or \
+               not isinstance(self.history.undo_stack[-1], MoveAnnotationAction):
+                # First drag: create action with full format (from=start, to=current)
+                action = MoveAnnotationAction(
+                    object_id=self.dragging_object.id,
+                    from_x=self.drag_start_pos.x(),
+                    from_y=self.drag_start_pos.y(),
+                    to_x=new_pos.x(),
+                    to_y=new_pos.y()
+                )
+            else:
+                # Subsequent moves: create action with new target (partial format)
+                # record_action will merge with last action
+                action = MoveAnnotationAction(
+                    object_id=self.dragging_object.id,
+                    x=new_pos.x(),
+                    y=new_pos.y()
+                )
+            
+            self.history.record_action(action)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """User releases mouse."""
+        # No special handling needed; action is already on stack with final state
+        self.dragging_object = None
+        self.drag_start_pos = None
+    
+    def add_annotation(self, annotation_type: str) -> None:
+        """Add a new annotation."""
+        annotation = create_annotation(annotation_type)
+        action = AddAnnotationAction(annotation)
+        self.history.record_action(action)
+        # Action is pushed to stack; no pending finalization
+    
+    def delete_selected(self) -> None:
+        """Delete selected annotation(s)."""
+        if self.selected:
+            action = DeleteAnnotationAction(self.selected.id)
+            self.history.record_action(action)
+            # Action is pushed to stack immediately
+```
+
+#### Menu Integration
+
+The hamburger menu wires Undo/Redo:
+
+```python
+# In MainWindow.__init__:
+self.undo_action = QAction("Undo", self)
+self.undo_action.setShortcut("Ctrl+Z")
+self.undo_action.triggered.connect(self.canvas.history.undo)
+
+self.redo_action = QAction("Redo", self)
+self.redo_action.setShortcut("Ctrl+Y")
+self.redo_action.triggered.connect(self.canvas.history.redo)
+
+# Add to Edit menu
+self.edit_menu.addAction(self.undo_action)
+self.edit_menu.addAction(self.redo_action)
+```
+
+#### Keyboard Shortcuts
+
+- **Ctrl+Z**: Undo (existing v1.2.18 requirement)
+- **Ctrl+Y**: Redo (existing v1.2.18 requirement)
+
+Both hotkeys are mapped in `KeyPressEvent` handling in `DocumentCanvas`.
+
+#### History Persistence
+
+History is **not persisted** because:
+1. Simplifies implementation (no disk serialization needed)
+2. Matches user expectations (close and reopen = fresh start)
+3. Reduces file I/O during frequent undo/redo
+
+### Test Strategy
+
+#### Feature Test: Undo/Redo
+
+**Test File**: `tests/feature/test_document_undo_redo.py`
+
+**Test Cases**:
+
+1. **Basic Undo Single Action**
+   - Open document
+   - Add annotation at (100, 100)
+   - Undo
+   - Verify annotation is removed
+
+2. **Basic Redo**
+   - Add annotation, undo, redo
+   - Verify annotation restored to original state
+
+3. **Consecutive Move Coalescing**
+   - Open document
+   - Add annotation at (100, 100)
+   - Drag to (150, 150) (record intermediate states)
+   - Release
+   - Undo
+   - Verify annotation returns to (100, 100) [coalesced into single undo]
+   - Not multiple undos for each intermediate position
+
+4. **Move Then Resize Coalescing**
+   - Add annotation at (100, 100)
+   - Drag annotation to (200, 200)
+   - Drag boundary to resize to 150×150
+   - Release
+   - Undo
+   - Verify annotation returns to original state (single undo entry)
+
+5. **Different Objects Break Coalescing**
+   - Add annotation A at (100, 100)
+   - Drag to (150, 150) and release
+   - Add annotation B at (200, 200)
+   - Drag to (250, 250) and release
+   - Undo → annotation B removed
+   - Undo → annotation A returns to (100, 100)
+   - Verify each annotation has its own history entry
+
+6. **Undo Stack Limit**
+   - Perform 100 actions
+   - Undo 100 times
+   - Verify all states restored correctly (no stack overflow)
+
+7. **Redo Stack Cleared on New Action**
+   - Add annotation, undo, redo
+   - Add another annotation
+   - Verify redo stack is empty (can't redo further)
+
+8. **History Cleared on New Document**
+   - Add annotation, undo
+   - Open new document
+   - Redo
+   - Verify redo fails (history cleared on document open)
+
+9. **Multi-Selection Undo**
+   - Select multiple annotations (Shift+click)
+   - Delete all (single undo unit)
+   - Undo
+   - Verify all annotations restored
+
+10. **Copy/Paste Undo**
+    - Copy annotation
+    - Paste
+    - Undo
+    - Verify pasted annotation removed
+    - Undo
+    - Verify clipboard cache not affected
+
+**Test Fixture**: `tests/fixtures/document1_undo.json`
+
+```json
+{
+  "actions": [
+    {"type": "open_document", "path": "examples/document.pdf"},
+    {"type": "add_annotation", "annotation_type": "checkmark", "page": 0, "x": 100, "y": 100},
+    {"type": "move_annotation", "object_id": 0, "x": 200, "y": 200},
+    {"type": "undo"},
+    {"type": "verify_state", "object_id": 0, "expected_x": 100, "expected_y": 100},
+    {"type": "redo"},
+    {"type": "verify_state", "object_id": 0, "expected_x": 200, "expected_y": 200}
+  ]
+}
+```
+
+#### Unit Tests
+
+**File**: `tests/unit/test_history.py`
+
+1. **Action Serialization**
+   - Create action, serialize, deserialize
+   - Verify all fields match
+
+2. **Action Coalescing Logic**
+   - Create pending MoveAction(obj=0, start=(100,100), end=(150,150))
+   - Create new MoveAction(obj=0, start=(150,150), end=(200,200))
+   - Verify merged action has start=(100,100), end=(200,200)
+
+3. **Different Object Prevention**
+   - Create pending MoveAction(obj=0, ...)
+   - Create MoveAction(obj=1, ...)
+   - Verify pending is finalized, new action added separately
+
+4. **Undo/Redo Stack State**
+   - Record 5 actions
+   - Undo 3 times
+   - Verify undo stack has 2, redo stack has 3
+   - Redo 2 times
+   - Verify undo stack has 4, redo stack has 1
+
+### Benefits of Unified Action System
+
+1. **Code Reuse**: Same action classes for recording and history
+2. **Consistency**: Test actions match production undo/redo behavior
+3. **Extensibility**: Future features (history export, batch replay) use same format
+4. **Debuggability**: Action logs can be analyzed to understand user workflows
+5. **Testing**: Recorded actions are automatically testable for undo/redo
+
+### Backward Compatibility
+
+- No changes to public API (canvas, annotations, etc.)
+- Menu items added to Edit menu (new functionality)
+- Hotkeys (Ctrl+Z, Ctrl+Y) are standard and expected
+- Action recording system gains unified action classes (internal implementation detail)
+
 5. **Forgetting to call `assert_images_equal_with_results()`**: Without this, test will pass but not verify output
    - Call this function in every pixel-perfect test ✓
 
@@ -1421,7 +1931,7 @@ Follow the section "14.12 Quick Workflow: Creating a Feature Test (Practical)" o
 **Step 2: Get the command**
 I will respond with a command to run that captures your actions:
 ```bash
-SIGNER_RECORD_ACTIONS=1 python main.py -document examples/document1.pdf
+SIGNER_RECORD_ACTIONS=1 python main.py -document examples/document.pdf
 ```
 
 **Step 3: Run the command and perform actions**
@@ -1451,7 +1961,7 @@ I will:
 
 **Me:** "Run this command:"
 ```bash
-SIGNER_RECORD_ACTIONS=1 python main.py -document examples/document1.pdf -signature examples/signature.png
+SIGNER_RECORD_ACTIONS=1 python main.py -document examples/document.pdf
 ```
 
 **You:** "Running... [performs actions in the app, saves as arrow-north-output.png, closes app]"

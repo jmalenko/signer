@@ -106,11 +106,15 @@ def create_comparison_report(output_file: Optional[str | Path] = None) -> str:
     if results_dir.exists():
         for test_dir in sorted(results_dir.glob("*")):
             if test_dir.is_dir() and (test_dir / "info.json").exists():
-                with open(test_dir / "info.json") as f:
-                    info = json.load(f)
-                # Add test_name from directory
-                info["test_name"] = test_dir.name
-                test_results.append(info)
+                # Only include tests that have actual image files (feature tests with JSON actions)
+                # Skip tests that only have info.json but no images (unit tests, non-image tests)
+                image_files = list(test_dir.glob("*_actual.png")) + list(test_dir.glob("*_expected.png"))
+                if image_files:  # Only include if there are actual images
+                    with open(test_dir / "info.json") as f:
+                        info = json.load(f)
+                    # Add test_name from directory
+                    info["test_name"] = test_dir.name
+                    test_results.append(info)
     
     # Generate HTML
     html = _generate_html_report(test_results, results_dir)
@@ -298,7 +302,12 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
             expected_rel = f"{test_name}/{expected_file.name}" if expected_file.exists() else ""
             diff_rel = f"{test_name}/{diff_file.name}" if diff_file.exists() else ""
             
-            card = f"""
+            # Check if this is an image-based test or a non-image test
+            has_images = actual_rel or expected_rel or diff_rel
+            
+            if has_images:
+                # Image comparison card
+                card = f"""
             <div class="test-card" id="{test_name}">
                 <div class="test-header">
                     <h2 class="test-name-header" style="user-select: text;">{test_name}</h2>
@@ -317,6 +326,20 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                         <h4>Diff (Red = Different)</h4>
                         {f'<img src="{diff_rel}" alt="Diff" class="comparison-image clickable-image" data-full-src="{diff_rel}">' if diff_rel else '<p>N/A</p>'}
                     </div>
+                </div>
+            </div>
+            """
+            else:
+                # Non-image test card (e.g., feature tests that only report pass/fail)
+                status_detail = "All assertions passed" if match else "Test failed"
+                card = f"""
+            <div class="test-card" id="{test_name}">
+                <div class="test-header">
+                    <h2 class="test-name-header" style="user-select: text;">{test_name}</h2>
+                    <span class="status-badge {status_class}">{status_text}</span>
+                </div>
+                <div class="non-image-test">
+                    <p>{status_detail}</p>
                 </div>
             </div>
             """
@@ -525,6 +548,18 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
             .clickable-image:hover {{
                 transform: scale(1.02);
                 box-shadow: 0 0 8px rgba(0,0,0,0.2);
+            }}
+            .non-image-test {{
+                padding: 20px;
+                background: #f9f9f9;
+                border-radius: 4px;
+                margin-top: 15px;
+                text-align: center;
+                font-size: 1em;
+            }}
+            .non-image-test p {{
+                margin: 0;
+                color: #555;
             }}
             /* Modal for full-size image viewing */
             .modal {{

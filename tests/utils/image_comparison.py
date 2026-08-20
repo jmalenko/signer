@@ -93,20 +93,6 @@ def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Imag
                 max_y = max(max_y, y)
                 has_differences = True
     
-    # Draw a red border box around the diff region to make it more visible
-    if has_differences:
-        draw = ImageDraw.Draw(diff_img)
-        # Expand box slightly for visibility (add 10 pixel margin)
-        margin = 10
-        box_coords = [
-            max(0, min_x - margin),
-            max(0, min_y - margin),
-            min(actual.width - 1, max_x + margin),
-            min(actual.height - 1, max_y + margin)
-        ]
-        # Draw red rectangle with thick border (width=3)
-        draw.rectangle(box_coords, outline=(255, 0, 0), width=3)
-    
     return diff_img
 
 

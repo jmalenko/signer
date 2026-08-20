@@ -9,6 +9,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 
+from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction
 from .objects import (
     ANCHOR_HANDLE,
     HANDLE_FX,
@@ -28,6 +29,9 @@ class DocumentCanvas(QWidget):
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
 
+        # History management
+        self.history = HistoryStack()
+
         self._pages: list[Image.Image] = []
         self._page_pixmaps: list[QPixmap] = []
         self._current_page: int = 0
@@ -42,6 +46,13 @@ class DocumentCanvas(QWidget):
 
         self._drag_doc_offset_x: float = 0.0
         self._drag_doc_offset_y: float = 0.0
+
+        # Track initial drag state for action recording (move/resize)
+        self._drag_start_x: float = 0.0  # Initial position when drag starts
+        self._drag_start_y: float = 0.0
+        self._drag_start_w: float = 0.0  # Initial size when resize starts
+        self._drag_start_h: float = 0.0
+        self._action_recorded_this_drag: bool = False  # Track if action was recorded yet
 
         self._hdrag_anchor_doc: QPointF = QPointF()
         self._hdrag_anchor_fx: float = 0.0
@@ -217,6 +228,36 @@ class DocumentCanvas(QWidget):
     def get_page_image_with_rotation(self, page_index: int) -> Image.Image:
         """Get a PIL image for a page with rotation applied (for export)."""
         return self._get_rotated_page_image(page_index)
+
+    # ---------------------------------------------------------------- undo/redo API
+
+    def undo(self) -> bool:
+        """Undo the last action.
+        
+        Returns:
+            True if an action was undone, False if undo stack is empty
+        """
+        return self.history.undo(self)
+
+    def redo(self) -> bool:
+        """Redo the last undone action.
+        
+        Returns:
+            True if an action was redone, False if redo stack is empty
+        """
+        return self.history.redo(self)
+
+    def can_undo(self) -> bool:
+        """Check if there are actions to undo."""
+        return self.history.can_undo()
+
+    def can_redo(self) -> bool:
+        """Check if there are actions to redo."""
+        return self.history.can_redo()
+
+    def clear_history(self) -> None:
+        """Clear undo/redo history (called when document is opened/closed)."""
+        self.history.clear()
 
     # ---------------------------------------------------------------- object API
 
@@ -686,6 +727,11 @@ class DocumentCanvas(QWidget):
                 doc_pt = self._view_to_doc(pt)
                 self._drag_doc_offset_x = doc_pt.x() - obj.x
                 self._drag_doc_offset_y = doc_pt.y() - obj.y
+                
+                # Capture initial position for action recording
+                self._drag_start_x = obj.x
+                self._drag_start_y = obj.y
+                self._action_recorded_this_drag = False
                 return
 
         # Clicked on empty space
@@ -709,16 +755,46 @@ class DocumentCanvas(QWidget):
         self._hdrag_start_h = obj.scaled_height
         self._dragging = True
         self._drag_handle = h_idx
+        
+        # Capture initial size for resize action recording
+        self._drag_start_w = obj.scaled_width
+        self._drag_start_h = obj.scaled_height
+        self._action_recorded_this_drag = False
 
     def mouseMoveEvent(self, event) -> None:
         pt = event.position()
 
         if self._dragging and self._selected is not None:
             if self._drag_handle == -1:
+                # MOVE operation
                 doc_pt = self._view_to_doc(pt)
                 self._selected.x = doc_pt.x() - self._drag_doc_offset_x
                 self._selected.y = doc_pt.y() - self._drag_doc_offset_y
+                
+                # Record move action with coalescing
+                objects = self.current_page_objects()
+                obj_idx = objects.index(self._selected) if self._selected in objects else -1
+                if obj_idx >= 0:
+                    if not self._action_recorded_this_drag:
+                        # First move: create full-format action with initial state
+                        action = MoveAnnotationAction(
+                            object_id=obj_idx,
+                            from_x=self._drag_start_x,
+                            from_y=self._drag_start_y,
+                            to_x=self._selected.x,
+                            to_y=self._selected.y,
+                        )
+                        self._action_recorded_this_drag = True
+                    else:
+                        # Subsequent moves: create partial-format action for merging
+                        action = MoveAnnotationAction(
+                            object_id=obj_idx,
+                            x=self._selected.x,
+                            y=self._selected.y,
+                        )
+                    self.history.record_action(action)
             else:
+                # RESIZE operation
                 doc_pt = self._view_to_doc(pt)
                 ax = self._hdrag_anchor_doc.x()
                 ay = self._hdrag_anchor_doc.y()
@@ -764,6 +840,29 @@ class DocumentCanvas(QWidget):
                 self._selected.set_scaled_size(new_w, new_h)
                 self._selected.x = ax - self._hdrag_anchor_fx * self._selected.scaled_width
                 self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
+                
+                # Record resize action with coalescing
+                objects = self.current_page_objects()
+                obj_idx = objects.index(self._selected) if self._selected in objects else -1
+                if obj_idx >= 0:
+                    if not self._action_recorded_this_drag:
+                        # First resize: create full-format action with initial state
+                        action = ResizeAnnotationAction(
+                            object_id=obj_idx,
+                            from_width=self._drag_start_w,
+                            from_height=self._drag_start_h,
+                            to_width=self._selected.scaled_width,
+                            to_height=self._selected.scaled_height,
+                        )
+                        self._action_recorded_this_drag = True
+                    else:
+                        # Subsequent resizes: create partial-format action for merging
+                        action = ResizeAnnotationAction(
+                            object_id=obj_idx,
+                            width=self._selected.scaled_width,
+                            height=self._selected.scaled_height,
+                        )
+                    self.history.record_action(action)
 
             if self.current_page_image and not self._selected.supports_free_resize():
                 pw, ph = self.current_page_image.size
@@ -797,6 +896,8 @@ class DocumentCanvas(QWidget):
         if event.button() == Qt.LeftButton:
             self._dragging = False
             self._drag_handle = -1
+            # Reset drag action tracking
+            self._action_recorded_this_drag = False
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.LeftButton and self._selected is not None:

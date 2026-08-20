@@ -3,11 +3,16 @@
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unittest.mock import patch
 
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from signer.main_window import MainWindow
 from signer.objects import AnnotationType, CanvasObject
+from signer.history import (
+    AddAnnotationAction,
+    MoveAnnotationAction,
+)
 
 
 class ActionPlayer:
@@ -55,6 +60,10 @@ class ActionPlayer:
             self._execute_change_page(action)
         elif action_type == "set_text":
             self._execute_set_text(action)
+        elif action_type == "undo":
+            self._execute_undo(action)
+        elif action_type == "redo":
+            self._execute_redo(action)
         elif action_type == "save_document":
             self._execute_save_document(action)
         else:
@@ -90,7 +99,7 @@ class ActionPlayer:
             self._register_object(self._next_object_id, self.canvas.selected)
 
     def _execute_add_annotation(self, action: Dict[str, Any]) -> None:
-        """Add a vector annotation."""
+        """Add a vector annotation and record to history."""
         ann_type_str = action["annotation_type"]
         x = action["x"]
         y = action["y"]
@@ -125,16 +134,54 @@ class ActionPlayer:
             # Track the created object
             obj_id = action.get("object_id", self._next_object_id)
             self._register_object(obj_id, self.canvas.selected)
+            
+            # Record to history by capturing object's current state
+            # Build annotation data from the created object
+            obj = self.canvas.selected
+            annotation_data = {
+                "annotation_type": ann_type_str,
+                "x": obj.x,
+                "y": obj.y,
+                "page": page,
+                "color": getattr(obj, 'color', None),
+            }
+            
+            # Include text if present
+            if hasattr(obj, 'text'):
+                annotation_data["text"] = obj.text
+            if hasattr(obj, 'width'):
+                annotation_data["width"] = obj.width
+            if hasattr(obj, 'height'):
+                annotation_data["height"] = obj.height
+            if hasattr(obj, 'rotation'):
+                annotation_data["rotation"] = obj.rotation
+            if hasattr(obj, 'thickness'):
+                annotation_data["thickness"] = obj.thickness
+            
+            add_action = AddAnnotationAction(annotation_data)
+            self.canvas.history.record_action(add_action)
 
     def _execute_move_annotation(self, action: Dict[str, Any]) -> None:
-        """Move an annotation."""
+        """Move an annotation and record to history."""
         obj_id = action["object_id"]
         x = action["x"]
         y = action["y"]
 
-        obj = self._get_object(obj_id)
+        # First check if object is in the map
+        obj = self._object_map.get(obj_id)
+        
+        # If not in map, try to find it by index in current page (for backward compat)
+        if obj is None:
+            page_objects = self.canvas.current_page_objects()
+            if obj_id < len(page_objects):
+                obj = page_objects[obj_id]
+        
         if obj is None:
             raise RuntimeError(f"Object with id {obj_id} not found")
+
+        # Capture current position as "from" state
+        from_x = obj.x
+        from_y = obj.y
 
         # Select the object first
         self.canvas._selected = obj
@@ -143,19 +190,43 @@ class ActionPlayer:
         # Move to new position
         obj.x = x
         obj.y = y
+        
         self.canvas.objectChanged.emit()
         self.canvas.update()
+        
+        # Record to history with full format (from_ and to_)
+        move_action = MoveAnnotationAction(
+            object_id=obj_id,
+            from_x=from_x,
+            from_y=from_y,
+            to_x=x,
+            to_y=y
+        )
+        self.canvas.history.record_action(move_action)
 
     def _execute_resize_annotation(self, action: Dict[str, Any]) -> None:
-        """Resize an annotation."""
+        """Resize an annotation and record to history."""
         obj_id = action["object_id"]
         width = action["width"]
         height = action["height"]
         handle = action.get("handle", 7)  # Default to bottom-right handle
 
-        obj = self._get_object(obj_id)
+        # First check if object is in the map
+        obj = self._object_map.get(obj_id)
+        
+        # If not in map, try to find it by index in current page (for backward compat)
+        if obj is None:
+            page_objects = self.canvas.current_page_objects()
+            if obj_id < len(page_objects):
+                obj = page_objects[obj_id]
+        
         if obj is None:
             raise RuntimeError(f"Object with id {obj_id} not found")
+
+        # Capture current size as "from" state
+        # Check if object has these attributes, use defaults if not
+        from_width = getattr(obj, '_scaled_width', 100)
+        from_height = getattr(obj, '_scaled_height', 100)
 
         # Select the object first
         self.canvas._selected = obj
@@ -165,14 +236,34 @@ class ActionPlayer:
         obj.set_scaled_size(width, height)
         self.canvas.objectChanged.emit()
         self.canvas.update()
+        
+        # Record to history with full format (from and to sizes)
+        from signer.history.action import ResizeAnnotationAction
+        resize_action = ResizeAnnotationAction(
+            object_id=obj_id,
+            from_width=from_width,
+            from_height=from_height,
+            to_width=width,
+            to_height=height
+        )
+        self.canvas.history.record_action(resize_action)
 
     def _execute_select_annotation(self, action: Dict[str, Any]) -> None:
         """Select an annotation."""
         obj_id = action["object_id"]
-        obj = self._get_object(obj_id)
+        
+        # First check if object is in the map
+        obj = self._object_map.get(obj_id)
+        
+        # If not in map, try to find it by index in current page (for backward compat)
+        if obj is None:
+            page_objects = self.canvas.current_page_objects()
+            if obj_id < len(page_objects):
+                obj = page_objects[obj_id]
+        
         if obj is None:
             raise RuntimeError(f"Object with id {obj_id} not found")
-
+        
         self.canvas._selected = obj
         self.canvas.objectChanged.emit()
 
@@ -187,9 +278,12 @@ class ActionPlayer:
         if obj_id == "default":
             self.main_window._current_color = color
         else:
-            obj = self._get_object(obj_id)
-            if obj is None:
-                raise RuntimeError(f"Object with id {obj_id} not found")
+            # Get object from canvas's current page objects by index
+            page_objects = self.canvas.current_page_objects()
+            if obj_id >= len(page_objects):
+                raise RuntimeError(f"Object with id {obj_id} not found in current page")
+            
+            obj = page_objects[obj_id]
             obj.color = color
             self.canvas.objectChanged.emit()
             self.canvas.update()
@@ -254,9 +348,12 @@ class ActionPlayer:
         
         # If no object_id, use the last selected object (for setting text on current selection)
         if obj_id is not None:
-            obj = self._get_object(obj_id)
-            if obj is None:
-                raise RuntimeError(f"Object with id {obj_id} not found for set_text")
+            # Get object from canvas's current page objects by index
+            page_objects = self.canvas.current_page_objects()
+            if obj_id >= len(page_objects):
+                raise RuntimeError(f"Object with id {obj_id} not found for set_text in current page")
+            
+            obj = page_objects[obj_id]
         else:
             # Use currently selected object if available
             obj = self.canvas.selected
@@ -272,6 +369,21 @@ class ActionPlayer:
         
         self.canvas.objectChanged.emit()
         self.canvas.update()
+
+    def _execute_undo(self, action: Dict[str, Any]) -> None:
+        """Execute an undo operation."""
+        if self.canvas.can_undo():
+            self.canvas.undo()
+        else:
+            raise RuntimeError("Cannot undo: no actions in undo stack")
+
+    def _execute_redo(self, action: Dict[str, Any]) -> None:
+        """Execute a redo operation."""
+        if self.canvas.can_redo():
+            self.canvas.redo()
+        else:
+            raise RuntimeError("Cannot redo: no actions in redo stack")
+
     def _register_object(self, obj_id: int, obj: CanvasObject) -> None:
         """Register an object with an ID."""
         self._object_map[obj_id] = obj

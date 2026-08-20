@@ -833,6 +833,7 @@ class MainWindow(QMainWindow):
             return False
 
         self.canvas.set_pages(pages)
+        self.canvas.clear_history()  # Clear undo/redo history when opening a new document
         self.document_path = str(p)
         self._has_unsaved_changes = False
         self._settings.last_open_document_path = str(p)
@@ -1567,14 +1568,14 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- undo/redo (placeholder)
 
     def undo(self) -> None:
-        """Undo the last action (placeholder - not yet implemented)."""
-        # TODO: Implement undo/redo stack
-        pass
+        """Undo the last action."""
+        if self.canvas.undo():
+            self.canvas.update()
 
     def redo(self) -> None:
-        """Redo the last undone action (placeholder - not yet implemented)."""
-        # TODO: Implement undo/redo stack
-        pass
+        """Redo the last undone action."""
+        if self.canvas.redo():
+            self.canvas.update()
 
     # ---------------------------------------------------------------- unsaved changes handling
 

@@ -936,5 +936,83 @@ Motivation: The sizes should be a appropriate for documents using text size 11 p
 1. Rename the "Cross" annotation to "Crossmark" for consistency with "Checkmark".
 2. All documentation, code, and user-facing text shall use "Crossmark" instead of "Cross". 
 
-# Assumptions
+## Version 1.2.21 - Undo/redo
+
+### Overview
+Provide unlimited undo/redo history for the current document session with automatic coalescing of consecutive move/resize operations to reduce memory usage and simplify undo semantics.
+
+### Core Requirements
+
+1. **Unlimited History for Current Session**
+   - Undo/redo stack maintains unlimited history for the current document
+   - History is **not persisted** to disk; it is cleared when:
+     - A new document is opened (via "Open Document" or startup parameter)
+     - The application is closed
+   - Keyboard shortcuts: **Ctrl+Z** (undo), **Ctrl+Y** (redo)
+   - Menu items: Edit menu → Undo, Edit menu → Redo (available via hamburger menu)
+
+2. **Consecutive Move/Resize Coalescing**
+   - Consecutive move/resize operations on the same annotation(s) are coalesced into a single history entry
+   - Definition of "consecutive": Move or resize actions on the same object(s) with no other user actions (add, delete, color change, page navigation) in between
+   - Only initial and final states are stored (intermediate states discarded)
+   - Example: Dragging an annotation from (100, 100) to (200, 200) and then from (200, 200) to (300, 300) via mouse drag → single undo entry that reverts to (100, 100)
+   - Actions on different objects create separate entries
+
+3. **Unified Action Format**
+   - Undo/redo history and action recording use the same underlying action mechanism
+   - Action format supports two representations:
+     - **Partial format** (recording): Contains only target state and essential parameters
+       - Example: `{type: "move_annotation", object_id: 0, x: 300, y: 400}`
+       - Lightweight and suitable for test fixture files
+       - Used by action recording system for test creation
+     - **Full format** (undo/redo): Contains both initial and final states
+       - Example: `{type: "move_annotation", object_id: 0, from_x: 100, from_y: 100, to_x: 300, to_y: 400}`
+       - Enables precise state restoration for undo
+       - Generated at finalization time by capturing current object state
+   - The system seamlessly handles both formats:
+     - Recording produces partial-format JSON files (unchanged from current system)
+     - Undo/redo automatically promotes partial format to full format when needed
+     - Both use the same Action classes and serialization logic
+     - No special conversion required; both formats are interoperable
+
+### Supported Actions for Undo/Redo
+- Add annotation
+- Delete annotation
+- Move annotation
+- Resize annotation
+- Change color (annotation or default)
+- Set text (change text annotation content)
+- Duplicate annotation
+- Cut/Copy/Paste annotations (including multi-selection)
+- Select annotation
+- Rotate page (current page or all pages)
+- Multi-selection operations (delete, copy, cut, paste, duplicate as single undo units)
+
+### Test Coverage
+
+1. **Feature Test**: Record and replay a workflow that exercises undo/redo with coalescing
+   - Open document
+   - Add annotation
+   - Drag annotation twice (verify coalescing into single history entry)
+   - Undo (verify annotation reverts)
+   - Redo (verify annotation restored)
+   - Perform additional operations and verify undo/redo stack management
+
+2. **Unit Tests**:
+   - Action serialization and deserialization
+   - Coalescing logic (same object merges, different objects separate)
+   - Undo/redo stack state transitions
+   - Stack clearing on document open
+
+### User Experience
+
+- User performs action (add/move/delete) → action recorded and pushed to undo stack
+- User presses Ctrl+Z → last action undone, redo stack updated
+- User presses Ctrl+Y → last undone action redone
+- User performs new action while in undo state → redo stack cleared
+- User opens new document → undo/redo stacks cleared
+- Multiple consecutive drags on same object merge into single entry, so single Ctrl+Z reverts the entire drag sequence
+
+### Overview
+
 1. Signature has a transparent background.
