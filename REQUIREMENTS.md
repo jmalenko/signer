@@ -117,23 +117,6 @@ Feedback after implementation, round 3:
     - Recent font family and size
     - Recent lists (documents, texts and signature annotations)
 
-### Details added by AI
-
-2. The configuration file shall be stored at:
-    - Windows: `%APPDATA%\Signer\config.json`
-    - Unix/Linux: `~/.signer/config.json`
-
-3. Color persistence behavior:
-    - When no annotation is selected, the color picker sets the default color for new annotations
-    - When an annotation is selected, the color picker changes the selected annotation's color AND updates the default color for future annotations
-    - The toolbar color indicator always reflects the current default color (or selected annotation's color when one is selected)
-    - Color changes are persisted immediately to the configuration file
-
-4. Font and line width persistence:
-    - Font family and size are used when creating new text annotations
-    - Line width factor is used when creating new vector annotations (checkmark, cross, arrows)
-    - These settings are applied immediately when creating new annotations
-
 ## Version 1.2.4 - Window size and position
 
 1. The application shall automatically size the window to fit the document:
@@ -159,40 +142,7 @@ Feedback after implementation, round 3:
 
 6. Unit tests shall cover: coordinate transformations, bounding box calculations, annotation serialization.
 
-7. How the automated feature tests shall be created: I as a developer want to record the actions (move, scale, add text, add checkmark) by using the application. Update the code that captures these actions. You will then use the record output to write the test case. Then the code may be disabled; it will be used only in development later to create feature tests.
-
-8. Feature tests shall cover each annotation type (checkmark, crossmark, arrows, text, signature) using document1.pdf.
-
-### Details added by AI
-
-The following details clarify the test implementation requirements:
-
-1. **Non-Interactive Testing**: Tests must run without user interaction. Any file save dialogs or other blocking UI elements must be automatically dismissed or handled programmatically. The test process must not require manual intervention.
-
-2. **Action Recording and Persistence**: The action recording system shall:
-   - Be triggered via environment variable `SIGNER_RECORD_ACTIONS=1`
-   - Persist recorded actions to a JSON file in the current working directory or a specified output path
-   - Record action details without version or timestamp fields (version management is handled via test code, not action records)
-   - Execute recorded actions sequentially when replayed
-
-3. **Recorded Action Format**: Each action shall include:
-   - `type`: Action type (open_document, add_annotation, move_annotation, resize_annotation, select_annotation, change_color, change_page, save_document)
-   - `annotation_type` (for add_annotation): checkmark, cross, arrow_n/ne/e/se/s/sw/w/nw, text, signature
-   - Page index (for page-specific actions)
-   - Position coordinates, dimensions, colors, or other relevant parameters
-   - NO `version` or `timestamp` fields
-
-4. **Annotation Placement**: New annotations shall be placed in the middle of the visible screen:
-   - X = (canvas_width - annotation_width) / 2
-   - Y = (canvas_height - annotation_height) / 2
-   - Within page bounds
-
-5. **Test Framework**: Use pytest with pytest-qt for Qt widget testing. Fixtures shall provide:
-   - QApplication instance
-   - MainWindow instance
-   - DocumentCanvas instance
-   - Temporary directories for test outputs
-   - Sample PDF and signature files
+7. Feature tests shall cover each annotation type (checkmark, crossmark, arrows, text, signature) using document1.pdf.
 
 ## Version 1.2.6 - Application icon
 
@@ -621,26 +571,7 @@ Buttons: [Replace] [Cancel]
          - If checked: "Replace and delete older page files"
 ```
 
-### Dialog Decision Logic
 
-```python
-IF single_file_export AND file_exists:
-    Show Scenario A
-ELSE IF multi_file_export:
-    existing_files = [f for f in generated_filenames if f exists]
-    older_files = detect_older_page_files(filename_pattern, total_pages)
-    
-    IF len(existing_files) == 0 AND len(older_files) == 0:
-        // No confirmation needed, proceed with export
-    ELSE IF len(older_files) > 0 AND pattern_matches_exactly:
-        Show Scenario E (with cleanup checkbox and dynamic button text)
-    ELSE IF len(existing_files) == total_files AND placeholder_unchanged:
-        Show Scenario C (optimized "all files" message)
-    ELSE IF len(existing_files) <= 10:
-        Show Scenario B (list all files)
-    ELSE:
-        Show Scenario D (list first 3, show "... (N more files)" summary)
-```
    ```
 
 2. **Detect Older Files Logic**
@@ -1013,6 +944,6 @@ Provide unlimited undo/redo history for the current document session with automa
 - User opens new document → undo/redo stacks cleared
 - Multiple consecutive drags on same object merge into single entry, so single Ctrl+Z reverts the entire drag sequence
 
-### Overview
+### Assumption
 
 1. Signature has a transparent background.

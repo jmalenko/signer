@@ -329,18 +329,6 @@ Default save name (applies to all export formats):
 - All export formats (JPG, PNG, PDF, TIFF, BMP) export rotated pages as-is
 - Multi-page documents can have mixed rotations (different angles per page); each exports with its own rotation
 - Annotations are exported at their transformed coordinates on rotated pages
-- `page_objects_with_rotation_at()` returns objects with coordinates pre-transformed for export
-- Rotation does not modify stored image files, only the displayed/exported view
-
-**Implementation Details**:
-- Rendering: PIL `Image.rotate(degrees, expand=True)` applies rotation with dimension swapping
-- Dimension swapping: 90°/270° rotations swap width↔height for proper fit calculation
-- Pixmap caching: `_update_rotated_pixmap()` regenerates QPixmap after rotation
-- Canvas coordinate mapping: 
-  - Display: `_object_view_rect()` transforms annotation coords
-  - Interaction: `_view_to_doc()` applies inverse transformation
-  - Export: `page_objects_with_rotation_at()` returns shallow copies with transformed coordinates
-- Export integration: `get_page_image_with_rotation()` returns rotated PIL image; export functions use transformed object coordinates
 
 ### 5.14 Multi-Selection Feature (v1.2.17)
 
@@ -368,33 +356,11 @@ When multiple annotations are selected, the following operations apply to all se
 - Multi-selection: Blue boundary around all selected annotations; resize handles shown only on primary selected object
 
 **Clipboard Format (JSON)**:
-Annotations are serialized as a JSON array when copied/cut. Format preserves all object properties:
-```json
-[
-  {
-    "type": "signature|checkmark|cross|arrow_*|text",
-    "x": 100.0,
-    "y": 200.0,
-    "scaled_width": 300.0,
-    "scaled_height": 150.0,
-    "page": 0,
-    "color": "#cc0000",
-    ...
-  }
-]
-```
+Annotations are serialized as a JSON array when copied/cut, preserving all object properties including type, position, size, color, and content.
 
 When pasted:
 - **Same page**: Offset applied (~10 pixels) to avoid exact overlap with originals
 - **Different page**: No offset applied (already distinct location)
-
-**Implementation Details**:
-- Data structures: `_selected` (primary) + `_selected_multiple` (set of all selected)
-- Methods: `select_annotation(obj, multi)`, `clear_selection()`, `get_selected_annotations()`, `is_multi_selected()`
-- Multi-operation methods: `move_selected()`, `delete_selected()`, `duplicate_selected_multi()`, `copy_selected()`, `cut_selected()`, `paste_selected()`
-- Rendering: All selected annotations display blue boundary; resize handles only on primary
-- Page navigation: Selection cleared when switching pages via `set_current_page()`
-- Keyboard handling: Shift+click for multi-select; arrow keys for move; Delete/Ctrl+C/X/V for delete/copy/cut/paste
 
 **Menu Items** (Edit menu):
 - Cut (Ctrl+X): Works on single or multi-selection
@@ -451,179 +417,22 @@ When pasted:
 - `AnnotationState`: type, color, page index, position, scale, text (for text/date annotations), source_path (for signature annotations).
 - `SessionState`: output path defaults, selected object, dirty flag.
 
-## 8. Tool Analysis
-
-### Multi-Format Document Support (v1.2.9)
+## 8. Multi-Format Document Support Integration
 For Word and ODT support, the app integrates with LibreOffice:
 - **LibreOffice** (headless): Converts Word and ODT to temporary PDF for rendering
-- **PyMuPDF (fitz)**: Renders PDF pages (including converted docs) to images
-- **Pillow**: Handles direct image loading and JPG export
+- **PDF Rendering**: PDF pages (including converted docs) are rendered to images at 300 DPI
+- **Image Handling**: Direct image loading and export for JPG, PNG, BMP, and other formats
 
-Path resolution for LibreOffice:
-1. Check settings file (`libreOfficePath` field in config.json)
+LibreOffice path resolution:
+1. Check settings file for user-configured path
 2. Search system PATH
-3. Show error if not found
+3. Show error if not found with guidance on manual configuration
 
-## Option A (Recommended): Python + PySide6 + PyMuPDF + Pillow + LibreOffice
-- **PySide6**: native-feeling desktop UI on Windows, quick iteration.
-- **PyMuPDF (fitz)**: reliable PDF page rendering to image.
-- **Pillow**: robust compositing and JPG export.
-- **argparse**: CLI parameter parsing.
-- **PyInstaller**: package to a single Windows executable.
-
-### Pros
-- Fastest delivery for this feature set.
-- Good image/PDF tooling ecosystem.
-- Easy maintenance for a small utility.
-
-### Cons
-- Larger packaged binary than pure .NET.
-- Python runtime included in distribution.
-
-## Option B: .NET 8 WPF + Pdfium + ImageSharp/SkiaSharp
-### Pros
-- Very native Windows stack.
-- Strong deployment options (MSIX, single-file publish).
-
-### Cons
-- More setup complexity for PDF/image pipeline.
-- Slower iteration if team is less familiar with C# desktop UI.
-
-## Option C: Electron + pdf.js + canvas
-### Pros
-- Strong UI flexibility.
-
-### Cons
-- Heavier memory footprint.
-- Unnecessary complexity for a simple local utility.
-
-## 9. Decision
-### Chosen Option
-**Option A (Python + PySide6 + PyMuPDF + Pillow) is the decided implementation path for v1.**
-
-### Decision Rationale
-- Shortest implementation path.
-- Lowest delivery risk for required features.
-- Supports single-file Windows distribution via PyInstaller `--onefile`.
-
-### Confirmed Implementation Decisions
-- PDF render quality is fixed to **300 DPI**.
-- Signature scaling is included in v1 via boundary-handle drag.
-- Initial product name is **Signer** (can be renamed before release).
-- Code signing is out of scope for v1 packaging.
-- Multi-page PDFs are supported with toolbar + keyboard navigation.
-- Save behavior exports the active page to JPG.
-
-### Dialog Implementation Trade-off (Version 1.2.12)
-- **Native Windows file dialog** (default Qt behavior) does NOT expose underlying text input widget (QLineEdit)
-- **Smart filename handling** requires real-time monitoring of user input as they type to:
-  - Preserve custom filename stem across format changes
-  - Auto-update filename when user changes file extension
-  - Capture user intent without dialog blocking
-- **Trade-off decision**: Use **non-native Qt dialog** (DontUseNativeDialog flag) to access QLineEdit
-  - Pros: Enables powerful auto-correction, filename preservation, real-time format detection
-  - Cons: Older UI appearance (Windows 95-style classic Qt theme instead of modern Windows Aero)
-- **Rationale**: Functional capability takes priority over native UI appearance for this utility
-- **Test coverage**: 41+ tests cover all format switching, placeholder, and validation scenarios
-
-### Version 1.2.12 Implementation Details
-- **Real-time capture**: `QLineEdit.textChanged.connect(self._on_filename_text_changed)`
-- **Non-native dialog**: `QFileDialog.setOption(DontUseNativeDialog, True)` set before `exec()`
-- **Placeholder calculation**: `len(str(total_pages))` gives required digit count
-- **Custom stem extraction**: `Path(filename).stem` gets name without extension
-- **Format detection**: Both `ExportFormat.from_extension()` and `ExportFormat.from_filter_string()`
-- **Smart validation**: Separate paths for single-file vs multi-file formats
-- **User interaction flow**: User types → validation → if invalid, show info dialog → user retries (dialog stays open)
-
-## Tool Decision
-Use **Option A** for v1 due to shortest implementation path and low risk for required features.
-
-## 10. Performance and Quality Targets
+## 9. Performance and Quality Targets
 - Open and render current PDF page in < 1 second for common office documents.
 - Drag/scale objects with smooth interaction (no visible lag).
 - Export quality suitable for typical print/email workflows.
 - Window aspect ratio should adapt to document aspect ratio while keeping the full toolbar visible.
-
-## 11. Test Strategy (Design-Level)
-- Unit tests:
-  - default filename generation,
-  - position math and bounds clamping,
-  - settings persistence behavior.
-- Manual functional tests:
-  - startup with/without CLI args,
-  - startup using sample assets (`examples/document.pdf` + `examples/signature.png`),
-  - **verify Word document (.docx) opens and renders correctly,**
-  - **verify ODT document opens and renders correctly,**
-  - **verify image document (.jpg) opens and renders correctly,**
-  - **verify unsupported format shows error dialog,**
-  - verify page navigation via toolbar and keys (`PageUp`, `PageDown`, `Home`, `End`),
-  - verify per-page object persistence when switching pages,
-  - verify cursor change on hover and blue boundary on selection,
-  - verify boundary-handle scaling behavior,
-  - verify text annotation allows non-proportional resize,
-  - verify text default is 12pt, no wrapping, and Ctrl+Enter creates newline,
-  - verify toolbar order: Open Document, Add Annotation, Save As...,
-  - verify no top-level Open Signature toolbar button,
-  - verify duplicate/delete enabled only when selection exists,
-  - verify color behavior for selected vs non-selected state,
-  - verify annotation insertion and color/move/scale for all supported types,
-  - verify annotation duplication (size and color preserved),
-  - verify text annotation date/time/datetime insertion uses system locale,
-  - verify signature annotation "From file…" inserts correctly,
-  - verify signature annotation LRU list updates and respects 10-item limit,
-  - load invalid files,
-  - drag and save accuracy,
-  - transparency preserved in composition before JPG flattening,
-  - **verify export success shows auto-dismissing notification toast with directory link,**
-  - **verify clicking directory link opens Windows Explorer at export location,**
-  - **verify notification auto-dismisses after 5 seconds,**
-  - **verify manual close button (X) on notification works,**
-  - **verify export failure shows modal error dialog with specific error message,**
-  - **verify error dialog includes retry and cancel buttons,**
-  - **verify partial export failure (multi-page) shows error with list of failed pages.**
-
-## 12. Recommended Workflow Improvements vs GIMP
-- One-step startup with saved signature.
-- Fit-to-window preview with direct drag positioning.
-- One-click export to predictable filename.
-
-This removes repetitive manual steps (open layers, align, export settings) and makes signing routine documents significantly faster.
-
-## 12.1 Open Clarification (Captured)
-- Because output format is JPG (single image), save action exports the **active page** only.
-- Future extension (not in current scope): batch export all pages as `document-p1-signed.jpg`, `document-p2-signed.jpg`, etc.
-
-## 13. Packaging & Distribution (Option A)
-### Objective
-Distribute the app as a single Windows executable for non-technical users.
-
-### Recommended Build Tool
-- **PyInstaller** in `--onefile` mode.
-
-### Important Clarification
-- `--onefile` creates a **single distributable `.exe`**.
-- It is not a fully static native binary; at launch, the bundle extracts runtime files to a temporary directory and starts the app.
-
-### Build/Release Strategy
-1. Build on the same target OS family (Windows) used by end users.
-2. Pin dependency versions for reproducible outputs.
-3. Produce one release artifact: `signer.exe`.
-4. Include a checksum file (e.g., SHA-256) for integrity verification.
-
-### Distribution Notes
-- End users do **not** need a separate Python installation.
-- Expect larger binary size due to embedded interpreter and libraries.
-- For v1, distribute as unsigned executable (no code signing).
-- Some antivirus tools may flag unsigned executables; communicate checksum and distribution source clearly.
-
-### Acceptance Criteria for Packaging
-- App runs on a clean Windows machine with no Python installed.
-- CLI args `-document` and `-signature` work in packaged form.
-- PDF render, drag placement, and JPG export behavior match development mode.
-
-## 14. Test Architecture and Strategy (v1.2.5+)
-
-### 14.1 Overview
 The test suite includes:
 1. Unit tests for core functionality (coordinate transforms, bounding boxes, serialization)
 2. Feature tests with action recording capability for end-to-end workflows
