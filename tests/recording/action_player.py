@@ -56,6 +56,8 @@ class ActionPlayer:
             self._execute_select_annotation(action)
         elif action_type == "change_color":
             self._execute_change_color(action)
+        elif action_type == "set_color":
+            self._execute_change_color(action)
         elif action_type == "change_page":
             self._execute_change_page(action)
         elif action_type == "set_text":
@@ -146,6 +148,10 @@ class ActionPlayer:
                 "color": getattr(obj, 'color', None),
             }
             
+            # Include object_id if present in the original action
+            if "object_id" in action:
+                annotation_data["object_id"] = action["object_id"]
+            
             # Include text if present
             if hasattr(obj, 'text'):
                 annotation_data["text"] = obj.text
@@ -223,10 +229,9 @@ class ActionPlayer:
         if obj is None:
             raise RuntimeError(f"Object with id {obj_id} not found")
 
-        # Capture current size as "from" state
-        # Check if object has these attributes, use defaults if not
-        from_width = getattr(obj, '_scaled_width', 100)
-        from_height = getattr(obj, '_scaled_height', 100)
+        # Capture current size as "from" state using the scaled_width/scaled_height properties
+        from_width = obj.scaled_width
+        from_height = obj.scaled_height
 
         # Select the object first
         self.canvas._selected = obj
@@ -273,20 +278,42 @@ class ActionPlayer:
         color_str = action["color"]
 
         from PySide6.QtGui import QColor
+        from signer.history.action import ChangeColorAction
+        
         color = QColor(color_str)
 
         if obj_id == "default":
             self.main_window._current_color = color
         else:
-            # Get object from canvas's current page objects by index
-            page_objects = self.canvas.current_page_objects()
-            if obj_id >= len(page_objects):
-                raise RuntimeError(f"Object with id {obj_id} not found in current page")
+            # Use hybrid object lookup: check map first, then page index
+            obj = self._object_map.get(obj_id)
             
-            obj = page_objects[obj_id]
+            if obj is None:
+                page_objects = self.canvas.current_page_objects()
+                if obj_id < len(page_objects):
+                    obj = page_objects[obj_id]
+            
+            if obj is None:
+                raise RuntimeError(f"Object with id {obj_id} not found")
+            
+            # Capture current color as "from" state
+            from_color = None
+            if hasattr(obj, 'color'):
+                current_color = obj.color
+                if current_color:
+                    from_color = current_color.name()  # Convert QColor to hex string
+            
             obj.color = color
             self.canvas.objectChanged.emit()
             self.canvas.update()
+            
+            # Record to history
+            change_color_action = ChangeColorAction(
+                object_id=obj_id,
+                color=color_str,
+                from_color=from_color
+            )
+            self.canvas.history.record_action(change_color_action)
 
     def _execute_change_page(self, action: Dict[str, Any]) -> None:
         """Change the current page."""
@@ -387,6 +414,9 @@ class ActionPlayer:
     def _register_object(self, obj_id: int, obj: CanvasObject) -> None:
         """Register an object with an ID."""
         self._object_map[obj_id] = obj
+        # Also sync to canvas's object map so undo/redo can find the object
+        if hasattr(self.canvas, '_object_map'):
+            self.canvas._object_map[obj_id] = obj
         self._next_object_id = max(self._next_object_id, obj_id + 1)
 
     def _get_object(self, obj_id: int) -> Optional[CanvasObject]:

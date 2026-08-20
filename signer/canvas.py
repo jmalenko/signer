@@ -36,6 +36,7 @@ class DocumentCanvas(QWidget):
         self._page_pixmaps: list[QPixmap] = []
         self._current_page: int = 0
         self._page_objects: dict[int, list[CanvasObject]] = {}
+        self._object_map: dict[int, CanvasObject] = {}  # ID-based object lookup for stable references
         self._page_rotations: dict[int, int] = {}  # Track rotation angle (0, 90, 180, 270) per page
 
         self._selected: CanvasObject | None = None
@@ -144,6 +145,7 @@ class DocumentCanvas(QWidget):
         self._page_pixmaps = [QPixmap.fromImage(ImageQt(p)) for p in self._pages]
         self._current_page = 0
         self._page_objects = {}
+        self._object_map = {}  # Clear object map when resetting document
         self._selected = None
         self._selected_multiple.clear()
         self._recompute_fit()

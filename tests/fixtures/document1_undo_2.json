@@ -1,0 +1,65 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples\\document1.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "checkmark",
+      "x": 1198.8333333333333,
+      "y": 1712.8333333333333,
+      "page": 0,
+      "object_id": 0
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 0,
+      "x": 285,
+      "y": 650
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 0,
+      "width": 400,
+      "height": 400
+    },
+    {
+      "type": "undo"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "crossmark",
+      "x": 1198.8333333333333,
+      "y": 1712.8333333333333,
+      "page": 0,
+      "object_id": 1
+    },
+    {
+      "type": "move_annotation",
+      "object_id": 1,
+      "x": 275,
+      "y": 770
+    },
+    {
+      "type": "set_color",
+      "object_id": 1,
+      "color": "#00FF00"
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 1,
+      "width": 400,
+      "height": 400
+    },
+    {
+      "type": "undo"
+    },
+    {
+      "type": "undo"
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}

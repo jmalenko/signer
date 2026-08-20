@@ -163,23 +163,43 @@ class MoveAnnotationAction(MergeableAction):
 
     def execute(self, canvas: Any) -> None:
         """Move annotation to target position."""
-        obj = canvas.current_page_objects()
-        if self.data["object_id"] < len(obj):
-            target = self.get_target_state()
-            obj[self.data["object_id"]].x = target["x"]
-            obj[self.data["object_id"]].y = target["y"]
-            canvas.objectChanged.emit()
+        obj_id = self.data["object_id"]
+        target = self.get_target_state()
+        
+        # Use the object map to find the object by ID
+        if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
+            obj_id in canvas._object_map):
+            obj = canvas._object_map[obj_id]
+            obj.x = target["x"]
+            obj.y = target["y"]
+        else:
+            # Fallback to array index lookup for backward compatibility
+            page_objs = canvas.current_page_objects()
+            if obj_id < len(page_objs):
+                page_objs[obj_id].x = target["x"]
+                page_objs[obj_id].y = target["y"]
+        canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
         """Move annotation back to initial position."""
         if not self.has_initial_state():
             raise ValueError("Cannot undo move without initial state")
         
-        obj = canvas.current_page_objects()
-        if self.data["object_id"] < len(obj):
-            obj[self.data["object_id"]].x = self.data["from_x"]
-            obj[self.data["object_id"]].y = self.data["from_y"]
-            canvas.objectChanged.emit()
+        obj_id = self.data["object_id"]
+        
+        # Use the object map to find the object by ID
+        if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
+            obj_id in canvas._object_map):
+            obj = canvas._object_map[obj_id]
+            obj.x = self.data["from_x"]
+            obj.y = self.data["from_y"]
+        else:
+            # Fallback to array index lookup for backward compatibility
+            page_objs = canvas.current_page_objects()
+            if obj_id < len(page_objs):
+                page_objs[obj_id].x = self.data["from_x"]
+                page_objs[obj_id].y = self.data["from_y"]
+        canvas.objectChanged.emit()
 
     def get_target_state(self) -> dict[str, Any]:
         """Get target position (x, y)."""
@@ -252,13 +272,25 @@ class ResizeAnnotationAction(MergeableAction):
 
     def undo(self, canvas: Any) -> None:
         """Resize annotation back to initial size."""
+        obj_id = self.data["object_id"]
         if not self.has_initial_state():
             raise ValueError("Cannot undo resize without initial state")
         
-        obj = canvas.current_page_objects()
-        if self.data["object_id"] < len(obj):
-            obj[self.data["object_id"]].set_scaled_size(self.data["from_width"], self.data["from_height"])
+        from_w = self.data["from_width"]
+        from_h = self.data["from_height"]
+        
+        # Use the object map to find the object by ID
+        if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
+            obj_id in canvas._object_map):
+            obj = canvas._object_map[obj_id]
+            obj.set_scaled_size(from_w, from_h)
             canvas.objectChanged.emit()
+        else:
+            # Fallback to array index lookup for backward compatibility
+            page_objs = canvas.current_page_objects()
+            if obj_id < len(page_objs):
+                page_objs[obj_id].set_scaled_size(from_w, from_h)
+                canvas.objectChanged.emit()
 
     def get_target_state(self) -> dict[str, Any]:
         """Get target size (width, height)."""
@@ -300,6 +332,7 @@ class AddAnnotationAction(Action):
             annotation_data: Serialized annotation data
         """
         super().__init__("add_annotation", annotation_data or {})
+        self._added_object = None  # Store reference to the object we added
 
     def execute(self, canvas: Any) -> None:
         """Add annotation to current page."""
@@ -309,13 +342,69 @@ class AddAnnotationAction(Action):
             if obj.page not in canvas._page_objects:
                 canvas._page_objects[obj.page] = []
             canvas._page_objects[obj.page].append(obj)
+            self._added_object = obj  # Store reference for later undo
+            
+            # Sync to canvas's object map if object_id is present in data
+            obj_id = self.data.get("object_id")
+            if obj_id is not None and hasattr(canvas, '_object_map'):
+                canvas._object_map[obj_id] = obj
+            
             canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
         """Remove the added annotation."""
-        # This is tricky - we need to track which object was added
-        # For now, just emit signal
-        canvas.objectChanged.emit()
+        page = self.data.get("page", canvas.current_page)
+        obj_id = self.data.get("object_id")
+        
+        # If we have a direct reference to the object, remove it
+        if self._added_object:
+            if page in canvas._page_objects:
+                try:
+                    canvas._page_objects[page].remove(self._added_object)
+                except ValueError:
+                    # Object not found, fallback to LIFO
+                    if canvas._page_objects[page]:
+                        canvas._page_objects[page].pop()
+            
+            # Also remove from canvas's object map if it exists
+            if obj_id is not None and hasattr(canvas, '_object_map'):
+                canvas._object_map.pop(obj_id, None)
+            
+            canvas.objectChanged.emit()
+            return
+        
+        # Fallback: Try to match by properties
+        if page in canvas._page_objects and canvas._page_objects[page]:
+            # Try to find the object by matching key properties
+            objects_on_page = canvas._page_objects[page]
+            target_x = self.data.get("x")
+            target_y = self.data.get("y")
+            target_type = self.data.get("annotation_type")
+            
+            # Search backwards to find a matching object (likely the most recently added)
+            for i in range(len(objects_on_page) - 1, -1, -1):
+                obj = objects_on_page[i]
+                # Check if this object matches the annotation we added
+                if (target_type and hasattr(obj, 'annotation_type') and obj.annotation_type == target_type and
+                    abs(obj.x - target_x) < 0.1 and abs(obj.y - target_y) < 0.1):
+                    # Found a match, remove it
+                    objects_on_page.pop(i)
+                    
+                    # Also remove from canvas's object map if it exists
+                    if obj_id is not None and hasattr(canvas, '_object_map'):
+                        canvas._object_map.pop(obj_id, None)
+                    
+                    canvas.objectChanged.emit()
+                    return
+            
+            # Last fallback: just remove the last object (LIFO - Last In First Out)
+            objects_on_page.pop()
+            
+            # Also remove from canvas's object map if it exists
+            if obj_id is not None and hasattr(canvas, '_object_map'):
+                canvas._object_map.pop(obj_id, None)
+            
+            canvas.objectChanged.emit()
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> "AddAnnotationAction":
@@ -394,10 +483,21 @@ class ChangeColorAction(Action):
     def undo(self, canvas: Any) -> None:
         """Restore previous color."""
         if "from_color" in self.data and "object_id" in self.data:
-            objects = canvas.current_page_objects()
-            if 0 <= self.data["object_id"] < len(objects):
+            obj_id = self.data["object_id"]
+            from_color = self.data["from_color"]
+            
+            # Use the object map to find the object by ID
+            if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
+                obj_id in canvas._object_map):
                 from PySide6.QtGui import QColor
-                objects[self.data["object_id"]].color = QColor(self.data["from_color"])
+                obj = canvas._object_map[obj_id]
+                obj.color = QColor(from_color)
+            else:
+                # Fallback to array index lookup for backward compatibility
+                objects = canvas.current_page_objects()
+                if 0 <= obj_id < len(objects):
+                    from PySide6.QtGui import QColor
+                    objects[obj_id].color = QColor(from_color)
         canvas.objectChanged.emit()
 
     @classmethod
