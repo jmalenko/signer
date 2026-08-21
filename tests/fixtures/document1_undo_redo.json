@@ -47,7 +47,7 @@
     {
       "type": "set_color",
       "object_id": 1,
-      "color": "00#FF00"
+      "color": "#00FF00"
     },
     {
       "type": "resize_annotation",
