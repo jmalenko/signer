@@ -919,22 +919,6 @@ Provide unlimited undo/redo history for the current document session with automa
 - Rotate page (current page or all pages)
 - Multi-selection operations (delete, copy, cut, paste, duplicate as single undo units)
 
-### Test Coverage
-
-1. **Feature Test**: Record and replay a workflow that exercises undo/redo with coalescing
-   - Open document
-   - Add annotation
-   - Drag annotation twice (verify coalescing into single history entry)
-   - Undo (verify annotation reverts)
-   - Redo (verify annotation restored)
-   - Perform additional operations and verify undo/redo stack management
-
-2. **Unit Tests**:
-   - Action serialization and deserialization
-   - Coalescing logic (same object merges, different objects separate)
-   - Undo/redo stack state transitions
-   - Stack clearing on document open
-
 ### User Experience
 
 - User performs action (add/move/delete) → action recorded and pushed to undo stack
