@@ -31,6 +31,7 @@ WORKFLOW_TEST_CASES = [
     ("undo", "document1_undo", "undo", "Basic undo workflow"),
     ("undo", "document1_undo_2", "undo", "Variant undo workflow"),
     ("undo", "document1_undo_multiple", "undo", "Multiple undo operations"),
+    ("undo", "document1_undo_redo", "undo", "Undo/redo workflow"),
 ]
 
 

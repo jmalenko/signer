@@ -420,7 +420,12 @@ class VectorAnnotation(CanvasObject):
         obj._base_width = data["base_width"]
         obj._base_height = data["base_height"]
         obj.scale = data["scale"]
-        obj.color = QColor(data["color"])
+        # Handle color: can be either a string like "#FF0000" or already a QColor
+        color_val = data["color"]
+        if isinstance(color_val, QColor):
+            obj.color = color_val
+        else:
+            obj.color = QColor(color_val)
         obj._natural_width = data.get("natural_width", obj._natural_width)
         obj._natural_height = data.get("natural_height", obj._natural_height)
         return obj

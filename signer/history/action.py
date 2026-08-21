@@ -178,6 +178,9 @@ class MoveAnnotationAction(MergeableAction):
             if obj_id < len(page_objs):
                 page_objs[obj_id].x = target["x"]
                 page_objs[obj_id].y = target["y"]
+        
+        # Emit signal to update canvas (required for render to work properly)
+        canvas.objectChanged.emit()
         canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
@@ -336,8 +339,59 @@ class AddAnnotationAction(Action):
 
     def execute(self, canvas: Any) -> None:
         """Add annotation to current page."""
-        from ..objects import canvas_object_from_dict
-        obj = canvas_object_from_dict(self.data)
+        from ..objects import canvas_object_from_dict, AnnotationType, VectorAnnotation, ARROW_TYPES, DPI_SCALE, DEFAULT_LINE_WIDTH_FACTOR
+        
+        # Convert annotation_type to VectorAnnotation format
+        data_for_creation = dict(self.data)  # Copy to avoid modifying original
+        
+        # If we have "annotation_type" (from action recorder), convert to proper format
+        if "annotation_type" in data_for_creation and "ann_type" not in data_for_creation:
+            data_for_creation["ann_type"] = data_for_creation["annotation_type"]
+            
+        # Ensure we have the required fields for VectorAnnotation creation
+        obj = None
+        if "ann_type" in data_for_creation:
+            # Use VectorAnnotation.from_dict if we have the right format
+            try:
+                # Determine base size: arrows are 2x checkmark/crossmark size
+                ann_type_str = data_for_creation["ann_type"]
+                try:
+                    ann_type = AnnotationType(ann_type_str)
+                    is_arrow = ann_type in ARROW_TYPES
+                except ValueError:
+                    is_arrow = False
+                
+                # Add default values for any missing fields
+                # Base size in PDF points: 20 for checkmark/cross, 40 for arrows
+                # These get scaled by DPI_SCALE (300/72) for 300 DPI rendering
+                default_base_size_points = 40.0 if is_arrow else 20.0
+                default_base_size_scaled = default_base_size_points * DPI_SCALE
+                
+                if "base_width" not in data_for_creation:
+                    data_for_creation["base_width"] = default_base_size_scaled
+                if "base_height" not in data_for_creation:
+                    data_for_creation["base_height"] = default_base_size_scaled
+                    
+                if "scale" not in data_for_creation:
+                    data_for_creation["scale"] = 1.0
+                if "color" not in data_for_creation:
+                    data_for_creation["color"] = "#FF0000"  # Red default
+                if "font_family" not in data_for_creation:
+                    data_for_creation["font_family"] = "Arial"
+                if "font_size_px" not in data_for_creation:
+                    data_for_creation["font_size_px"] = 12
+                if "line_width_factor" not in data_for_creation:
+                    data_for_creation["line_width_factor"] = DEFAULT_LINE_WIDTH_FACTOR
+                    
+                obj = VectorAnnotation.from_dict(data_for_creation)
+            except (KeyError, ValueError, TypeError) as e:
+                # Fallback: try canvas_object_from_dict
+                obj = None
+        
+        # Fallback if VectorAnnotation creation failed
+        if obj is None:
+            obj = canvas_object_from_dict(data_for_creation)
+            
         if obj:
             if obj.page not in canvas._page_objects:
                 canvas._page_objects[obj.page] = []
@@ -373,6 +427,18 @@ class AddAnnotationAction(Action):
             canvas.objectChanged.emit()
             return
         
+        # Try to find and remove by object_id first (most reliable)
+        if obj_id is not None and hasattr(canvas, '_object_map') and obj_id in canvas._object_map:
+            obj_to_remove = canvas._object_map[obj_id]
+            if page in canvas._page_objects:
+                try:
+                    canvas._page_objects[page].remove(obj_to_remove)
+                except ValueError:
+                    pass  # Object not on this page
+            canvas._object_map.pop(obj_id, None)
+            canvas.objectChanged.emit()
+            return
+        
         # Fallback: Try to match by properties
         if page in canvas._page_objects and canvas._page_objects[page]:
             # Try to find the object by matching key properties
@@ -385,7 +451,10 @@ class AddAnnotationAction(Action):
             for i in range(len(objects_on_page) - 1, -1, -1):
                 obj = objects_on_page[i]
                 # Check if this object matches the annotation we added
-                if (target_type and hasattr(obj, 'annotation_type') and obj.annotation_type == target_type and
+                # Support both annotation_type and ann_type attributes
+                obj_type = getattr(obj, 'annotation_type', None) or getattr(obj, 'ann_type', None)
+                if (target_type and obj_type == target_type and
+                    target_x is not None and target_y is not None and
                     abs(obj.x - target_x) < 0.1 and abs(obj.y - target_y) < 0.1):
                     # Found a match, remove it
                     objects_on_page.pop(i)
