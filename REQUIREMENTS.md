@@ -993,6 +993,19 @@ Provide unlimited undo/redo history for the current document session with automa
 
 3. Snapping is disabled when any modifier key (Shift, Ctrl, Alt) is held, allowing precise angle control.
 
+## Version 1.2.24 - Simplify Arrow Annotation
+
+### Overview
+Simplify the arrow annotation system by removing directional variants. The application currently supports one generic arrow plus eight compass-direction variants (North, North-East, East, etc.). This version consolidates to a single generic arrow type pointing right (east).
+
+### Requirements
+
+1. **Remove directional arrow types**: Delete `ARROW_N`, `ARROW_NE`, `ARROW_E`, `ARROW_SE`, `ARROW_S`, `ARROW_SW`, `ARROW_W`, and `ARROW_NW` from the `AnnotationType` enum. Retain only the generic `ARROW` type.
+
+2. **Simplify menu structure**: Remove the Arrow submenu from the Annotations menu in both the toolbar and hamburger menu. The Arrow option shall be a single menu item (not expandable).
+
+3. **Arrow orientation**: When an arrow annotation is added to the document, it shall point right (east) by default. *(This documents existing behavior.)*
+
 ### Assumption
 
 1. Signature has a transparent background.
