@@ -569,6 +569,134 @@ All annotations include JSON format version identifier:
 - Missing properties use defaults (line_width: 1.5, font_size: 11, font_family: system default)
 - Export respects old annotations (width property preserved if present, calculated on load if absent)
 
+### 5.17 Drag-and-Drop and Document Open/Save Flow (v1.2.25)
+
+#### Drag-and-Drop Implementation
+
+**Drop Target Registration**:
+- Main canvas widget has drop acceptance enabled via `setAcceptDrops(True)`
+- Accepted MIME types: `text/uri-list` (file paths via OS drag-and-drop)
+
+**File Type Detection**:
+- Extract file extension from dropped file path
+- Check against supported formats:
+  - **Small images**: PNG, JPG, JPEG, BMP (if dimensions fit A6 at 300 DPI)
+  - **Documents**: PDF, JPG, JPEG, PNG, BMP (if exceeds A6 size or is PDF)
+
+**Size Threshold Calculation**:
+- A6 paper: 105mm × 148mm (4.1" × 5.8")
+- At 300 DPI: 1240 pixels × 1748 pixels
+- A6-equivalent dimension: `max(width, height) ≤ 1748`
+  - Interpretation: Image fits on A6 in any orientation (portrait or landscape)
+- **Small image**: Both dimensions ≤ 1748 (fits A6 in any rotation)
+- **Big image**: Either dimension > 1748 (exceeds A6 in at least one orientation)
+
+**Drop Handlers**:
+
+*Case 1: Small Image + Active Document*
+- Load image file via PIL
+- Validate: file not corrupted, format supported
+- Create Signature/Image annotation at drop position:
+  - `x, y` = drop coordinates in document space (convert from viewport coordinates)
+  - Size: scale image to fit ~A6 size (~1240×1748px) while preserving aspect ratio
+  - Color: not applicable (hidden for Signature/Image type)
+  - Line width: not applicable (hidden for Signature/Image type)
+- Add annotation to current page's object list
+- Refresh canvas rendering
+- Action: Record as `add_annotation` for undo/redo (not for action recording)
+
+*Case 2: Small Image + No Active Document*
+- Show error dialog: "Cannot drop image: No document is currently open. Please open or create a document first."
+- Do not create annotation
+- Focus window
+
+*Case 3: Small Image + Corrupted/Unsupported*
+- Catch PIL.Image.open() exception
+- Show error dialog: "Cannot load image: Unsupported format or corrupted file. Supported formats: PNG, JPG, JPEG, BMP."
+- Do not create annotation
+
+*Case 4: Big Image or PDF + Active Document with Unsaved Changes*
+- Detect unsaved changes via `DocumentState.dirty` flag
+- Show save prompt dialog (modal, blocks interaction):
+  ```
+  Title: "Save changes to 'document-name.pdf'?"
+  Message: "Save changes before opening the dropped file?"
+  Buttons: [Save] [Don't Save] [Cancel]
+  Default button: Cancel
+  ```
+- **Save button**: Call `save_document()` with last-used format/path, then load dropped file
+- **Don't Save button**: Discard `DocumentState.dirty` flag, load dropped file immediately
+- **Cancel button**: Abort drop operation; keep current document in current state
+- If save fails: show error and return to document without loading dropped file
+
+*Case 5: Big Image or PDF + Active Document without Unsaved Changes*
+- Load dropped file immediately via `load_document()` (same path as File → Open)
+- Clear page-scoped annotations on load (or preserve if document is extension of previous)
+- Render first page
+- Clear undo/redo stack (new document session)
+- Update window title with new filename
+
+*Case 6: Big Image or PDF + No Active Document*
+- Load dropped file immediately without save prompt
+- Same behavior as Case 5
+
+*Case 7: Invalid/Corrupted File*
+- Catch exception during `load_document()` 
+- Show error dialog: "Cannot open file: Invalid or corrupted file."
+- Keep current document open (or remain in no-document state)
+
+*Case 8: File Permissions Error (access denied)*
+- Catch `PermissionError` or OS-level access exception
+- Show error dialog: "Cannot open file: Access denied. Please ensure the file is not in use."
+
+#### Menu-Triggered Open (File → Open)
+
+**Behavior**:
+- Same save prompt flow as drag-and-drop (Cases 4-5)
+- File picker (native Windows dialog):
+  - Filter: "All Supported Files (*.pdf, *.jpg, *.jpeg, *.png, *.bmp)"
+  - Allows user to select any file in the filter
+- After selection, follow drag-and-drop logic for that file type (Cases 1-7)
+
+**Note**: Unlike drag-and-drop, menu-triggered open can handle small images as documents (they open as single-page documents via the big image path).
+
+#### Save Prompt Dialog
+
+**Reusable Component** (used for both drag-drop and menu-open):
+```python
+class SavePromptDialog:
+    def __init__(self, filename: str):
+        # Dialog with title, message, three buttons
+        # Default button: Cancel
+        # Return value: "save" | "dont_save" | "cancel"
+    
+    def exec_() -> str:
+        # Modal execution, blocks interaction
+        pass
+```
+
+**Dialog Content**:
+- Title: `f"Save changes to '{filename}'?"`
+- Message: "Save changes before opening a new document?"
+- Buttons: `[Save]` `[Don't Save]` `[Cancel]`
+- Default: Cancel button has keyboard focus
+
+**Integration Points**:
+- `app.open_document_with_prompt()` - reusable method calling save prompt + load
+- Used by: File menu → Open, drag-and-drop handlers
+
+#### New Document State Management
+
+**Dirty Flag**:
+- Set to `True` when annotation is added/modified/deleted
+- Set to `False` after successful save or new document load
+- Reset to `False` when opening new document (via File → Open or drag-drop)
+
+**Undo/Redo Stacks**:
+- Cleared when new document is opened
+- Cleared when application closes
+- Not persisted to disk
+
 ## 6. Error Handling
 - Missing/unreadable document: block canvas interaction, show clear error message.
 - Missing signature annotation: allow document load, prompt user to add a signature annotation before save.

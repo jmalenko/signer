@@ -9,6 +9,7 @@ from PIL.ImageQt import ImageQt
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
 from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction
 from .objects import (
@@ -24,11 +25,13 @@ class DocumentCanvas(QWidget):
     objectChanged = Signal()        # emitted on move/scale/add/remove
     pageChanged = Signal(int, int)  # (current_page_0indexed, total_pages)
     editRequested = Signal(object)  # CanvasObject — double-click
+    fileDrop = Signal(str)          # emitted when file is dropped (file path)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
+        self.setAcceptDrops(True)  # Enable drag-and-drop
 
         # History management
         self.history = HistoryStack()
@@ -1328,3 +1331,27 @@ class DocumentCanvas(QWidget):
                 return
         
         super().keyPressEvent(event)
+
+    # ---------------------------------------------------------------- Drag and drop events
+    
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        """Accept drag enter for file drops (MIME type: text/uri-list)."""
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+    
+    def dropEvent(self, event: QDropEvent) -> None:
+        """Handle file drop - emit signal with file path for parent to handle."""
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls:
+                # Get the first dropped file path
+                file_path = urls[0].toLocalFile()
+                if file_path:
+                    # Emit signal to parent window to handle the file
+                    self.fileDrop.emit(file_path)
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+

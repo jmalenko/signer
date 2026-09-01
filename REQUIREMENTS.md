@@ -1006,6 +1006,50 @@ Simplify the arrow annotation system by removing directional variants. The appli
 
 3. **Arrow orientation**: When an arrow annotation is added to the document, it shall point right (east) by default. *(This documents existing behavior.)*
 
+## Version 1.2.25 - Drag and drop and document open/save flow
+
+### Overview
+Enable drag-and-drop functionality for small images (as Signature/Image annotations) and PDF files (document loading), with smart handling of unsaved changes via save-first prompts.
+
+### Requirements
+
+1. Drag-and-drop of a small image file onto the application shall create a Signature/Image annotation at the drop position on the current page. Small image is defined as an image that fits on A6 paper at 300 DPI (in any orientation).
+
+2. Drag-and-drop of a big image or PDF file onto the application shall: if the current document has unsaved annotations, prompt to save first; then load the dropped file as a document (big images open as single-page documents).
+
+3. When opening a new document (via menu or drag-drop) with unsaved changes in the current document, the application shall prompt "Save changes to {filename}?" with Save / Don't Save / Cancel options.
+
+### Implementation Details
+
+**Size Thresholds**
+- Small image: A6 at 300 DPI = 1240 × 1748 pixels (fits on A6 in any orientation)
+- Big image: Exceeds A6 size in any dimension; opens as single-page document
+- Supported image formats: PNG, JPG, JPEG, BMP (with transparency for PNG)
+- Supported document formats: PDF, and big images (PNG, JPG, JPEG, BMP)
+
+**Drop Behavior - Small Images**
+- With active document: Create annotation at drop position
+- With no active document: Show error "Cannot drop image: No document is currently open"
+- Corrupted/unsupported format: Show error "Cannot load image: Unsupported format or corrupted file"
+
+**Drop Behavior - Big Images/PDFs**
+- With unsaved changes: Show save prompt with [Save] [Don't Save] [Cancel] buttons (default: Cancel)
+  - Save: Save document, then load dropped file
+  - Don't Save: Discard changes, load dropped file
+  - Cancel: Keep current document, abort drop
+- Without unsaved changes: Load dropped file immediately
+- With no active document: Load dropped file without prompting
+- Invalid/corrupted file: Show error "Cannot open file: Invalid or corrupted file"
+
+**Menu-Triggered Open**
+- Same save prompt flow as drag-drop (requirement 3)
+- File picker filters for: PDF, JPG, PNG, BMP
+- Default button: Cancel
+
+**Edge Cases**
+- Drop while dialog is open: Ignore drop event
+- File permissions error: Show error "Cannot open file: Access denied"
+
 ### Assumption
 
 1. Signature has a transparent background.

@@ -348,6 +348,7 @@ class MainWindow(QMainWindow):
         self.canvas.objectChanged.connect(self._on_object_changed)
         self.canvas.pageChanged.connect(self._on_page_changed)
         self.canvas.editRequested.connect(self._on_edit_requested)
+        self.canvas.fileDrop.connect(self._on_file_drop)
 
         # Ensure color button reflects the persisted color after full initialization
         # Use QTimer to ensure the widget is fully initialized and shown
@@ -1022,6 +1023,126 @@ class MainWindow(QMainWindow):
         self._rebuild_recent_menus()
         self._update_document_workflow_state()
         return True
+
+    def _on_file_drop(self, file_path: str) -> None:
+        """Handle file drop from drag-and-drop.
+        
+        Determines if the dropped file is a small image (creates annotation)
+        or a document (opens as new document).
+        """
+        file_path_obj = Path(file_path)
+        
+        # Check if file exists
+        if not file_path_obj.exists():
+            QMessageBox.critical(self, "File Error", f"File not found: {file_path}")
+            return
+        
+        # Determine file type by extension
+        ext = file_path_obj.suffix.lower()
+        image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
+        document_extensions = {'.pdf'} | image_extensions
+        
+        if ext not in document_extensions:
+            QMessageBox.critical(
+                self, 
+                "Unsupported File Format",
+                f"Cannot open file: Unsupported format or corrupted file.\n\nFile: {file_path_obj.name}"
+            )
+            return
+        
+        # Check if it's an image or document
+        is_image = ext in image_extensions
+        is_small_image = False
+        
+        if is_image:
+            is_small_image = self._is_small_image(file_path)
+        
+        # Handle small image drop
+        if is_small_image:
+            self._handle_small_image_drop(file_path)
+        else:
+            # Handle big image or PDF drop (document load)
+            self._handle_document_drop(file_path)
+    
+    def _is_small_image(self, file_path: str) -> bool:
+        """Check if image fits on A6 paper at 300 DPI (1240 × 1748 pixels).
+        
+        A6 dimensions: 105mm × 148mm (4.1" × 5.8")
+        At 300 DPI: 1240 × 1748 pixels
+        Small image: max(width, height) ≤ 1748 pixels (fits A6 in any orientation)
+        """
+        try:
+            img = Image.open(file_path)
+            width, height = img.size
+            # A6 at 300 DPI: 1240 × 1748 pixels
+            # Allow both orientations - image must fit on A6 in either orientation
+            a6_max_dimension = 1748
+            return max(width, height) <= a6_max_dimension
+        except Exception as exc:
+            logging.error(f"Error checking image size: {exc}")
+            return False
+    
+    def _handle_small_image_drop(self, file_path: str) -> None:
+        """Handle dropping a small image - create Signature/Image annotation at drop position."""
+        if not self.canvas.has_document:
+            QMessageBox.critical(
+                self,
+                "No Document Open",
+                "Cannot drop image: No document is currently open. Please open or create a document first."
+            )
+            return
+        
+        try:
+            img = Image.open(file_path)
+        except (UnidentifiedImageError, Exception) as exc:
+            QMessageBox.critical(
+                self,
+                "Image Load Error",
+                f"Cannot load image: Unsupported format or corrupted file.\n\nSupported formats: PNG, JPG, JPEG, BMP.\n\nError: {exc}"
+            )
+            return
+        
+        # Create Signature/Image annotation at center of current page (default position)
+        # This uses the existing signature creation logic
+        self._create_dropped_image_annotation(file_path)
+    
+    def _handle_document_drop(self, file_path: str) -> None:
+        """Handle dropping a big image or PDF - open as document."""
+        # open_document() will check for unsaved changes using the existing
+        # _check_unsaved_changes() dialog (single unified dialog)
+        self.open_document(file_path)
+    
+    def _create_dropped_image_annotation(self, file_path: str) -> None:
+        """Create a Signature/Image annotation from the dropped image file at default position."""
+        try:
+            # Load and convert image to RGBA
+            with Image.open(file_path) as img:
+                loaded = img.convert("RGBA")
+            
+            # Create signature object at origin (0, 0) - will be repositioned
+            sig_obj = SignatureObject(loaded, str(file_path), 0, 0, self.canvas.current_page)
+            sig_obj.color = QColor(self._current_color)
+            
+            # Get the default position for the object (centered on page)
+            x, y = self.canvas.default_position_for(sig_obj)
+            sig_obj.x, sig_obj.y = x, y
+            
+            # Add to current page
+            self.canvas.add_object(sig_obj)
+            self._has_unsaved_changes = True
+            self._update_title()
+            self._update_document_workflow_state()
+        except Exception as exc:
+            logging.error(f"Error creating dropped image annotation: {exc}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Could not create image annotation:\n{exc}"
+            )
+    
+    def show_notification(self, message: str) -> None:
+        """Show a brief non-intrusive notification toast."""
+        NotificationToast(self, message)
 
     def open_signature(self, path: str | None = None) -> bool:
         """Load a signature and place it at the default position on the current page."""
