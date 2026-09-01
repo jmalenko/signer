@@ -15,8 +15,10 @@ from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
+    QDoubleSpinBox,
     QFileDialog,
     QLabel,
     QLineEdit,
@@ -25,6 +27,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSizePolicy,
+    QSpinBox,
     QTextEdit,
     QToolBar,
     QToolButton,
@@ -55,6 +58,7 @@ from .objects import (
     CanvasObject,
     DEFAULT_FONT_FAMILY,
     DEFAULT_LINE_WIDTH_FACTOR,
+    DEFAULT_LINE_WIDTH_PT,
     DEFAULT_TEXT_FONT_PT,
     SignatureObject,
     VectorAnnotation,
@@ -62,16 +66,17 @@ from .objects import (
 from .pdf_utils import render_all_pages
 from .settings import AppSettings, SettingsStore
 
-SUPPORTED_SIGNATURE_EXT = {".png", ".jpg", ".jpeg"}
+SUPPORTED_SIGNATURE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff", ".tif", ".webp", ".ico"}
 ARROW_DIRECTIONS = [
-    ("North", AnnotationType.ARROW_N),
-    ("North-East", AnnotationType.ARROW_NE),
+    ("Generic (auto-angle)", AnnotationType.ARROW_GENERIC),
     ("East", AnnotationType.ARROW_E),
     ("South-East", AnnotationType.ARROW_SE),
     ("South", AnnotationType.ARROW_S),
     ("South-West", AnnotationType.ARROW_SW),
     ("West", AnnotationType.ARROW_W),
     ("North-West", AnnotationType.ARROW_NW),
+    ("North", AnnotationType.ARROW_N),
+    ("North-East", AnnotationType.ARROW_NE),
 ]
 
 
@@ -338,6 +343,10 @@ class MainWindow(QMainWindow):
         self._sig_ann_menu: QMenu | None = None
         self._hamburger_file_menu: QMenu | None = None
         self._hamburger_text_submenu: QMenu | None = None
+        self._hamburger_annotations_menu: QMenu | None = None
+        self._add_annotation_btn: QToolButton | None = None
+        self._save_as_toolbar_action: QAction | None = None
+        self._save_as_file_action: QAction | None = None
 
         self.document_path: str | None = None
         self._has_unsaved_changes: bool = False
@@ -399,13 +408,22 @@ class MainWindow(QMainWindow):
         ann_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         ann_menu = QMenu(ann_btn)
         ann_btn.setMenu(ann_menu)
+        self._add_annotation_btn = ann_btn
 
         ann_menu.addAction("✔ Checkmark", lambda: self._add_vector(AnnotationType.CHECKMARK))
         ann_menu.addAction("✖ Crossmark", lambda: self._add_vector(AnnotationType.CROSSMARK))
+        
+        # v1.2.22: Line annotation
+        ann_menu.addAction("— Line", lambda: self._add_vector(AnnotationType.LINE))
 
+        # v1.2.22: Arrow submenu with generic and directional arrows
         arrow_menu = ann_menu.addMenu("➡ Arrow")
         for name, atype in ARROW_DIRECTIONS:
             arrow_menu.addAction(name, lambda checked=False, t=atype: self._add_vector(t))
+
+        # v1.2.22: Rectangle and Ellipse
+        ann_menu.addAction("▭ Rectangle / Square", lambda: self._add_vector(AnnotationType.RECTANGLE))
+        ann_menu.addAction("○ Ellipse / Circle", lambda: self._add_vector(AnnotationType.ELLIPSE))
 
         self._toolbar_text_menu = ann_menu.addMenu("📝 Text")
         self._toolbar_text_menu.addAction("Free text…", lambda: self._add_text_annotation(""))
@@ -416,14 +434,15 @@ class MainWindow(QMainWindow):
         self._toolbar_recent_text_actions = []
         self._rebuild_toolbar_recent_texts()
 
-        self._sig_ann_menu = ann_menu.addMenu("🖊 Signature")
+        # v1.2.22: Rename to Signature / Image submenu
+        self._sig_ann_menu = ann_menu.addMenu("🖊 Signature / Image")
         self._rebuild_sig_ann_menu()
 
         ann_btn.setMenu(ann_menu)
         tb.addWidget(ann_btn)
 
         # Save action (3rd, same workflow group)
-        big_action("💾 Save As…", self.save_document_as)
+        self._save_as_toolbar_action = big_action("💾 Save As…", self.save_document_as)
 
         tb.addSeparator()
 
@@ -447,7 +466,45 @@ class MainWindow(QMainWindow):
         self._color_btn.clicked.connect(self._pick_color)
         self._update_color_btn()
         tb.addWidget(self._color_btn)
-        self._update_annotation_action_state()
+
+        # v1.2.22: Line width spinner (for vector annotations)
+        tb.addSeparator()
+        self._width_label = QLabel("Width (pt):")
+        tb.addWidget(self._width_label)
+        self._width_spinner = QDoubleSpinBox()
+        self._width_spinner.setMinimum(0.5)
+        self._width_spinner.setMaximum(10.0)
+        self._width_spinner.setSingleStep(0.5)
+        self._width_spinner.setValue(DEFAULT_LINE_WIDTH_PT)
+        self._width_spinner.setDecimals(1)
+        self._width_spinner.setMaximumWidth(60)
+        self._width_spinner.setToolTip("Line width in points")
+        self._width_spinner.valueChanged.connect(self._on_width_changed)
+        tb.addWidget(self._width_spinner)
+
+        # v1.2.22: Font size spinner (for text annotations)
+        self._font_size_label = QLabel("Font Size (pt):")
+        tb.addWidget(self._font_size_label)
+        self._font_size_spinner = QSpinBox()
+        self._font_size_spinner.setMinimum(6)
+        self._font_size_spinner.setMaximum(72)
+        self._font_size_spinner.setSingleStep(1)
+        self._font_size_spinner.setValue(DEFAULT_TEXT_FONT_PT)
+        self._font_size_spinner.setMaximumWidth(60)
+        self._font_size_spinner.setToolTip("Font size in points")
+        self._font_size_spinner.valueChanged.connect(self._on_font_size_changed)
+        tb.addWidget(self._font_size_spinner)
+
+        # v1.2.22: Font family combo (for text annotations)
+        self._font_label = QLabel("Font:")
+        tb.addWidget(self._font_label)
+        self._font_family_combo = QComboBox()
+        self._font_family_combo.addItems(self._get_system_fonts())
+        self._font_family_combo.setCurrentText(DEFAULT_FONT_FAMILY)
+        self._font_family_combo.setMaximumWidth(120)
+        self._font_family_combo.setToolTip("Font family")
+        self._font_family_combo.currentTextChanged.connect(self._on_font_family_changed)
+        tb.addWidget(self._font_family_combo)
 
         # Add stretch to push hamburger menu to the right
         spacer = QWidget()
@@ -466,7 +523,7 @@ class MainWindow(QMainWindow):
         # File menu
         self._hamburger_file_menu = hamburger_menu.addMenu("File")
         self._hamburger_file_menu.addAction("Open Document (Ctrl+O or O)", self.open_document)
-        self._hamburger_file_menu.addAction("Save As… (Ctrl+S or S)", self.save_document_as)
+        self._save_as_file_action = self._hamburger_file_menu.addAction("Save As… (Ctrl+S or S)", self.save_document_as)
         self._hamburger_file_menu.addAction("Print (Ctrl+P or P)", self.print_document)
         self._hamburger_file_menu.addSeparator()
         self._file_recent_docs_actions = []  # Track recent doc actions for rebuilding
@@ -495,11 +552,22 @@ class MainWindow(QMainWindow):
 
         # Annotations menu
         annotations_menu = hamburger_menu.addMenu("Annotations")
+        self._hamburger_annotations_menu = annotations_menu
         annotations_menu.addAction("Checkmark", lambda: self._add_vector(AnnotationType.CHECKMARK))
         annotations_menu.addAction("Crossmark", lambda: self._add_vector(AnnotationType.CROSSMARK))
+        
+        # v1.2.22: Add Line annotation
+        annotations_menu.addAction("Line", lambda: self._add_vector(AnnotationType.LINE))
+        
+        # v1.2.22: Arrow submenu with new order
         arrow_submenu = annotations_menu.addMenu("Arrow")
         for name, atype in ARROW_DIRECTIONS:
             arrow_submenu.addAction(name, lambda checked=False, t=atype: self._add_vector(t))
+        
+        # v1.2.22: Add Rectangle and Ellipse
+        annotations_menu.addAction("Rectangle / Square", lambda: self._add_vector(AnnotationType.RECTANGLE))
+        annotations_menu.addAction("Ellipse / Circle", lambda: self._add_vector(AnnotationType.ELLIPSE))
+        
         self._hamburger_text_submenu = annotations_menu.addMenu("Text")
         self._hamburger_text_submenu.addAction("Free text…", lambda: self._add_text_annotation(""))
         self._hamburger_text_submenu.addAction("Current date", lambda: self._add_text_annotation(self._locale_date()))
@@ -508,6 +576,8 @@ class MainWindow(QMainWindow):
         self._hamburger_text_submenu.addSeparator()
         self._annotations_recent_text_actions = []  # Track recent text actions for rebuilding
         self._rebuild_recent_texts_top_level(self._hamburger_text_submenu)
+        
+        # v1.2.22: Rename to Signature/Image
         annotations_menu.addAction("Signature / Image", self._add_signature_from_file)
 
         # Help menu
@@ -518,6 +588,23 @@ class MainWindow(QMainWindow):
         
         # Initial rebuild of recent menus
         self._rebuild_recent_menus()
+        
+        # Update UI state after all controls are created
+        self._update_annotation_action_state()
+        self._update_document_workflow_state()
+
+    def _update_document_workflow_state(self) -> None:
+        """Enable/disable document-dependent workflow controls."""
+        has_doc = self.canvas.has_document
+
+        if self._add_annotation_btn is not None:
+            self._add_annotation_btn.setEnabled(has_doc)
+        if self._save_as_toolbar_action is not None:
+            self._save_as_toolbar_action.setEnabled(has_doc)
+        if self._save_as_file_action is not None:
+            self._save_as_file_action.setEnabled(has_doc)
+        if self._hamburger_annotations_menu is not None:
+            self._hamburger_annotations_menu.menuAction().setEnabled(has_doc)
 
     def _rebuild_sig_ann_menu(self) -> None:
         if self._sig_ann_menu is None:
@@ -638,17 +725,36 @@ class MainWindow(QMainWindow):
             self._rebuild_recent_texts_top_level(self._hamburger_text_submenu)
 
     def _on_object_changed(self) -> None:
+        self._update_document_workflow_state()
         self._update_annotation_action_state()
         self._update_color_btn()
         self._has_unsaved_changes = True
 
     def _update_annotation_action_state(self) -> None:
-        selected = self.canvas.selected is not None
-        self._dup_action.setEnabled(selected)
-        self._del_action.setEnabled(selected)
+        from .objects import AnnotationType
+        selected = self.canvas.selected
+        has_selection = selected is not None
+        self._dup_action.setEnabled(has_selection)
+        self._del_action.setEnabled(has_selection)
         self._color_btn.setEnabled(True)
+        
+        # v1.2.22: Context-sensitive control visibility based on annotation type
+        # Width spinner and label: visible for vector types (not TEXT, not Signature/Image)
+        width_visible = (has_selection and isinstance(selected, VectorAnnotation) and 
+                        selected.ann_type != AnnotationType.TEXT)
+        self._width_spinner.setVisible(width_visible)
+        self._width_label.setVisible(width_visible)
+        
+        # Font controls and labels: visible only for TEXT
+        font_visible = (has_selection and isinstance(selected, VectorAnnotation) and 
+                       selected.ann_type == AnnotationType.TEXT)
+        self._font_size_spinner.setVisible(font_visible)
+        self._font_size_label.setVisible(font_visible)
+        self._font_family_combo.setVisible(font_visible)
+        self._font_label.setVisible(font_visible)
 
     def _on_page_changed(self, current: int, total: int) -> None:
+        self._update_document_workflow_state()
         if total > 0:
             self.page_label.setText(f"  Page {current + 1} / {total}  ")
         else:
@@ -691,6 +797,90 @@ class MainWindow(QMainWindow):
         c = color.name()
         self._color_btn.setStyleSheet(f"background-color: {c}; color: {'#fff' if color.lightness() < 128 else '#000'};")
 
+    # v1.2.22: Line width, font size, and font family handlers
+    def _on_width_changed(self, value: float) -> None:
+        """Handle line width spinner changes."""
+        from .history import ChangeLineWidthAction
+        selected = self.canvas.selected
+        if selected is not None and isinstance(selected, VectorAnnotation):
+            from .objects import AnnotationType
+            # Only allow width change for vector types that support it
+            if selected.ann_type != AnnotationType.TEXT:
+                objs = self.canvas.current_page_objects()
+                obj_idx = objs.index(selected) if selected in objs else -1
+                old_width = selected._line_width_pt
+                selected._line_width_pt = value
+                # Record to history
+                if obj_idx >= 0:
+                    action = ChangeLineWidthAction(
+                        object_id=obj_idx,
+                        from_width=old_width,
+                        to_width=value,
+                    )
+                    self.canvas.history.record_action(action)
+                self._settings.recent_line_width_pt = value
+                self.canvas.update()
+                self._save_settings_safe()
+
+    def _on_font_size_changed(self, value: int) -> None:
+        """Handle font size spinner changes."""
+        from .history import ChangeFontSizeAction
+        selected = self.canvas.selected
+        if selected is not None and isinstance(selected, VectorAnnotation):
+            if selected.ann_type == AnnotationType.TEXT:
+                objs = self.canvas.current_page_objects()
+                obj_idx = objs.index(selected) if selected in objs else -1
+                old_size = selected._font_size_px
+                selected._font_size_px = value
+                selected.fit_text_box()
+                # Record to history
+                if obj_idx >= 0:
+                    action = ChangeFontSizeAction(
+                        object_id=obj_idx,
+                        from_size=old_size,
+                        to_size=value,
+                    )
+                    self.canvas.history.record_action(action)
+                self._settings.recent_font_size_pt = value
+                self.canvas.update()
+                self._save_settings_safe()
+
+    def _on_font_family_changed(self, family: str) -> None:
+        """Handle font family combo changes."""
+        from .history import ChangeFontFamilyAction
+        selected = self.canvas.selected
+        if selected is not None and isinstance(selected, VectorAnnotation):
+            if selected.ann_type == AnnotationType.TEXT:
+                objs = self.canvas.current_page_objects()
+                obj_idx = objs.index(selected) if selected in objs else -1
+                old_family = selected._font_family
+                selected._font_family = family
+                selected.fit_text_box()
+                # Record to history
+                if obj_idx >= 0:
+                    action = ChangeFontFamilyAction(
+                        object_id=obj_idx,
+                        from_family=old_family,
+                        to_family=family,
+                    )
+                    self.canvas.history.record_action(action)
+                self._settings.recent_font_family = family
+                self.canvas.update()
+                self._save_settings_safe()
+
+    @staticmethod
+    def _get_system_fonts() -> list[str]:
+        """Get list of available system fonts."""
+        from PySide6.QtGui import QFontDatabase
+        db = QFontDatabase()
+        # Get common system fonts; default to all if available
+        fonts = sorted(db.families())
+        # Return common fonts if available, otherwise all
+        common = ["Arial", "Helvetica", "Times New Roman", "Courier New", "Verdana", "Georgia"]
+        if all(f in fonts for f in common):
+            return common + [f for f in fonts if f not in common]
+        return fonts[:50]  # Limit to 50 fonts if very large list
+
     # ---------------------------------------------------------------- date/time helpers
 
     @staticmethod
@@ -730,6 +920,7 @@ class MainWindow(QMainWindow):
             font_family=self._settings.recent_font_family,
             font_size_px=self._settings.recent_font_size_pt,
             line_width_factor=line_width_factor,
+            line_width_pt=self._settings.recent_line_width_pt,
         )
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)
@@ -758,6 +949,7 @@ class MainWindow(QMainWindow):
             font_family=self._settings.recent_font_family,
             font_size_px=self._settings.recent_font_size_pt,
             line_width_factor=line_width_factor,
+            line_width_pt=self._settings.recent_line_width_pt,
         )
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)
@@ -843,6 +1035,7 @@ class MainWindow(QMainWindow):
             self._adjust_window_to_document(pages[0].size[0], pages[0].size[1])
         self._update_title()
         self._rebuild_recent_menus()
+        self._update_document_workflow_state()
         return True
 
     def open_signature(self, path: str | None = None) -> bool:
@@ -872,7 +1065,7 @@ class MainWindow(QMainWindow):
             )
             return False
         if suffix not in SUPPORTED_SIGNATURE_EXT:
-            QMessageBox.warning(self, "Invalid signature", "Signature must be .png, .jpg, or .jpeg.")
+            QMessageBox.warning(self, "Invalid signature", "Signature must be in a supported image format (PNG, JPG, BMP, GIF, TIFF, WebP, etc).")
             return False
         if not p.exists():
             QMessageBox.warning(self, "File not found", f"Signature file not found:\n{p}")

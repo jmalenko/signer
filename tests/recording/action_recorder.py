@@ -259,10 +259,22 @@ def patch_main_window_for_recording(main_window) -> None:
                     # Move operation - record final position
                     recorder.record_move_annotation(obj, obj.x, obj.y)
                 else:
-                    # Resize operation - record final size
-                    recorder.record_resize_annotation(
-                        obj, obj.scaled_width, obj.scaled_height, canvas._drag_handle
-                    )
+                    # Resize operation
+                    if hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles() and canvas._drag_handle in (0, 1):
+                        pts = obj.endpoint_points_doc()
+                        if len(pts) == 2:
+                            pt = pts[canvas._drag_handle]
+                            recorder.record_resize_annotation_endpoint(
+                                obj,
+                                canvas._drag_handle,
+                                float(pt.x()),
+                                float(pt.y()),
+                            )
+                    else:
+                        # Legacy width/height resize record
+                        recorder.record_resize_annotation(
+                            obj, obj.scaled_width, obj.scaled_height, canvas._drag_handle
+                        )
                 canvas._was_dragging = False
     
     canvas.mouseMoveEvent = recorded_mouse_move

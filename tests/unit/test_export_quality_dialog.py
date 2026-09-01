@@ -117,3 +117,4 @@ class TestQualityWorkflow:
         # Show dialog to make widgets visible
         dialog.show()
         assert dialog.quality_spinbox.isVisible()
+

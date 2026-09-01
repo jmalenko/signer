@@ -1,0 +1,25 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples/document1.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "ellipse",
+      "x": 1065,
+      "y": 1654,
+      "page": 0,
+      "object_id": 0
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 0,
+      "width": 350,
+      "height": 200
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}

@@ -126,8 +126,9 @@ class TestVectorAnnotationSerialization:
         assert data["color"] == "#cc0000"
         assert data["ann_type"] == "checkmark"
         assert data["text"] == ""
-        assert data["font_family"] == "Arial"
-        assert data["font_size_px"] == 11
+        # Font properties are only saved for TEXT annotations
+        assert "font_family" not in data
+        assert "font_size_px" not in data
         assert data["line_width_factor"] == 0.07
         # Natural width/height also scaled
         assert abs(data["natural_width"] - 83.33) < 0.01
@@ -170,9 +171,9 @@ class TestVectorAnnotationSerialization:
         data = ann.to_dict()
         
         assert data["ann_type"] == "arrow_n"
-        # 40 * 300/72 = 166.6666...
-        assert abs(data["base_width"] - 166.67) < 0.01
-        assert abs(data["base_height"] - 166.67) < 0.01
+        # 160 * 300/72 = 666.6666...
+        assert abs(data["base_width"] - 666.67) < 0.01
+        assert abs(data["base_height"] - 666.67) < 0.01
     
     def test_text_annotation_to_dict(self, qapp):
         """Test text annotation serialization."""

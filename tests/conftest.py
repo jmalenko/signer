@@ -26,6 +26,33 @@ def qapp():
     yield app
 
 
+class QtBot:
+    """Simple Qt bot for testing without pytest-qt dependency."""
+    
+    def __init__(self):
+        self.widgets = []
+    
+    def addWidget(self, widget):
+        """Register a widget for cleanup."""
+        self.widgets.append(widget)
+    
+    def cleanup(self):
+        """Clean up all registered widgets."""
+        for widget in self.widgets:
+            try:
+                widget.deleteLater()
+            except Exception:
+                pass
+
+
+@pytest.fixture
+def qtbot(qapp):
+    """Create a QtBot instance for test cleanup."""
+    bot = QtBot()
+    yield bot
+    bot.cleanup()
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for test outputs."""

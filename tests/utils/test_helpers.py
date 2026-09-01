@@ -62,13 +62,24 @@ def create_test_move_data(object_id: int, x: float, y: float) -> Dict[str, Any]:
 
 
 def create_test_resize_data(object_id: int, width: float, height: float, handle: int) -> Dict[str, Any]:
-    """Create a dictionary representing a resize action for test recording."""
+    """Create a dictionary representing a width/height resize action."""
     return {
         "type": "resize_annotation",
         "object_id": object_id,
         "width": width,
         "height": height,
         "handle": handle
+    }
+
+
+def create_test_endpoint_resize_data(object_id: int, handle: int, x: float, y: float) -> Dict[str, Any]:
+    """Create a dictionary representing an endpoint-handle resize action."""
+    return {
+        "type": "resize_annotation",
+        "object_id": object_id,
+        "handle": handle,
+        "x": x,
+        "y": y,
     }
 
 
@@ -170,6 +181,19 @@ class ActionRecorder:
             "width": width,
             "height": height,
             "handle": handle
+        })
+
+    def record_resize_annotation_endpoint(self, obj, handle: int, x: float, y: float):
+        """Record endpoint-handle resize for LINE/ARROW_GENERIC."""
+        if not self._enabled:
+            return
+        obj_id = self._get_object_id(obj)
+        self.actions.append({
+            "type": "resize_annotation",
+            "object_id": obj_id,
+            "handle": handle,
+            "x": x,
+            "y": y,
         })
     
     def record_change_color(self, obj, color: str):

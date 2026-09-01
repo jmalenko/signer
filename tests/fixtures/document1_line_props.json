@@ -1,0 +1,219 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples/document1.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 100,
+      "y": 2000,
+      "page": 0,
+      "object_id": 0
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 0,
+      "width": 50,
+      "height": 50
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 350,
+      "y": 2000,
+      "page": 0,
+      "object_id": 1
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 1,
+      "width": 150,
+      "height": 150
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 750,
+      "y": 2000,
+      "page": 0,
+      "object_id": 2
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 2,
+      "width": 300,
+      "height": 300
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1300,
+      "y": 2000,
+      "page": 0,
+      "object_id": 3
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 3,
+      "width": 500,
+      "height": 500
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 100,
+      "y": 2700,
+      "page": 0,
+      "object_id": 4
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 4,
+      "width": 120,
+      "height": 120
+    },
+    {
+      "type": "set_color",
+      "object_id": 4,
+      "color": "#ff0000"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 350,
+      "y": 2700,
+      "page": 0,
+      "object_id": 5
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 5,
+      "width": 120,
+      "height": 120
+    },
+    {
+      "type": "set_color",
+      "object_id": 5,
+      "color": "#00ff00"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 600,
+      "y": 2700,
+      "page": 0,
+      "object_id": 6
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 6,
+      "width": 120,
+      "height": 120
+    },
+    {
+      "type": "set_color",
+      "object_id": 6,
+      "color": "#0000ff"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 850,
+      "y": 2700,
+      "page": 0,
+      "object_id": 7
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 7,
+      "width": 120,
+      "height": 120
+    },
+    {
+      "type": "set_color",
+      "object_id": 7,
+      "color": "#ffff00"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 100,
+      "y": 3050,
+      "page": 0,
+      "object_id": 8
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 8,
+      "width": 250,
+      "height": 250
+    },
+    {
+      "type": "set_line_width",
+      "object_id": 8,
+      "width_pt": 0.5
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 450,
+      "y": 3050,
+      "page": 0,
+      "object_id": 9
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 9,
+      "width": 250,
+      "height": 250
+    },
+    {
+      "type": "set_line_width",
+      "object_id": 9,
+      "width_pt": 1.5
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 800,
+      "y": 3050,
+      "page": 0,
+      "object_id": 10
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 10,
+      "width": 250,
+      "height": 250
+    },
+    {
+      "type": "set_line_width",
+      "object_id": 10,
+      "width_pt": 3.0
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1150,
+      "y": 3050,
+      "page": 0,
+      "object_id": 11
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 11,
+      "width": 250,
+      "height": 250
+    },
+    {
+      "type": "set_line_width",
+      "object_id": 11,
+      "width_pt": 5.0
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}

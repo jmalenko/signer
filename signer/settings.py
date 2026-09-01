@@ -27,7 +27,7 @@ class AppSettings:
     recent_font_size_pt: int = DEFAULT_FONT_SIZE_PT
     
     # LibreOffice path (for Word/ODT support)
-    libreoffice_path: str | None = None# Recent font family (font name string)
+    libreoffice_path: str | None = None
 
     # Signature/document paths (file paths or None if not set)
     last_signature_path: str | None = None
@@ -44,6 +44,7 @@ class AppSettings:
     recent_signature_paths: list[str] = field(default_factory=list)
     recent_text_strings: list[str] = field(default_factory=list)
     recent_document_paths: list[str] = field(default_factory=list)
+    recent_image_paths: list[str] = field(default_factory=list)  # v1.2.22: Recent images (max 10)
 
 
 class SettingsStore:
@@ -87,6 +88,7 @@ class SettingsStore:
                 recent_signature_paths=data.get("recent_signature_paths", []),
                 recent_text_strings=data.get("recent_text_strings", []),
                 recent_document_paths=data.get("recent_document_paths", []),
+                recent_image_paths=data.get("recent_image_paths", []),  # v1.2.22
             )
         except Exception:
             return AppSettings()

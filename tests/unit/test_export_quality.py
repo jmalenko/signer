@@ -105,3 +105,4 @@ class TestQualityValueClamping:
         """Test PDF quality values above 100 would be clamped."""
         settings = AppSettings()
         settings.last_pdf_image_quality = 101  # Would be clamped to 100 by UI
+

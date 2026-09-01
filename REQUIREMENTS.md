@@ -840,24 +840,28 @@ Motivation: The sizes should be a appropriate for documents using text size 11 p
 
 1. Default font size for text annotations: **11 points**
 
-2. Default annotation size (width/height) for vector annotations: **20 points**
+2. Default annotation size (width/height) for vector annotations:
    - Checkmark: 20×20 points
-   - Cross: 20×20 points  
-   - Arrows: 40×40 points (2× base size)
+   - Cross: 20×20 points
+   - Line: 80×80 points
+   - Rectangle: 80×80 points
+   - Ellipse: 80×80 points
+   - Arrows: 160×160 points
 
 3. Default line width for annotations: **1.5 points**
    - Proportional to the annotation size for visual consistency
 
 4. All sizes are measured in PDF points (1/72 inch)
-   - When placed on the document, 20 points = ~0.22 inches
+   - When placed on the document, 20 points = ~0.28 inches
    - These are absolute measurements in document-space, not relative to screen zoom
 
 5. **Coordinate System and DPI Scaling**
    - Document uses PDF points (72 DPI) for coordinate storage
    - Internal rendering at 300 DPI requires scaling: `DPI_SCALE = 300 / 72 ≈ 4.167`
    - All sizes converted to 300 DPI pixels during rendering:
-     - Checkmark/Cross: 20pt × 4.167 ≈ 83 pixels
-     - Arrows: 40pt × 4.167 ≈ 167 pixels
+   - Checkmark/Cross: 20pt × 4.167 ≈ 83 pixels
+   - Line/Rectangle/Ellipse: 80pt × 4.167 ≈ 333 pixels
+   - Arrows: 160pt × 4.167 ≈ 667 pixels
      - Font: 11pt × 4.167 ≈ 46 pixels
    - Settings store sizes in PDF points; rendering applies DPI scaling automatically
    - Serialization preserves PDF points for compatibility
@@ -927,6 +931,51 @@ Provide unlimited undo/redo history for the current document session with automa
 - User performs new action while in undo state → redo stack cleared
 - User opens new document → undo/redo stacks cleared
 - Multiple consecutive drags on same object merge into single entry, so single Ctrl+Z reverts the entire drag sequence
+
+## Version 1.2.22 - More annotation types and properties
+
+1. The following additional annotation types shall be supported:
+    - Line
+    - Arrow (line with tip) - with a submenu. The first item shall be "Arrow (generic)". The previous default directional arrows shall be retained.
+   - Rectangle / Square: If the height-width difference is within ±20%, the shape shall be a square; otherwise a rectangle. Holding any modifier key (Shift, Ctrl, or Alt) shall disable this snapping and keep the shape as a rectangle.
+   - Circle / Ellipse: If the height-width difference is within ±20%, the shape shall be a circle; otherwise an ellipse. Holding any modifier key (Shift, Ctrl, or Alt) shall disable this snapping and keep the shape as an ellipse.
+    - Image: User selects a file via an Open file dialog. Recent entries shall be added to the submenu.
+
+2. A new annotation property "Width" (in points) shall be added for all annotation types except Text and Signature / Image.
+
+3. Text annotations shall have the following properties:
+    - Text size
+    - Font family
+    The controls shall be in the toolbar.
+
+4. Annotation line width shall be adjustable via:
+    - A toolbar spinner/input showing the value in points
+    - Keyboard shortcuts: `[` / `]` to decrease/increase
+
+5. Text font size shall be adjustable via:
+    - A toolbar spinner/input showing the value in points
+    - Keyboard shortcuts: `[` / `]`
+    - Resizing the text bounding box shall also scale the font size proportionally
+
+6. Annotation menu order shall be:
+    - Checkmark
+    - Cross
+    - Line
+    - Arrow
+        - Arrow (generic)
+        - 8 Directional Arrows - Start with East, then south-east, south etc.
+    - Rectangle / Square
+    - Ellipse / Circle
+    - Text
+   - Signature / Image
+
+7. Signature and Image shall be unified as a single "Signature / Image" annotation type. Color and width controls shall be hidden/disabled for this type.
+
+8. Property controls (color, width, font) shall be context-sensitive: only shown/enabled for compatible annotation types.
+
+9. The "Add Annotation" button and "Save As..." shall be disabled when no document is open.
+
+10. All annotations shall support free corner dragging: dragging any corner past its opposite corner shall change how we refer to the corners (e.g., bottom-right dragged above top-left becomes top-right). This applies to all annotation types including lines and arrows. For lines and arrows, the main line is still drawn from the same corner (so the line can switch from south-east direction to north-east direction).
 
 ### Assumption
 

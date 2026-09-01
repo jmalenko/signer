@@ -9,7 +9,6 @@ from PIL import Image
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
-    QBrush,
     QColor,
     QFont,
     QFontMetricsF,
@@ -18,7 +17,6 @@ from PySide6.QtGui import (
     QPainterPath,
     QPen,
     QPixmap,
-    QPolygonF,
 )
 
 
@@ -28,12 +26,17 @@ DEFAULT_TEXT_FONT_PT: int = 11
 DPI_SCALE: float = 300.0 / 72.0  # 4.16667
 DEFAULT_FONT_FAMILY: str = "Arial"
 DEFAULT_LINE_WIDTH_FACTOR: float = 0.07
+DEFAULT_LINE_WIDTH_PT: float = 1.5  # v1.2.22: Default line width in points
 
 
 class AnnotationType(Enum):
     SIGNATURE = "signature"
     CHECKMARK = "checkmark"
     CROSSMARK = "crossmark"
+    LINE = "line"  # v1.2.22
+    RECTANGLE = "rectangle"  # v1.2.22
+    ELLIPSE = "ellipse"  # v1.2.22
+    ARROW_GENERIC = "arrow_generic"  # v1.2.22: Generic arrow with auto-angle
     ARROW_N = "arrow_n"
     ARROW_NE = "arrow_ne"
     ARROW_E = "arrow_e"
@@ -43,9 +46,11 @@ class AnnotationType(Enum):
     ARROW_W = "arrow_w"
     ARROW_NW = "arrow_nw"
     TEXT = "text"
+    IMAGE = "image"  # v1.2.22: Image overlay (signature or image annotation)
 
 
 ARROW_TYPES: set[AnnotationType] = {
+    AnnotationType.ARROW_GENERIC,  # v1.2.22
     AnnotationType.ARROW_N,
     AnnotationType.ARROW_NE,
     AnnotationType.ARROW_E,
@@ -56,7 +61,29 @@ ARROW_TYPES: set[AnnotationType] = {
     AnnotationType.ARROW_NW,
 }
 
+# v1.2.22: Directional arrows (excludes generic) - ordered for menu display
+DIRECTIONAL_ARROW_TYPES = (
+    AnnotationType.ARROW_E,
+    AnnotationType.ARROW_SE,
+    AnnotationType.ARROW_S,
+    AnnotationType.ARROW_SW,
+    AnnotationType.ARROW_W,
+    AnnotationType.ARROW_NW,
+    AnnotationType.ARROW_N,
+    AnnotationType.ARROW_NE,
+)
+
+# v1.2.22: Annotation types that support line width control
+VECTOR_WITH_WIDTH: set[AnnotationType] = {
+    AnnotationType.CHECKMARK,
+    AnnotationType.CROSSMARK,
+    AnnotationType.LINE,
+    AnnotationType.RECTANGLE,
+    AnnotationType.ELLIPSE,
+} | ARROW_TYPES
+
 ARROW_ANGLES: dict[AnnotationType, float] = {
+    AnnotationType.ARROW_GENERIC: 0.0,  # v1.2.22: Default East direction
     AnnotationType.ARROW_E: 0.0,
     AnnotationType.ARROW_NE: 45.0,
     AnnotationType.ARROW_N: 90.0,
@@ -65,6 +92,12 @@ ARROW_ANGLES: dict[AnnotationType, float] = {
     AnnotationType.ARROW_SW: 225.0,
     AnnotationType.ARROW_S: 270.0,
     AnnotationType.ARROW_SE: 315.0,
+}
+
+LARGE_DEFAULT_TYPES: set[AnnotationType] = {
+    AnnotationType.LINE,
+    AnnotationType.RECTANGLE,
+    AnnotationType.ELLIPSE,
 }
 
 # 8 handles: TL, TC, TR, ML, MR, BL, BC, BR
@@ -119,6 +152,15 @@ class CanvasObject:
 
     def supports_free_resize(self) -> bool:
         return False
+
+    def supports_endpoint_handles(self) -> bool:
+        return False
+
+    def endpoint_points_viewport(self, vx: float, vy: float, vw: float, vh: float) -> list[QPointF]:
+        return []
+
+    def endpoint_points_doc(self) -> list[QPointF]:
+        return self.endpoint_points_viewport(self.x, self.y, self.scaled_width, self.scaled_height)
 
     def set_scaled_size(self, width: float, height: float) -> None:
         """Resize object in document-space units."""
@@ -242,10 +284,13 @@ class VectorAnnotation(CanvasObject):
         font_family: str = DEFAULT_FONT_FAMILY,
         font_size_px: int = DEFAULT_TEXT_FONT_PT,
         line_width_factor: float = DEFAULT_LINE_WIDTH_FACTOR,
+        line_width_pt: float = DEFAULT_LINE_WIDTH_PT,  # v1.2.22
     ) -> None:
         self._font_family = font_family
         self._font_size_px = font_size_px
         self._line_width_factor = line_width_factor
+        self._line_width_pt = line_width_pt  # v1.2.22
+        self._angle: float | None = None  # Rotation angle in degrees for LINE/ARROW_GENERIC
         if ann_type == AnnotationType.TEXT:
             # Text box: 180×36 points, scale for 300 DPI rendering
             super().__init__(x, y, 180.0 * DPI_SCALE, 36.0 * DPI_SCALE, page)
@@ -253,7 +298,14 @@ class VectorAnnotation(CanvasObject):
             self.text = text
             self.fit_text_box()
         else:
-            base = 2.0 * self.DEFAULT_BASE_SIZE if ann_type in ARROW_TYPES else self.DEFAULT_BASE_SIZE
+            # v1.2.22 UX tweak: larger defaults for line/arrow/rectangle/ellipse.
+            # Keep checkmark/crossmark at legacy size for document-density use.
+            if ann_type in ARROW_TYPES:
+                base = 8.0 * self.DEFAULT_BASE_SIZE
+            elif ann_type in LARGE_DEFAULT_TYPES:
+                base = 4.0 * self.DEFAULT_BASE_SIZE
+            else:
+                base = self.DEFAULT_BASE_SIZE
             # Base sizes are in PDF points, scale for 300 DPI rendering
             super().__init__(x, y, base * DPI_SCALE, base * DPI_SCALE, page)
             self.ann_type = ann_type
@@ -262,7 +314,58 @@ class VectorAnnotation(CanvasObject):
             self._natural_height = float(base * DPI_SCALE)
 
     def supports_free_resize(self) -> bool:
-        return self.ann_type == AnnotationType.TEXT
+        """Check if annotation type supports free-form resizing (not just scaling)."""
+        return self.ann_type in {
+            AnnotationType.TEXT,
+            AnnotationType.LINE,  # v1.2.22
+            AnnotationType.ARROW_GENERIC,  # endpoint-driven resize; avoid scale-cap clamping
+            AnnotationType.RECTANGLE,  # v1.2.22
+            AnnotationType.ELLIPSE,  # v1.2.22
+        }
+
+    def supports_endpoint_handles(self) -> bool:
+        return self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW_GENERIC}
+
+    def endpoint_points_viewport(self, vx: float, vy: float, vw: float, vh: float) -> list[QPointF]:
+        if not self.supports_endpoint_handles():
+            return []
+
+        if self.ann_type == AnnotationType.LINE:
+            angle = getattr(self, '_angle', None)
+            if angle is None:
+                return [QPointF(vx, vy + vh), QPointF(vx + vw, vy)]
+
+            cx, cy = vx + vw / 2.0, vy + vh / 2.0
+            half_len = min(vw, vh) / 2.0
+            a_rad = math.radians(angle)
+            cos_a = math.cos(a_rad)
+            sin_a = math.sin(a_rad)
+            return [
+                QPointF(cx - cos_a * half_len, cy - sin_a * half_len),
+                QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
+            ]
+
+        # ARROW_GENERIC: use actual drawn tail/tip so endpoint anchors match visuals.
+        angle_deg = getattr(self, '_angle', None)
+        if angle_deg is None:
+            angle_deg = ARROW_ANGLES[AnnotationType.ARROW_GENERIC]
+        angle_rad = math.radians(angle_deg)
+        cx, cy = vx + vw / 2.0, vy + vh / 2.0
+        shaft = min(vw, vh) * 0.33
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        tail = QPointF(cx - cos_a * shaft, cy + sin_a * shaft)
+        tip = QPointF(cx + cos_a * shaft, cy - sin_a * shaft)
+        return [tail, tip]
+
+    def handle_rects_viewport(self, vx: float, vy: float, vw: float, vh: float) -> list[QRectF]:
+        if not self.supports_endpoint_handles():
+            return super().handle_rects_viewport(vx, vy, vw, vh)
+        hs = HANDLE_SIZE
+        return [
+            QRectF(pt.x() - hs / 2.0, pt.y() - hs / 2.0, hs, hs)
+            for pt in self.endpoint_points_viewport(vx, vy, vw, vh)
+        ]
 
     # ------------------------------------------------------------------ text fitting
 
@@ -322,6 +425,48 @@ class VectorAnnotation(CanvasObject):
             painter.drawLine(QPointF(vx + m, vy + m), QPointF(vx + vw - m, vy + vh - m))
             painter.drawLine(QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m))
 
+        elif t == AnnotationType.LINE:
+            pen = QPen(self.color)
+            pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            angle = getattr(self, '_angle', None)
+            if angle is not None:
+                # Draw a rotated line through the center of the bounding box.
+                # Use min(vw, vh)/2 so the line always fits inside the box
+                # regardless of angle.  The bounding box should be square for
+                # full-length lines in all directions.
+                cx, cy = vx + vw / 2.0, vy + vh / 2.0
+                half_len = min(vw, vh) / 2.0
+                a_rad = math.radians(angle)
+                cos_a = math.cos(a_rad)
+                sin_a = math.sin(a_rad)
+                painter.drawLine(
+                    QPointF(cx - cos_a * half_len, cy - sin_a * half_len),
+                    QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
+                )
+            else:
+                # Default: diagonal line from bottom-left to top-right (like /)
+                painter.drawLine(QPointF(vx, vy + vh), QPointF(vx + vw, vy))
+
+        elif t == AnnotationType.RECTANGLE:
+            pen = QPen(self.color)
+            pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
+            pen.setJoinStyle(Qt.MiterJoin)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            half_pw = pen.widthF() / 2.0
+            painter.drawRect(QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF()))
+
+        elif t == AnnotationType.ELLIPSE:
+            pen = QPen(self.color)
+            pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            half_pw = pen.widthF() / 2.0
+            painter.drawEllipse(QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF()))
+
         elif t == AnnotationType.TEXT:
             factor = min(
                 self.scaled_width / max(1.0, self._natural_width),
@@ -336,7 +481,15 @@ class VectorAnnotation(CanvasObject):
             painter.drawText(QRectF(vx, vy, vw, vh), Qt.AlignLeft | Qt.AlignTop, self.text or "")
 
         elif t in ARROW_TYPES:
-            angle_rad = math.radians(ARROW_ANGLES[t])
+            # ARROW_GENERIC uses _angle for free rotation; other types use their
+            # fixed predefined direction from ARROW_ANGLES.
+            if t == AnnotationType.ARROW_GENERIC:
+                angle_deg = getattr(self, '_angle', None)
+                if angle_deg is None:
+                    angle_deg = ARROW_ANGLES[t]
+                angle_rad = math.radians(angle_deg)
+            else:
+                angle_rad = math.radians(ARROW_ANGLES[t])
             cx, cy = vx + vw / 2, vy + vh / 2
             shaft = min(vw, vh) * 0.33
             head = min(vw, vh) * 0.18
@@ -344,18 +497,20 @@ class VectorAnnotation(CanvasObject):
             sin_a = math.sin(angle_rad)
             tip = QPointF(cx + cos_a * shaft, cy - sin_a * shaft)
             tail = QPointF(cx - cos_a * shaft, cy + sin_a * shaft)
-            painter.setPen(self._pen(vw, vh))
+            pen = QPen(self.color)
+            pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(tail, tip)
             la = angle_rad + math.radians(145)
             ra = angle_rad - math.radians(145)
-            poly = QPolygonF([
-                tip,
-                QPointF(tip.x() + math.cos(la) * head, tip.y() - math.sin(la) * head),
-                QPointF(tip.x() + math.cos(ra) * head, tip.y() - math.sin(ra) * head),
-            ])
-            painter.setBrush(QBrush(self.color))
-            painter.drawPolygon(poly)
+            left_tip = QPointF(tip.x() + math.cos(la) * head, tip.y() - math.sin(la) * head)
+            right_tip = QPointF(tip.x() + math.cos(ra) * head, tip.y() - math.sin(ra) * head)
+            # Draw all arrowheads as stroked segments so head width matches stem.
+            painter.drawLine(tip, left_tip)
+            painter.drawLine(tip, right_tip)
 
     # ------------------------------------------------------------------ PIL render
 
@@ -386,9 +541,17 @@ class VectorAnnotation(CanvasObject):
             font_family=self._font_family,
             font_size_px=self._font_size_px,
             line_width_factor=self._line_width_factor,
+            line_width_pt=self._line_width_pt,  # v1.2.22
         )
         obj.scale = self.scale
         obj.color = QColor(self.color)
+        # v1.2.22: Copy bounding box for free-resize types (TEXT, LINE, RECTANGLE, ELLIPSE)
+        if self.supports_free_resize():
+            obj._base_width = self._base_width
+            obj._base_height = self._base_height
+            obj._natural_width = self._natural_width
+            obj._natural_height = self._natural_height
+        obj._angle = self._angle
         return obj
 
     def to_dict(self) -> dict[str, Any]:
@@ -396,11 +559,17 @@ class VectorAnnotation(CanvasObject):
         data = super().to_dict()
         data["ann_type"] = self.ann_type.value
         data["text"] = self.text
-        data["font_family"] = self._font_family
-        data["font_size_px"] = self._font_size_px
+        # Only save font properties for TEXT annotations
+        if self.ann_type == AnnotationType.TEXT:
+            data["font_family"] = self._font_family
+            data["font_size_px"] = self._font_size_px
+        # Save line width for vector annotations (all types)
         data["line_width_factor"] = self._line_width_factor
+        data["line_width_pt"] = self._line_width_pt  # v1.2.22: line width in points
         data["natural_width"] = self._natural_width
         data["natural_height"] = self._natural_height
+        if self._angle is not None:
+            data["angle"] = self._angle
         return data
 
     @classmethod
@@ -416,6 +585,7 @@ class VectorAnnotation(CanvasObject):
             font_family=data.get("font_family", DEFAULT_FONT_FAMILY),
             font_size_px=data.get("font_size_px", DEFAULT_TEXT_FONT_PT),
             line_width_factor=data.get("line_width_factor", DEFAULT_LINE_WIDTH_FACTOR),
+            line_width_pt=data.get("line_width_pt", DEFAULT_LINE_WIDTH_PT),  # v1.2.22
         )
         obj._base_width = data["base_width"]
         obj._base_height = data["base_height"]
@@ -428,6 +598,7 @@ class VectorAnnotation(CanvasObject):
             obj.color = QColor(color_val)
         obj._natural_width = data.get("natural_width", obj._natural_width)
         obj._natural_height = data.get("natural_height", obj._natural_height)
+        obj._angle = data.get("angle", None)
         return obj
 
 

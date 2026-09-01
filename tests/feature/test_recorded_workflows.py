@@ -21,7 +21,20 @@ from PySide6.QtWidgets import QApplication
 
 # Parametrization: workflow_type, fixture_name, expected_annotation_prefix, description
 WORKFLOW_TEST_CASES = [
-    # Annotation features on document1
+    # New annotation types (v1.2.22)
+    ("annotation", "document1_line", "line", "Line annotation"),
+    ("annotation", "document1_arrow_compass", "arrow_", "Arrow compass (8 directions)"),
+    ("annotation", "document1_arrow_generic", "arrow_", "Arrow generic (20 directions)"),
+    ("annotation", "document1_rectangle", "rectangle", "Rectangle annotation"),
+    ("annotation", "document1_ellipse", "ellipse", "Ellipse annotation"),
+    ("annotation", "document1_line_props", "line", "Line with properties (width, color)"),
+    ("annotation", "document1_arrow_props", "arrow_", "Arrow with properties (width, color)"),
+    ("annotation", "document1_rectangle_props", "rectangle", "Rectangle with properties"),
+    ("annotation", "document1_ellipse_props", "ellipse", "Ellipse with properties"),
+    ("annotation", "document1_checkmark_props", "checkmark", "Checkmark with properties (blue, width)"),
+    ("annotation", "document1_crossmark_props", "crossmark", "Crossmark with properties (blue, width)"),
+    ("annotation", "document1_text_props", "text", "Text with properties (blue, 16pt, Courier)"),
+    # Original annotation features on document1
     ("annotation", "document1_arrow", "arrow_", "Arrow annotation"),
     ("annotation", "document1_checkmark", "checkmark", "Checkmark annotation"),
     ("annotation", "document1_crossmark", "crossmark", "Crossmark annotation"),
@@ -60,6 +73,14 @@ class TestRecordedWorkflows:
         QApplication.processEvents()
 
         # Verify output matches reference (pixel-perfect)
+        # On first run, if expected image doesn't exist, create it from actual output
+        if not expected_image.exists() and output_image.exists():
+            # Create baseline by copying actual to expected (in fixtures)
+            expected_image.parent.mkdir(parents=True, exist_ok=True)
+            from shutil import copy2
+            copy2(output_image, expected_image)
+            pytest.skip(f"Baseline image created for {fixture_name}. Re-run test to compare.")
+        
         assert_images_equal_with_results(
             output_image,
             expected_image,

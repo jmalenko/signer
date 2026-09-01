@@ -93,10 +93,10 @@ class TestBoundingBox:
         """Test Arrow annotation bounding box (larger default)."""
         ann = VectorAnnotation(AnnotationType.ARROW_N, 0, 0, 0)
         
-        # Arrows have base size 40 points, scaled to 300 DPI (40 * 300/72 ≈ 166.67 px)
-        # 40 * 300/72 = 166.6666...
-        assert abs(ann._base_width - 166.67) < 0.01
-        assert abs(ann._base_height - 166.67) < 0.01
+        # Arrows have base size 160 points, scaled to 300 DPI (160 * 300/72 ≈ 666.67 px)
+        # 160 * 300/72 = 666.6666...
+        assert abs(ann._base_width - 666.67) < 0.01
+        assert abs(ann._base_height - 666.67) < 0.01
     
     def test_text_annotation_bounding_box(self, qapp):
         """Test Text annotation bounding box."""
@@ -296,6 +296,43 @@ class TestResizeCalculations:
         # Should be clamped to minimum 8x8
         assert obj.scaled_width >= 8
         assert obj.scaled_height >= 8
+
+
+class TestSquareCircleSnapThreshold:
+    """Tests for rectangle/ellipse snap-to-square threshold behavior."""
+
+    @pytest.mark.parametrize(
+        "new_w,new_h,handle,expected_w,expected_h,expected_snapped",
+        [
+            (79.0, 100.0, 4, 79.0, 100.0, False),
+            (80.0, 100.0, 4, 100.0, 100.0, True),
+            (120.0, 100.0, 4, 100.0, 100.0, True),
+            (121.0, 100.0, 4, 121.0, 100.0, False),
+        ],
+    )
+    def test_edge_handle_snap_threshold(self, new_w, new_h, handle, expected_w, expected_h, expected_snapped):
+        """Right-edge drag snaps only inside the inclusive +/-20% window."""
+        from signer.canvas import DocumentCanvas
+
+        out_w, out_h, snapped = DocumentCanvas._snap_rect_ellipse_size(
+            new_w, new_h, handle, modifier_pressed=False
+        )
+
+        assert snapped is expected_snapped
+        assert out_w == pytest.approx(expected_w)
+        assert out_h == pytest.approx(expected_h)
+
+    def test_modifier_prevents_snap_inside_threshold(self):
+        """Any modifier key disables snapping even when ratio is in threshold."""
+        from signer.canvas import DocumentCanvas
+
+        out_w, out_h, snapped = DocumentCanvas._snap_rect_ellipse_size(
+            105.0, 100.0, 4, modifier_pressed=True
+        )
+
+        assert snapped is False
+        assert out_w == pytest.approx(105.0)
+        assert out_h == pytest.approx(100.0)
 
 
 class TestObjectRectangles:

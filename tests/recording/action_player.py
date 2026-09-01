@@ -1,10 +1,12 @@
 """Action player for replaying recorded actions in feature tests."""
 
 import json
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from unittest.mock import patch
 
+from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from signer.main_window import MainWindow
@@ -23,6 +25,7 @@ class ActionPlayer:
         self.canvas = main_window.canvas
         self._object_map: Dict[int, CanvasObject] = {}
         self._next_object_id = 0
+        self._endpoint_state: Dict[int, list[QPointF]] = {}
         self.output_path = output_path
 
     def load_actions(self, actions_file: str | Path) -> List[Dict[str, Any]]:
@@ -62,6 +65,12 @@ class ActionPlayer:
             self._execute_change_page(action)
         elif action_type == "set_text":
             self._execute_set_text(action)
+        elif action_type == "set_font_size":
+            self._execute_set_font_size(action)
+        elif action_type == "set_font_family":
+            self._execute_set_font_family(action)
+        elif action_type == "set_line_width":
+            self._execute_set_line_width(action)
         elif action_type == "undo":
             self._execute_undo(action)
         elif action_type == "redo":
@@ -136,6 +145,8 @@ class ActionPlayer:
             # Track the created object
             obj_id = action.get("object_id", self._next_object_id)
             self._register_object(obj_id, self.canvas.selected)
+            if hasattr(self.canvas.selected, 'supports_endpoint_handles') and self.canvas.selected.supports_endpoint_handles():
+                self._endpoint_state[obj_id] = self.canvas.selected.endpoint_points_doc()
             
             # Record to history by capturing object's current state
             # Build annotation data from the created object
@@ -213,9 +224,7 @@ class ActionPlayer:
     def _execute_resize_annotation(self, action: Dict[str, Any]) -> None:
         """Resize an annotation and record to history."""
         obj_id = action["object_id"]
-        width = action["width"]
-        height = action["height"]
-        handle = action.get("handle", 7)  # Default to bottom-right handle
+        handle = int(action.get("handle", 7))  # Default to bottom-right handle
 
         # First check if object is in the map
         obj = self._object_map.get(obj_id)
@@ -237,8 +246,24 @@ class ActionPlayer:
         self.canvas._selected = obj
         self.canvas.objectChanged.emit()
 
-        # Resize using set_scaled_size (proportional resize for vector annotations)
-        obj.set_scaled_size(width, height)
+        # Endpoint-handle resize: expected for LINE/ARROW_GENERIC in modern fixtures.
+        if "x" in action and "y" in action and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
+            if handle not in (0, 1):
+                raise RuntimeError(f"Endpoint resize requires handle 0 or 1, got {handle}")
+            points = self._endpoint_state.get(obj_id, obj.endpoint_points_doc())
+            if len(points) != 2:
+                raise RuntimeError(f"Object with id {obj_id} does not expose exactly two endpoint handles")
+            points[handle] = QPointF(float(action["x"]), float(action["y"]))
+            self._apply_endpoint_resize(obj, points[0], points[1])
+            self._endpoint_state[obj_id] = [QPointF(points[0]), QPointF(points[1])]
+            width = obj.scaled_width
+            height = obj.scaled_height
+        else:
+            # Legacy resize format: width/height based.
+            width = action["width"]
+            height = action["height"]
+            obj.set_scaled_size(width, height)
+
         self.canvas.objectChanged.emit()
         self.canvas.update()
         
@@ -252,6 +277,37 @@ class ActionPlayer:
             to_height=height
         )
         self.canvas.history.record_action(resize_action)
+
+    def _apply_endpoint_resize(self, obj: CanvasObject, p0: QPointF, p1: QPointF) -> None:
+        """Apply endpoint-based resize for LINE and ARROW_GENERIC.
+
+        Handle mapping:
+        - 0: start/tail endpoint
+        - 1: end/tip endpoint
+        """
+        dx = p1.x() - p0.x()
+        dy = p1.y() - p0.y()
+        dist = math.hypot(dx, dy)
+        if dist < 1e-6:
+            return
+
+        cx = (p0.x() + p1.x()) / 2.0
+        cy = (p0.y() + p1.y()) / 2.0
+
+        ann_type = getattr(obj, 'ann_type', None)
+        if ann_type == AnnotationType.LINE:
+            angle = math.degrees(math.atan2(dy, dx))
+            size = max(8.0, dist)
+        else:
+            # For ARROW_GENERIC, endpoint distance is 2*shaft = 0.66*size.
+            angle = math.degrees(math.atan2(-dy, dx))
+            size = max(8.0, dist / 0.66)
+
+        obj.set_scaled_size(size, size)
+        obj.x = cx - size / 2.0
+        obj.y = cy - size / 2.0
+        if hasattr(obj, '_angle'):
+            obj._angle = angle
 
     def _execute_select_annotation(self, action: Dict[str, Any]) -> None:
         """Select an annotation."""
@@ -394,6 +450,83 @@ class ActionPlayer:
             if hasattr(obj, 'fit_text_box'):
                 obj.fit_text_box()
         
+        self.canvas.objectChanged.emit()
+        self.canvas.update()
+
+    def _execute_set_font_size(self, action: Dict[str, Any]) -> None:
+        """Execute set_font_size on a text annotation.
+        
+        This method sets the font size (in points) on a text annotation.
+        """
+        obj_id = action.get("object_id")
+        font_size_px = action.get("font_size_px", 11)
+        
+        # If no object_id, use the last selected object
+        if obj_id is not None:
+            # Get object from canvas's current page objects by index
+            page_objects = self.canvas.current_page_objects()
+            if obj_id >= len(page_objects):
+                raise RuntimeError(f"Object with id {obj_id} not found for set_font_size in current page")
+            
+            obj = page_objects[obj_id]
+        else:
+            # Use currently selected object if available
+            obj = self.canvas.selected
+            if obj is None:
+                raise RuntimeError("No object selected for set_font_size")
+        
+        # Set the font size (directly set the private attribute)
+        if hasattr(obj, '_font_size_px'):
+            obj._font_size_px = font_size_px
+            # Resize annotation to fit the text with new font size if available
+            if hasattr(obj, 'fit_text_box'):
+                obj.fit_text_box()
+        
+        self.canvas.objectChanged.emit()
+        self.canvas.update()
+
+    def _execute_set_font_family(self, action: Dict[str, Any]) -> None:
+        """Set font family on a text annotation."""
+        obj_id = action.get("object_id")
+        font_family = action.get("font_family", "Arial")
+
+        obj = self._object_map.get(obj_id)
+        if obj is None:
+            page_objects = self.canvas.current_page_objects()
+            if obj_id is not None and obj_id < len(page_objects):
+                obj = page_objects[obj_id]
+        if obj is None:
+            raise RuntimeError(f"Object with id {obj_id} not found for set_font_family")
+
+        if hasattr(obj, '_font_family'):
+            obj._font_family = font_family
+            if hasattr(obj, 'fit_text_box'):
+                obj.fit_text_box()
+        self.canvas.objectChanged.emit()
+        self.canvas.update()
+
+    def _execute_set_line_width(self, action: Dict[str, Any]) -> None:
+        """Set line width (in PDF points) on a vector annotation.
+        
+        Updates both _line_width_pt (used by LINE/RECT/ELLIPSE) and
+        _line_width_factor (used by CHECKMARK/CROSSMARK/ARROW) to keep them in sync.
+        """
+        from signer.objects import CanvasObject
+        obj_id = action.get("object_id")
+        width_pt = float(action.get("width_pt", 1.5))
+
+        obj = self._object_map.get(obj_id)
+        if obj is None:
+            page_objects = self.canvas.current_page_objects()
+            if obj_id is not None and obj_id < len(page_objects):
+                obj = page_objects[obj_id]
+        if obj is None:
+            raise RuntimeError(f"Object with id {obj_id} not found for set_line_width")
+
+        if hasattr(obj, '_line_width_pt'):
+            obj._line_width_pt = width_pt
+        if hasattr(obj, '_line_width_factor'):
+            obj._line_width_factor = width_pt / CanvasObject.DEFAULT_BASE_SIZE
         self.canvas.objectChanged.emit()
         self.canvas.update()
 

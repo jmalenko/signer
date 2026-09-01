@@ -1,0 +1,431 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples/document1.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1280.0,
+      "y": 1154.0,
+      "object_id": 0
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 0,
+      "handle": 0,
+      "x": 1484.0,
+      "y": 1754.0
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 0,
+      "handle": 1,
+      "x": 2276.0,
+      "y": 1754.0
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1248.68,
+      "y": 1351.77,
+      "object_id": 1
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 1,
+      "handle": 0,
+      "x": 1472.06,
+      "y": 1829.4
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 1,
+      "handle": 1,
+      "x": 2225.29,
+      "y": 2074.14
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1157.77,
+      "y": 1530.18,
+      "object_id": 2
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 2,
+      "handle": 0,
+      "x": 1437.4,
+      "y": 1897.42
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 2,
+      "handle": 1,
+      "x": 2078.14,
+      "y": 2362.95
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1016.18,
+      "y": 1671.77,
+      "object_id": 3
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 3,
+      "handle": 0,
+      "x": 1383.42,
+      "y": 1951.4
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 3,
+      "handle": 1,
+      "x": 1848.95,
+      "y": 2592.14
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 837.77,
+      "y": 1762.68,
+      "object_id": 4
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 4,
+      "handle": 0,
+      "x": 1315.4,
+      "y": 1986.06
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 4,
+      "handle": 1,
+      "x": 1560.14,
+      "y": 2739.29
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 640.0,
+      "y": 1794.0,
+      "object_id": 5
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 5,
+      "handle": 0,
+      "x": 1240.0,
+      "y": 1998.0
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 5,
+      "handle": 1,
+      "x": 1240.0,
+      "y": 2790.0
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 442.23,
+      "y": 1762.68,
+      "object_id": 6
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 6,
+      "handle": 0,
+      "x": 1164.6,
+      "y": 1986.06
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 6,
+      "handle": 1,
+      "x": 919.86,
+      "y": 2739.29
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 263.82,
+      "y": 1671.77,
+      "object_id": 7
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 7,
+      "handle": 0,
+      "x": 1096.58,
+      "y": 1951.4
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 7,
+      "handle": 1,
+      "x": 631.05,
+      "y": 2592.14
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 122.23,
+      "y": 1530.18,
+      "object_id": 8
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 8,
+      "handle": 0,
+      "x": 1042.6,
+      "y": 1897.42
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 8,
+      "handle": 1,
+      "x": 401.86,
+      "y": 2362.95
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 31.32,
+      "y": 1351.77,
+      "object_id": 9
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 9,
+      "handle": 0,
+      "x": 1007.94,
+      "y": 1829.4
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 9,
+      "handle": 1,
+      "x": 254.71,
+      "y": 2074.14
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 0.0,
+      "y": 1154.0,
+      "object_id": 10
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 10,
+      "handle": 0,
+      "x": 996.0,
+      "y": 1754.0
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 10,
+      "handle": 1,
+      "x": 204.0,
+      "y": 1754.0
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 31.32,
+      "y": 956.23,
+      "object_id": 11
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 11,
+      "handle": 0,
+      "x": 1007.94,
+      "y": 1678.6
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 11,
+      "handle": 1,
+      "x": 254.71,
+      "y": 1433.86
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 122.23,
+      "y": 777.82,
+      "object_id": 12
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 12,
+      "handle": 0,
+      "x": 1042.6,
+      "y": 1610.58
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 12,
+      "handle": 1,
+      "x": 401.86,
+      "y": 1145.05
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 263.82,
+      "y": 636.23,
+      "object_id": 13
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 13,
+      "handle": 0,
+      "x": 1096.58,
+      "y": 1556.6
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 13,
+      "handle": 1,
+      "x": 631.05,
+      "y": 915.86
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 442.23,
+      "y": 545.32,
+      "object_id": 14
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 14,
+      "handle": 0,
+      "x": 1164.6,
+      "y": 1521.94
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 14,
+      "handle": 1,
+      "x": 919.86,
+      "y": 768.71
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 640.0,
+      "y": 514.0,
+      "object_id": 15
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 15,
+      "handle": 0,
+      "x": 1240.0,
+      "y": 1510.0
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 15,
+      "handle": 1,
+      "x": 1240.0,
+      "y": 718.0
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 837.77,
+      "y": 545.32,
+      "object_id": 16
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 16,
+      "handle": 0,
+      "x": 1315.4,
+      "y": 1521.94
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 16,
+      "handle": 1,
+      "x": 1560.14,
+      "y": 768.71
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1016.18,
+      "y": 636.23,
+      "object_id": 17
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 17,
+      "handle": 0,
+      "x": 1383.42,
+      "y": 1556.6
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 17,
+      "handle": 1,
+      "x": 1848.95,
+      "y": 915.86
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1157.77,
+      "y": 777.82,
+      "object_id": 18
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 18,
+      "handle": 0,
+      "x": 1437.4,
+      "y": 1610.58
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 18,
+      "handle": 1,
+      "x": 2078.14,
+      "y": 1145.05
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1248.68,
+      "y": 956.23,
+      "object_id": 19
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 19,
+      "handle": 0,
+      "x": 1472.06,
+      "y": 1678.6
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 19,
+      "handle": 1,
+      "x": 2225.29,
+      "y": 1433.86
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}

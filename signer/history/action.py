@@ -75,6 +75,12 @@ class Action(ABC):
             return RotatePageAction.from_data(data)
         elif action_type == "set_text":
             return SetTextAnnotationAction.from_data(data)
+        elif action_type == "change_line_width":  # v1.2.22
+            return ChangeLineWidthAction.from_data(data)
+        elif action_type == "change_font_size":  # v1.2.22
+            return ChangeFontSizeAction.from_data(data)
+        elif action_type == "change_font_family":  # v1.2.22
+            return ChangeFontFamilyAction.from_data(data)
         else:
             raise ValueError(f"Unknown action type: {action_type}")
 
@@ -181,7 +187,6 @@ class MoveAnnotationAction(MergeableAction):
         
         # Emit signal to update canvas (required for render to work properly)
         canvas.objectChanged.emit()
-        canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
         """Move annotation back to initial position."""
@@ -267,11 +272,21 @@ class ResizeAnnotationAction(MergeableAction):
 
     def execute(self, canvas: Any) -> None:
         """Resize annotation to target size."""
-        obj = canvas.current_page_objects()
-        if self.data["object_id"] < len(obj):
-            target = self.get_target_state()
-            obj[self.data["object_id"]].set_scaled_size(target["width"], target["height"])
-            canvas.objectChanged.emit()
+        obj_id = self.data["object_id"]
+        target = self.get_target_state()
+        
+        # Use the object map to find the object by ID
+        if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
+            obj_id in canvas._object_map):
+            obj = canvas._object_map[obj_id]
+            obj.set_scaled_size(target["width"], target["height"])
+        else:
+            # Fallback to array index lookup for backward compatibility
+            page_objs = canvas.current_page_objects()
+            if obj_id < len(page_objs):
+                page_objs[obj_id].set_scaled_size(target["width"], target["height"])
+        
+        canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
         """Resize annotation back to initial size."""
@@ -353,18 +368,28 @@ class AddAnnotationAction(Action):
         if "ann_type" in data_for_creation:
             # Use VectorAnnotation.from_dict if we have the right format
             try:
-                # Determine base size: arrows are 2x checkmark/crossmark size
+                # Determine default base size for annotations created from
+                # minimal action payloads.
                 ann_type_str = data_for_creation["ann_type"]
                 try:
                     ann_type = AnnotationType(ann_type_str)
                     is_arrow = ann_type in ARROW_TYPES
                 except ValueError:
                     is_arrow = False
+                    ann_type = None
                 
                 # Add default values for any missing fields
-                # Base size in PDF points: 20 for checkmark/cross, 40 for arrows
+                # Base size in PDF points:
+                # - 20 for checkmark/cross (legacy compact size)
+                # - 80 for line/rectangle/ellipse
+                # - 160 for arrows
                 # These get scaled by DPI_SCALE (300/72) for 300 DPI rendering
-                default_base_size_points = 40.0 if is_arrow else 20.0
+                if is_arrow:
+                    default_base_size_points = 160.0
+                elif ann_type in {AnnotationType.LINE, AnnotationType.RECTANGLE, AnnotationType.ELLIPSE}:
+                    default_base_size_points = 80.0
+                else:
+                    default_base_size_points = 20.0
                 default_base_size_scaled = default_base_size_points * DPI_SCALE
                 
                 if "base_width" not in data_for_creation:
@@ -850,4 +875,208 @@ class RotatePageAction(Action):
             page=data["page"],
             to_rotation=data["to_rotation"],
             from_rotation=data.get("from_rotation"),
+        )
+
+
+# v1.2.22: New action classes for annotation properties
+
+class ChangeLineWidthAction(Action):
+    """Action: Change line width of vector annotations."""
+
+    def __init__(self, object_id: int | None = None, line_width_pt: float = 1.5, from_line_width_pt: float | None = None) -> None:
+        """Initialize line width change action.
+        
+        Args:
+            object_id: ID of object
+            line_width_pt: New line width in points
+            from_line_width_pt: Previous line width (for undo)
+        """
+        data = {"object_id": object_id, "line_width_pt": line_width_pt}
+        if from_line_width_pt is not None:
+            data["from_line_width_pt"] = from_line_width_pt
+        super().__init__("change_line_width", data)
+
+    def execute(self, canvas: Any) -> None:
+        """Apply line width change."""
+        if "object_id" in self.data:
+            obj_id = self.data["object_id"]
+            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
+                obj = canvas._object_map[obj_id]
+                if hasattr(obj, '_line_width_pt'):
+                    obj._line_width_pt = self.data["line_width_pt"]
+            else:
+                objects = canvas.current_page_objects()
+                if 0 <= obj_id < len(objects):
+                    obj = objects[obj_id]
+                    if hasattr(obj, '_line_width_pt'):
+                        obj._line_width_pt = self.data["line_width_pt"]
+        canvas.update()
+        canvas.objectChanged.emit()
+
+    def undo(self, canvas: Any) -> None:
+        """Restore previous line width."""
+        if "from_line_width_pt" in self.data and "object_id" in self.data:
+            obj_id = self.data["object_id"]
+            from_width = self.data["from_line_width_pt"]
+            
+            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
+                obj = canvas._object_map[obj_id]
+                if hasattr(obj, '_line_width_pt'):
+                    obj._line_width_pt = from_width
+            else:
+                objects = canvas.current_page_objects()
+                if 0 <= obj_id < len(objects):
+                    obj = objects[obj_id]
+                    if hasattr(obj, '_line_width_pt'):
+                        obj._line_width_pt = from_width
+        canvas.update()
+        canvas.objectChanged.emit()
+
+    @classmethod
+    def from_data(cls, data: dict[str, Any]) -> "ChangeLineWidthAction":
+        """Create action from serialized data."""
+        return cls(
+            object_id=data.get("object_id"),
+            line_width_pt=data.get("line_width_pt", 1.5),
+            from_line_width_pt=data.get("from_line_width_pt"),
+        )
+
+
+class ChangeFontSizeAction(Action):
+    """Action: Change font size of text annotations."""
+
+    def __init__(self, object_id: int | None = None, font_size_px: int = 11, from_font_size_px: int | None = None) -> None:
+        """Initialize font size change action.
+        
+        Args:
+            object_id: ID of object
+            font_size_px: New font size in pixels
+            from_font_size_px: Previous font size (for undo)
+        """
+        data = {"object_id": object_id, "font_size_px": font_size_px}
+        if from_font_size_px is not None:
+            data["from_font_size_px"] = from_font_size_px
+        super().__init__("change_font_size", data)
+
+    def execute(self, canvas: Any) -> None:
+        """Apply font size change."""
+        if "object_id" in self.data:
+            obj_id = self.data["object_id"]
+            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
+                obj = canvas._object_map[obj_id]
+                if hasattr(obj, '_font_size_px'):
+                    obj._font_size_px = self.data["font_size_px"]
+                    if hasattr(obj, 'fit_text_box'):
+                        obj.fit_text_box()
+            else:
+                objects = canvas.current_page_objects()
+                if 0 <= obj_id < len(objects):
+                    obj = objects[obj_id]
+                    if hasattr(obj, '_font_size_px'):
+                        obj._font_size_px = self.data["font_size_px"]
+                        if hasattr(obj, 'fit_text_box'):
+                            obj.fit_text_box()
+        canvas.update()
+        canvas.objectChanged.emit()
+
+    def undo(self, canvas: Any) -> None:
+        """Restore previous font size."""
+        if "from_font_size_px" in self.data and "object_id" in self.data:
+            obj_id = self.data["object_id"]
+            from_size = self.data["from_font_size_px"]
+            
+            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
+                obj = canvas._object_map[obj_id]
+                if hasattr(obj, '_font_size_px'):
+                    obj._font_size_px = from_size
+                    if hasattr(obj, 'fit_text_box'):
+                        obj.fit_text_box()
+            else:
+                objects = canvas.current_page_objects()
+                if 0 <= obj_id < len(objects):
+                    obj = objects[obj_id]
+                    if hasattr(obj, '_font_size_px'):
+                        obj._font_size_px = from_size
+                        if hasattr(obj, 'fit_text_box'):
+                            obj.fit_text_box()
+        canvas.update()
+        canvas.objectChanged.emit()
+
+    @classmethod
+    def from_data(cls, data: dict[str, Any]) -> "ChangeFontSizeAction":
+        """Create action from serialized data."""
+        return cls(
+            object_id=data.get("object_id"),
+            font_size_px=data.get("font_size_px", 11),
+            from_font_size_px=data.get("from_font_size_px"),
+        )
+
+
+class ChangeFontFamilyAction(Action):
+    """Action: Change font family of text annotations."""
+
+    def __init__(self, object_id: int | None = None, font_family: str = "Arial", from_font_family: str | None = None) -> None:
+        """Initialize font family change action.
+        
+        Args:
+            object_id: ID of object
+            font_family: New font family name
+            from_font_family: Previous font family (for undo)
+        """
+        data = {"object_id": object_id, "font_family": font_family}
+        if from_font_family:
+            data["from_font_family"] = from_font_family
+        super().__init__("change_font_family", data)
+
+    def execute(self, canvas: Any) -> None:
+        """Apply font family change."""
+        if "object_id" in self.data:
+            obj_id = self.data["object_id"]
+            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
+                obj = canvas._object_map[obj_id]
+                if hasattr(obj, '_font_family'):
+                    obj._font_family = self.data["font_family"]
+                    if hasattr(obj, 'fit_text_box'):
+                        obj.fit_text_box()
+            else:
+                objects = canvas.current_page_objects()
+                if 0 <= obj_id < len(objects):
+                    obj = objects[obj_id]
+                    if hasattr(obj, '_font_family'):
+                        obj._font_family = self.data["font_family"]
+                        if hasattr(obj, 'fit_text_box'):
+                            obj.fit_text_box()
+        canvas.update()
+        canvas.objectChanged.emit()
+
+    def undo(self, canvas: Any) -> None:
+        """Restore previous font family."""
+        if "from_font_family" in self.data and "object_id" in self.data:
+            obj_id = self.data["object_id"]
+            from_family = self.data["from_font_family"]
+            
+            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
+                obj = canvas._object_map[obj_id]
+                if hasattr(obj, '_font_family'):
+                    obj._font_family = from_family
+                    if hasattr(obj, 'fit_text_box'):
+                        obj.fit_text_box()
+            else:
+                objects = canvas.current_page_objects()
+                if 0 <= obj_id < len(objects):
+                    obj = objects[obj_id]
+                    if hasattr(obj, '_font_family'):
+                        obj._font_family = from_family
+                        if hasattr(obj, 'fit_text_box'):
+                            obj.fit_text_box()
+        canvas.update()
+        canvas.objectChanged.emit()
+
+    @classmethod
+    def from_data(cls, data: dict[str, Any]) -> "ChangeFontFamilyAction":
+        """Create action from serialized data."""
+        return cls(
+            object_id=data.get("object_id"),
+            font_family=data.get("font_family", "Arial"),
+            from_font_family=data.get("from_font_family"),
         )

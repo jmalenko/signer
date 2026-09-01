@@ -386,6 +386,189 @@ When pasted:
 
 The application maintains unlimited undo/redo history during a document session. History is not persisted to disk; it is cleared when a new document is opened or the application closes. Consecutive move/resize operations on the same annotation are coalesced into a single history entry.
 
+### 5.16 Extended Annotation Types & Properties (v1.2.22)
+
+#### New Annotation Types
+
+**Line Annotation**:
+- Simple straight line drawn from start to end point
+- Properties: color, line width (width property)
+- Free corner dragging: drag either endpoint past the opposite endpoint to change line direction
+
+**Arrow Annotation**:
+- Line with an arrowhead at the end
+- Subtypes: Generic (direction auto-calculated) + 8 Directional (E, SE, S, SW, W, NW, N, NE)
+- Arrow order in menu: East, South-East, South, South-West, West, North-West, North, North-East
+- Generic arrow: arrowhead direction determined by line angle (start→end)
+- Directional arrows: arrowhead fixed to specified direction; line can extend any direction
+- Properties: color, line width (width property)
+- Free corner dragging: drag either endpoint past the opposite endpoint to change line direction; generic arrow updates direction accordingly
+
+**Rectangle & Square Annotation**:
+- Filled outline rectangle (no fill, stroke only)
+- Shape detection: automatic during creation based on aspect ratio
+  - If height-width difference ≤ ±10%: created as **square**
+  - Otherwise: created as **rectangle**
+- Shape override: holding **Ctrl key during creation** forces creation as **rectangle** regardless of aspect ratio
+- Properties: color, line width (width property)
+- Free corner dragging: corners swap when dragged past opposite corner; shape type (square/rectangle) is re-evaluated on resize
+
+**Ellipse & Circle Annotation**:
+- Filled outline ellipse/circle (no fill, stroke only)
+- Shape detection: automatic during creation based on aspect ratio
+  - If height-width difference ≤ ±10%: created as **circle**
+  - Otherwise: created as **ellipse**
+- Shape override: holding **Ctrl key during creation** forces creation as **ellipse** regardless of aspect ratio
+- Properties: color, line width (width property)
+- Free corner dragging: corners swap when dragged past opposite corner; shape type (circle/ellipse) is re-evaluated on resize
+
+**Image Annotation**:
+- User-provided image file (all formats supported; scaled to fit bounding box while preserving aspect ratio)
+- Loading: File dialog to select image; recent 10 images tracked in submenu for quick access
+- Properties: No color or width controls (hidden/disabled for this type)
+- Free corner dragging: supported; aspect ratio preserved during resize
+
+#### Extended Properties for All Types
+
+**Line Width Property** (applies to: Line, Arrow, Rectangle, Ellipse, Checkmark, Crossmark):
+- Unit: points (1 point = 1/72 inch)
+- Range: 0.5 to 10 points, step 0.5
+- Default: 1.5 points
+- UI Control: Toolbar spinner showing value in points
+- Keyboard control: `[` to decrease, `]` to increase (step 0.5 points)
+- Context-sensitive: visible and enabled only for vector annotation types
+- Excluded from: Text, Signature/Image annotations
+
+**Font Size Property** (applies to: Text annotations only):
+- Unit: points (1 point = 1/72 inch)
+- Range: 6 to 72 points, step 1
+- Default: 11 points
+- UI Control: Toolbar spinner showing value in points
+- Keyboard control: `[` to decrease, `]` to increase (step 1 point)
+- Resize behavior: When text bounding box is resized, font size scales proportionally
+  - Calculation: `new_font_size = old_font_size × (new_height / old_height)`
+- Context-sensitive: visible and enabled only for Text annotations
+
+**Font Family Property** (applies to: Text annotations only):
+- Source: System fonts via Qt QFontComboBox
+- Default: System default font (usually Arial or Liberation Sans)
+- UI Control: Toolbar combo box with all available system fonts
+- Context-sensitive: visible and enabled only for Text annotations
+
+#### Updated Annotation Menu Structure
+
+```
+Annotations Menu
+├── Checkmark
+├── Crossmark
+├── Line
+├── Arrow
+│   ├── Arrow (generic)
+│   ├── ────────────── (separator)
+│   ├── Arrow East
+│   ├── Arrow South-East
+│   ├── Arrow South
+│   ├── Arrow South-West
+│   ├── Arrow West
+│   ├── Arrow North-West
+│   ├── Arrow North
+│   └── Arrow North-East
+├── Rectangle / Square
+├── Ellipse / Circle
+├── Text
+└── Signature / Image
+    ├── Signature
+    ├── ────────────── (separator)
+    └── Load Image...
+    └── ────────────── (separator)
+    └── Recent Images
+        ├── image1.png
+        ├── image2.jpg
+        └── ... (up to 10 recent entries)
+```
+
+#### UI Context-Sensitivity
+
+Control visibility and enable/disable state based on:
+1. Whether document is open
+2. Whether annotation is selected
+3. Type of selected annotation
+
+**Toolbar Control Visibility Map**:
+
+| Control | Checkmark | Crossmark | Line | Arrow | Rectangle | Ellipse | Text | Sig/Image |
+|---------|-----------|-----------|------|-------|-----------|---------|------|-----------|
+| Color | ✓ enabled | ✓ enabled | ✓ enabled | ✓ enabled | ✓ enabled | ✓ enabled | ✓ enabled | ✗ hidden |
+| Width spinner | ✓ enabled | ✓ enabled | ✓ enabled | ✓ enabled | ✓ enabled | ✓ enabled | ✗ hidden | ✗ hidden |
+| Font size spinner | ✗ hidden | ✗ hidden | ✗ hidden | ✗ hidden | ✗ hidden | ✗ hidden | ✓ enabled | ✗ hidden |
+| Font family combo | ✗ hidden | ✗ hidden | ✗ hidden | ✗ hidden | ✗ hidden | ✗ hidden | ✓ enabled | ✗ hidden |
+
+**Button State**:
+- "Add Annotation" button: **disabled** when no document open; **enabled** when document is open
+- "Save JPG" button: **disabled** when no document open; **enabled** when document is open
+
+#### Free Corner Dragging Behavior
+
+**Applies to**: Line, Arrow, Rectangle, Ellipse (and existing Checkmark, Crossmark)
+
+**Not applies to**: Text, Signature/Image annotations (only support move/scale as single unit)
+
+**Behavior**:
+- User drags any corner/endpoint past the opposite corner → coordinates swap
+- Example 1 (Line): Line from (100, 100) to (200, 200), drag end point to (50, 50) → line is now from (200, 200) to (50, 50)
+- Example 2 (Arrow generic): Arrow pointing SE (from TL to BR), drag BR corner above/left of TL → arrow now points NE (corners swapped)
+- Example 3 (Rectangle): Rectangle with corners at (100, 100) and (200, 200), drag BR corner to (50, 50) → corners are now (200, 200) and (50, 50), effectively swapping
+- Shape type re-evaluation: After resize, Rectangle/Ellipse types are re-checked:
+  - Rectangle: if height-width difference now ≤ ±10%, it becomes square (visual only, remains "rectangle" type in data)
+  - Ellipse: if height-width difference now ≤ ±10%, it becomes circle (visual only, remains "ellipse" type in data)
+
+#### Recent Images Tracking
+
+**Configuration**:
+- Store in `config.json` as `recentImagePaths: List[str]`
+- Maximum entries: 10
+- Persistence: Across application sessions
+- No explicit clear option in UI (user can edit settings file if needed)
+
+**Behavior**:
+- When image is loaded via "Load Image...", its path is prepended to recent list
+- If path already in list, move to front (LRU ordering)
+- List limited to most recent 10 entries
+- Recent images submenu populated from this list
+- Clicking recent image immediately loads it without dialog
+
+#### Serialization Format (v1.2.22)
+
+All annotations include JSON format version identifier:
+```json
+{
+  "version": "1.2.22",
+  "annotations": [
+    {
+      "id": 0,
+      "type": "line|arrow|rectangle|ellipse|image|text|checkmark|crossmark|signature",
+      "x": 100,
+      "y": 100,
+      "width": 50,
+      "height": 50,
+      "color": "#FF0000",
+      "line_width": 1.5,
+      "arrow_subtype": "generic|east|southeast|south|southwest|west|northwest|north|northeast",
+      "font_size": 11.0,
+      "font_family": "Arial",
+      "text": "...",
+      "image_path": "...",
+      "image_data": "..."
+    }
+  ]
+}
+```
+
+**Backward Compatibility**:
+- Old format (without `version` field or with `version < "1.2.22"`) loads successfully
+- Missing properties use defaults (line_width: 1.5, font_size: 11, font_family: system default)
+- Export respects old annotations (width property preserved if present, calculated on load if absent)
+
 ## 6. Error Handling
 - Missing/unreadable document: block canvas interaction, show clear error message.
 - Missing signature annotation: allow document load, prompt user to add a signature annotation before save.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import math
 
 from PIL import Image
 from PIL.ImageQt import ImageQt
@@ -54,6 +55,7 @@ class DocumentCanvas(QWidget):
         self._drag_start_w: float = 0.0  # Initial size when resize starts
         self._drag_start_h: float = 0.0
         self._action_recorded_this_drag: bool = False  # Track if action was recorded yet
+        self._drag_endpoint_handles: bool = False
 
         self._hdrag_anchor_doc: QPointF = QPointF()
         self._hdrag_anchor_fx: float = 0.0
@@ -373,6 +375,48 @@ class DocumentCanvas(QWidget):
                 pw, ph = self.current_page_image.size
                 obj.clamp_to_page(pw, ph)
         self.objectChanged.emit()
+
+    # v1.2.22: Adjust annotation properties (line width, font size) with keyboard
+    def _adjust_annotation_property(self, selected, direction: str) -> None:
+        """Adjust line width for vector annotations or font size for text annotations."""
+        from .objects import VectorAnnotation, AnnotationType
+        from .history import ChangeLineWidthAction, ChangeFontSizeAction
+        
+        sign = -1 if direction == 'decrease' else 1
+        
+        objs = self.current_page_objects()
+        for obj in selected:
+            if isinstance(obj, VectorAnnotation):
+                obj_idx = objs.index(obj) if obj in objs else -1
+                if obj.ann_type == AnnotationType.TEXT:
+                    # Adjust font size for text
+                    old_size = obj._font_size_px
+                    new_size = max(6, min(72, obj._font_size_px + sign * 1))
+                    obj._font_size_px = new_size
+                    obj.fit_text_box()
+                    # Record to history
+                    if obj_idx >= 0:
+                        action = ChangeFontSizeAction(
+                            object_id=obj_idx,
+                            from_size=old_size,
+                            to_size=new_size,
+                        )
+                        self.history.record_action(action)
+                elif obj.ann_type not in {AnnotationType.TEXT}:
+                    # Adjust line width for vector annotations (not TEXT)
+                    old_width = obj._line_width_pt
+                    new_width = max(0.5, min(10.0, obj._line_width_pt + sign * 0.5))
+                    obj._line_width_pt = new_width
+                    # Record to history
+                    if obj_idx >= 0:
+                        action = ChangeLineWidthAction(
+                            object_id=obj_idx,
+                            from_width=old_width,
+                            to_width=new_width,
+                        )
+                        self.history.record_action(action)
+        
+        self.objectChanged.emit()
         self.update()
 
     def delete_selected(self) -> None:
@@ -690,7 +734,12 @@ class DocumentCanvas(QWidget):
                 painter.save()
                 painter.setPen(QColor("#00a2ff"))
                 painter.setBrush(Qt.NoBrush)
-                painter.drawRect(r)
+                if obj is self._selected and obj.supports_endpoint_handles():
+                    pts = obj.endpoint_points_viewport(r.x(), r.y(), r.width(), r.height())
+                    if len(pts) == 2:
+                        painter.drawLine(pts[0], pts[1])
+                else:
+                    painter.drawRect(r)
                 # Only draw resize handles for primary selected object
                 if obj is self._selected:
                     for hr in obj.handle_rects_viewport(r.x(), r.y(), r.width(), r.height()):
@@ -747,6 +796,23 @@ class DocumentCanvas(QWidget):
     def _start_handle_drag(self, h_idx: int, pt: QPointF) -> None:
         obj = self._selected
         assert obj is not None
+
+        if obj.supports_endpoint_handles() and h_idx in (0, 1):
+            endpoints = obj.endpoint_points_doc()
+            if len(endpoints) == 2:
+                self._hdrag_anchor_doc = endpoints[1 - h_idx]
+                self._hdrag_anchor_fx = 0.0
+                self._hdrag_anchor_fy = 0.0
+                self._hdrag_start_w = obj.scaled_width
+                self._hdrag_start_h = obj.scaled_height
+                self._dragging = True
+                self._drag_handle = h_idx
+                self._drag_endpoint_handles = True
+                self._drag_start_w = obj.scaled_width
+                self._drag_start_h = obj.scaled_height
+                self._action_recorded_this_drag = False
+                return
+
         anchor_h = ANCHOR_HANDLE[h_idx]
         ax = obj.x + HANDLE_FX[anchor_h] * obj.scaled_width
         ay = obj.y + HANDLE_FY[anchor_h] * obj.scaled_height
@@ -757,11 +823,38 @@ class DocumentCanvas(QWidget):
         self._hdrag_start_h = obj.scaled_height
         self._dragging = True
         self._drag_handle = h_idx
+        self._drag_endpoint_handles = False
         
         # Capture initial size for resize action recording
         self._drag_start_w = obj.scaled_width
         self._drag_start_h = obj.scaled_height
         self._action_recorded_this_drag = False
+
+    @staticmethod
+    def _snap_rect_ellipse_size(new_w: float, new_h: float, handle: int, modifier_pressed: bool) -> tuple[float, float, bool]:
+        """Apply square/circle snapping for rectangle/ellipse resizing.
+
+        Snap is active when aspect ratio is within +/-20% of square
+        (0.8..1.2 inclusive), unless any modifier key is pressed.
+        """
+        if modifier_pressed:
+            return new_w, new_h, False
+
+        ratio = new_w / new_h if new_h > 0 else 999.0
+        near_square = 0.8 <= ratio <= 1.2
+        if not near_square:
+            return new_w, new_h, False
+
+        if handle in (3, 4):
+            # Left/right edge drag: keep height, snap width to height.
+            return new_h, new_h, True
+        if handle in (1, 6):
+            # Top/bottom edge drag: keep width, snap height to width.
+            return new_w, new_w, True
+
+        # Corner drag: smooth snap near threshold.
+        size = (new_w + new_h) / 2.0
+        return size, size, True
 
     def mouseMoveEvent(self, event) -> None:
         pt = event.position()
@@ -773,14 +866,18 @@ class DocumentCanvas(QWidget):
                 self._selected.x = doc_pt.x() - self._drag_doc_offset_x
                 self._selected.y = doc_pt.y() - self._drag_doc_offset_y
                 
-                # Record move action with coalescing
-                objects = self.current_page_objects()
-                obj_idx = objects.index(self._selected) if self._selected in objects else -1
-                if obj_idx >= 0:
+                # Record move action with coalescing using stable object ID
+                # v1.2.22: Use _object_map for stable ID
+                obj_id = id(self._selected) if hasattr(self, '_stable_id_map') else -1
+                if obj_id == -1:
+                    # Fallback: use array index if object map not available
+                    objects = self.current_page_objects()
+                    obj_id = objects.index(self._selected) if self._selected in objects else -1
+                if obj_id >= 0:
                     if not self._action_recorded_this_drag:
                         # First move: create full-format action with initial state
                         action = MoveAnnotationAction(
-                            object_id=obj_idx,
+                            object_id=obj_id,
                             from_x=self._drag_start_x,
                             from_y=self._drag_start_y,
                             to_x=self._selected.x,
@@ -790,7 +887,7 @@ class DocumentCanvas(QWidget):
                     else:
                         # Subsequent moves: create partial-format action for merging
                         action = MoveAnnotationAction(
-                            object_id=obj_idx,
+                            object_id=obj_id,
                             x=self._selected.x,
                             y=self._selected.y,
                         )
@@ -798,59 +895,115 @@ class DocumentCanvas(QWidget):
             else:
                 # RESIZE operation
                 doc_pt = self._view_to_doc(pt)
-                ax = self._hdrag_anchor_doc.x()
-                ay = self._hdrag_anchor_doc.y()
-                h = self._drag_handle
-                fx = HANDLE_FX[h]
-                fy = HANDLE_FY[h]
 
-                if self._selected.supports_free_resize():
-                    # Signed extents from the fixed anchor; clamp to keep the
-                    # box on the correct side (no inversion past the anchor).
-                    if fx != self._hdrag_anchor_fx:
-                        new_w = (doc_pt.x() - ax) if fx > self._hdrag_anchor_fx else (ax - doc_pt.x())
+                if self._drag_endpoint_handles and self._selected.supports_endpoint_handles():
+                    anchor = self._hdrag_anchor_doc
+                    if self._drag_handle == 0:
+                        tail = doc_pt
+                        tip = anchor
                     else:
-                        new_w = self._hdrag_start_w
-                    if fy != self._hdrag_anchor_fy:
-                        new_h = (doc_pt.y() - ay) if fy > self._hdrag_anchor_fy else (ay - doc_pt.y())
+                        tail = anchor
+                        tip = doc_pt
+
+                    dx = tip.x() - tail.x()
+                    dy = tip.y() - tail.y()
+                    visual_len = max(8.0, math.hypot(dx, dy))
+
+                    if getattr(self._selected, 'ann_type', None).value == 'arrow_generic':
+                        # Arrow tip/tail distance is 0.66 * bbox side in drawing code.
+                        side = visual_len / 0.66
                     else:
-                        new_h = self._hdrag_start_h
-                    new_w = max(8.0, new_w)
-                    new_h = max(8.0, new_h)
+                        side = visual_len
+                    side = max(8.0, side)
+
+                    cx = (tail.x() + tip.x()) / 2.0
+                    cy = (tail.y() + tip.y()) / 2.0
+                    self._selected.set_scaled_size(side, side)
+                    self._selected.x = cx - self._selected.scaled_width / 2.0
+                    self._selected.y = cy - self._selected.scaled_height / 2.0
+
+                    if hasattr(self._selected, '_angle'):
+                        ann_type_val = getattr(getattr(self._selected, 'ann_type', None), 'value', None)
+                        if ann_type_val == 'line':
+                            self._selected._angle = math.degrees(math.atan2(dy, dx))
+                        else:
+                            self._selected._angle = math.degrees(math.atan2(-dy, dx))
+
+                    # Keep the non-dragged endpoint exactly fixed at the anchor.
+                    # This avoids visible drift caused by floating-point roundoff
+                    # while repeatedly recomputing size/angle from endpoint vectors.
+                    pts = self._selected.endpoint_points_doc()
+                    if len(pts) == 2:
+                        fixed_idx = 1 if self._drag_handle == 0 else 0
+                        fixed_pt = pts[fixed_idx]
+                        self._selected.x += anchor.x() - fixed_pt.x()
+                        self._selected.y += anchor.y() - fixed_pt.y()
                 else:
-                    if fx != self._hdrag_anchor_fx:
-                        new_w = abs(doc_pt.x() - ax) / abs(fx - self._hdrag_anchor_fx)
-                    else:
-                        new_w = self._hdrag_start_w
-                    if fy != self._hdrag_anchor_fy:
-                        new_h = abs(doc_pt.y() - ay) / abs(fy - self._hdrag_anchor_fy)
-                    else:
-                        new_h = self._hdrag_start_h
+                    ax = self._hdrag_anchor_doc.x()
+                    ay = self._hdrag_anchor_doc.y()
+                    h = self._drag_handle
+                    fx = HANDLE_FX[h]
+                    fy = HANDLE_FY[h]
 
-                    sx = new_w / max(1.0, self._hdrag_start_w)
-                    sy = new_h / max(1.0, self._hdrag_start_h)
-                    if fx == self._hdrag_anchor_fx:
-                        factor = sy
-                    elif fy == self._hdrag_anchor_fy:
-                        factor = sx
+                    if self._selected.supports_free_resize():
+                        # Signed extents from the fixed anchor; clamp to keep the
+                        # box on the correct side (no inversion past the anchor).
+                        if fx != self._hdrag_anchor_fx:
+                            new_w = (doc_pt.x() - ax) if fx > self._hdrag_anchor_fx else (ax - doc_pt.x())
+                        else:
+                            new_w = self._hdrag_start_w
+                        if fy != self._hdrag_anchor_fy:
+                            new_h = (doc_pt.y() - ay) if fy > self._hdrag_anchor_fy else (ay - doc_pt.y())
+                        else:
+                            new_h = self._hdrag_start_h
+                        new_w = max(8.0, new_w)
+                        new_h = max(8.0, new_h)
                     else:
-                        factor = max(sx, sy)
-                    factor = max(0.05, min(10.0, factor))
-                    new_w = self._hdrag_start_w * factor
-                    new_h = self._hdrag_start_h * factor
+                        if fx != self._hdrag_anchor_fx:
+                            new_w = abs(doc_pt.x() - ax) / abs(fx - self._hdrag_anchor_fx)
+                        else:
+                            new_w = self._hdrag_start_w
+                        if fy != self._hdrag_anchor_fy:
+                            new_h = abs(doc_pt.y() - ay) / abs(fy - self._hdrag_anchor_fy)
+                        else:
+                            new_h = self._hdrag_start_h
 
-                self._selected.set_scaled_size(new_w, new_h)
-                self._selected.x = ax - self._hdrag_anchor_fx * self._selected.scaled_width
-                self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
+                        sx = new_w / max(1.0, self._hdrag_start_w)
+                        sy = new_h / max(1.0, self._hdrag_start_h)
+                        if fx == self._hdrag_anchor_fx:
+                            factor = sy
+                        elif fy == self._hdrag_anchor_fy:
+                            factor = sx
+                        else:
+                            factor = max(sx, sy)
+                        factor = max(0.05, min(10.0, factor))
+                        new_w = self._hdrag_start_w * factor
+                        new_h = self._hdrag_start_h * factor
+
+                    # Square/circle snap: if ratio is within +/-20%, snap to 1:1.
+                    # Modifier keys (Shift/Ctrl/Alt) disable snapping.
+                    ann_type_val = getattr(getattr(self._selected, 'ann_type', None), 'value', None)
+                    is_rect_ellipse = ann_type_val in ('rectangle', 'ellipse')
+                    modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
+                    if is_rect_ellipse:
+                        new_w, new_h, _ = self._snap_rect_ellipse_size(new_w, new_h, h, modifier_pressed)
+
+                    self._selected.set_scaled_size(new_w, new_h)
+                    self._selected.x = ax - self._hdrag_anchor_fx * self._selected.scaled_width
+                    self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
                 
-                # Record resize action with coalescing
-                objects = self.current_page_objects()
-                obj_idx = objects.index(self._selected) if self._selected in objects else -1
-                if obj_idx >= 0:
+                # Record resize action with coalescing using stable object ID
+                # v1.2.22: Use object ID for stable reference
+                obj_id = id(self._selected) if hasattr(self, '_stable_id_map') else -1
+                if obj_id == -1:
+                    # Fallback: use array index if object map not available
+                    objects = self.current_page_objects()
+                    obj_id = objects.index(self._selected) if self._selected in objects else -1
+                if obj_id >= 0:
                     if not self._action_recorded_this_drag:
                         # First resize: create full-format action with initial state
                         action = ResizeAnnotationAction(
-                            object_id=obj_idx,
+                            object_id=obj_id,
                             from_width=self._drag_start_w,
                             from_height=self._drag_start_h,
                             to_width=self._selected.scaled_width,
@@ -860,13 +1013,14 @@ class DocumentCanvas(QWidget):
                     else:
                         # Subsequent resizes: create partial-format action for merging
                         action = ResizeAnnotationAction(
-                            object_id=obj_idx,
+                            object_id=obj_id,
                             width=self._selected.scaled_width,
                             height=self._selected.scaled_height,
                         )
                     self.history.record_action(action)
 
-            if self.current_page_image and not self._selected.supports_free_resize():
+            is_endpoint_drag = self._drag_endpoint_handles and self._selected.supports_endpoint_handles()
+            if self.current_page_image and not self._selected.supports_free_resize() and not is_endpoint_drag:
                 pw, ph = self.current_page_image.size
                 self._selected.clamp_to_page(pw, ph)
             self.objectChanged.emit()
@@ -879,6 +1033,9 @@ class DocumentCanvas(QWidget):
             r = self._object_view_rect(self._selected)
             h = self._selected.hit_test_handle(r.x(), r.y(), r.width(), r.height(), pt)
             if h >= 0:
+                if self._selected.supports_endpoint_handles():
+                    self.setCursor(Qt.CrossCursor)
+                    return
                 cursor_map = {
                     0: Qt.SizeFDiagCursor, 7: Qt.SizeFDiagCursor,
                     2: Qt.SizeBDiagCursor, 5: Qt.SizeBDiagCursor,
@@ -898,6 +1055,7 @@ class DocumentCanvas(QWidget):
         if event.button() == Qt.LeftButton:
             self._dragging = False
             self._drag_handle = -1
+            self._drag_endpoint_handles = False
             # Reset drag action tracking
             self._action_recorded_this_drag = False
 
@@ -1097,6 +1255,19 @@ class DocumentCanvas(QWidget):
                 else:
                     # R: Rotate all pages right
                     self.rotate_all_pages_right()
+                return
+        
+        # v1.2.22: Width/font size adjustment with [ and ] keys
+        if not is_ctrl_key and not is_shift_key:
+            if key == Qt.Key_BracketLeft:  # [
+                # Decrease line width or font size
+                if selected:
+                    self._adjust_annotation_property(selected, 'decrease')
+                return
+            elif key == Qt.Key_BracketRight:  # ]
+                # Increase line width or font size
+                if selected:
+                    self._adjust_annotation_property(selected, 'increase')
                 return
         
         super().keyPressEvent(event)
