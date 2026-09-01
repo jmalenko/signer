@@ -1,7 +1,7 @@
 """Unit tests for menu structure and annotation menu items."""
 
 import pytest
-from signer.objects import AnnotationType, DIRECTIONAL_ARROW_TYPES
+from signer.objects import AnnotationType
 
 
 class TestAnnotationMenuStructure:
@@ -22,10 +22,10 @@ class TestAnnotationMenuStructure:
         assert hasattr(AnnotationType, 'LINE')
         assert AnnotationType.LINE.value == 'line'
     
-    def test_arrow_generic_menu_item_exists(self):
-        """Test generic Arrow is in annotation menu."""
-        assert hasattr(AnnotationType, 'ARROW_GENERIC')
-        assert AnnotationType.ARROW_GENERIC.value == 'arrow_generic'
+    def test_arrow_menu_item_exists(self):
+        """Test Arrow is in annotation menu."""
+        assert hasattr(AnnotationType, 'ARROW')
+        assert AnnotationType.ARROW.value == 'arrow'
     
     def test_rectangle_menu_item_exists(self):
         """Test Rectangle is in annotation menu."""
@@ -54,74 +54,18 @@ class TestAnnotationMenuStructure:
 
 
 class TestArrowSubmenu:
-    """Test Arrow submenu with all 8 directional arrows."""
+    """Test Arrow annotation (no longer a submenu in v1.2.24)."""
     
-    def test_arrow_e_exists(self):
-        """Test Arrow East in submenu."""
-        assert hasattr(AnnotationType, 'ARROW_E')
-        assert AnnotationType.ARROW_E.value == 'arrow_e'
+    def test_arrow_exists(self):
+        """Test Arrow annotation type exists."""
+        assert hasattr(AnnotationType, 'ARROW')
+        assert AnnotationType.ARROW.value == 'arrow'
     
-    def test_arrow_se_exists(self):
-        """Test Arrow Southeast in submenu."""
-        assert hasattr(AnnotationType, 'ARROW_SE')
-        assert AnnotationType.ARROW_SE.value == 'arrow_se'
-    
-    def test_arrow_s_exists(self):
-        """Test Arrow South in submenu."""
-        assert hasattr(AnnotationType, 'ARROW_S')
-        assert AnnotationType.ARROW_S.value == 'arrow_s'
-    
-    def test_arrow_sw_exists(self):
-        """Test Arrow Southwest in submenu."""
-        assert hasattr(AnnotationType, 'ARROW_SW')
-        assert AnnotationType.ARROW_SW.value == 'arrow_sw'
-    
-    def test_arrow_w_exists(self):
-        """Test Arrow West in submenu."""
-        assert hasattr(AnnotationType, 'ARROW_W')
-        assert AnnotationType.ARROW_W.value == 'arrow_w'
-    
-    def test_arrow_nw_exists(self):
-        """Test Arrow Northwest in submenu."""
-        assert hasattr(AnnotationType, 'ARROW_NW')
-        assert AnnotationType.ARROW_NW.value == 'arrow_nw'
-    
-    def test_arrow_n_exists(self):
-        """Test Arrow North in submenu."""
-        assert hasattr(AnnotationType, 'ARROW_N')
-        assert AnnotationType.ARROW_N.value == 'arrow_n'
-    
-    def test_arrow_ne_exists(self):
-        """Test Arrow Northeast in submenu."""
-        assert hasattr(AnnotationType, 'ARROW_NE')
-        assert AnnotationType.ARROW_NE.value == 'arrow_ne'
-    
-    def test_arrow_submenu_has_9_items(self):
-        """Test Arrow submenu has 9 items (1 generic + 8 directional)."""
-        # Generic arrow
-        assert AnnotationType.ARROW_GENERIC.value == 'arrow_generic'
-        
-        # 8 directional arrows
-        directional = [
-            AnnotationType.ARROW_E, AnnotationType.ARROW_SE,
-            AnnotationType.ARROW_S, AnnotationType.ARROW_SW,
-            AnnotationType.ARROW_W, AnnotationType.ARROW_NW,
-            AnnotationType.ARROW_N, AnnotationType.ARROW_NE,
-        ]
-        
-        assert len(directional) == 8
-    
-    def test_arrow_submenu_order(self):
-        """Test Arrow submenu order: E, SE, S, SW, W, NW, N, NE."""
-        expected_order = [
-            AnnotationType.ARROW_E, AnnotationType.ARROW_SE,
-            AnnotationType.ARROW_S, AnnotationType.ARROW_SW,
-            AnnotationType.ARROW_W, AnnotationType.ARROW_NW,
-            AnnotationType.ARROW_N, AnnotationType.ARROW_NE,
-        ]
-        
-        # Verify order matches
-        assert expected_order == list(DIRECTIONAL_ARROW_TYPES)
+    def test_arrow_is_only_arrow_type(self):
+        """Test ARROW is the only arrow type."""
+        from signer.objects import ARROW_TYPES
+        assert AnnotationType.ARROW in ARROW_TYPES
+        assert len(ARROW_TYPES) == 1  # v1.2.24: Only one arrow type
 
 
 class TestMenuItemUniqueness:
@@ -133,11 +77,7 @@ class TestMenuItemUniqueness:
             AnnotationType.CHECKMARK,
             AnnotationType.CROSSMARK,
             AnnotationType.LINE,
-            AnnotationType.ARROW_GENERIC,
-            AnnotationType.ARROW_E, AnnotationType.ARROW_SE,
-            AnnotationType.ARROW_S, AnnotationType.ARROW_SW,
-            AnnotationType.ARROW_W, AnnotationType.ARROW_NW,
-            AnnotationType.ARROW_N, AnnotationType.ARROW_NE,
+            AnnotationType.ARROW,  # v1.2.24: Single arrow type
             AnnotationType.RECTANGLE,
             AnnotationType.ELLIPSE,
             AnnotationType.TEXT,
@@ -165,11 +105,8 @@ class TestMenuItemLabels:
     
     def test_arrow_label(self):
         """Test Arrow has clear label."""
-        # Generic: "Arrow"
-        assert AnnotationType.ARROW_GENERIC.value == 'arrow_generic'
-        
-        # Directional: "Arrow →" etc.
-        assert AnnotationType.ARROW_E.value == 'arrow_e'
+        # Single arrow pointing right: "Arrow"
+        assert AnnotationType.ARROW.value == 'arrow'
     
     def test_rectangle_label(self):
         """Test Rectangle has clear label."""
@@ -215,16 +152,10 @@ class TestMenuNavigation:
         ann_type = AnnotationType.LINE
         assert ann_type == AnnotationType.LINE
     
-    def test_can_select_generic_arrow_from_menu(self):
-        """Test user can select generic Arrow."""
-        ann_type = AnnotationType.ARROW_GENERIC
-        assert ann_type == AnnotationType.ARROW_GENERIC
-    
-    def test_can_select_arrow_from_submenu(self):
-        """Test user can select directional arrow from submenu."""
-        for arrow_type in DIRECTIONAL_ARROW_TYPES:
-            ann_type = arrow_type
-            assert ann_type in DIRECTIONAL_ARROW_TYPES
+    def test_can_select_arrow_from_menu(self):
+        """Test user can select Arrow."""
+        ann_type = AnnotationType.ARROW
+        assert ann_type == AnnotationType.ARROW
     
     def test_can_select_rectangle_from_menu(self):
         """Test user can select Rectangle from menu."""
@@ -257,14 +188,14 @@ class TestMenuItemCount:
     
     def test_main_menu_items(self):
         """Test number of main menu items."""
-        # Checkmark, Crossmark, Line, Arrow (with submenu),
+        # Checkmark, Crossmark, Line, Arrow (no submenu in v1.2.24),
         # Rectangle, Ellipse, Text, Signature / Image (with submenu)
         # At minimum 8 main items
         main_items = [
             AnnotationType.CHECKMARK,
             AnnotationType.CROSSMARK,
             AnnotationType.LINE,
-            AnnotationType.ARROW_GENERIC,
+            AnnotationType.ARROW,  # v1.2.24: No longer a submenu
             AnnotationType.RECTANGLE,
             AnnotationType.ELLIPSE,
             AnnotationType.TEXT,
@@ -272,7 +203,3 @@ class TestMenuItemCount:
             AnnotationType.IMAGE,
         ]
         assert len(main_items) >= 8
-    
-    def test_arrow_submenu_count(self):
-        """Test Arrow submenu has exactly 8 directional arrows."""
-        assert len(DIRECTIONAL_ARROW_TYPES) == 8

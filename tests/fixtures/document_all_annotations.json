@@ -38,7 +38,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 0,
@@ -93,7 +93,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_n",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 1,
@@ -107,7 +107,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_ne",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 1,
@@ -121,7 +121,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 1,
@@ -135,7 +135,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_se",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 1,
@@ -149,7 +149,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_s",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 1,
@@ -163,7 +163,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_sw",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 1,
@@ -177,7 +177,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_w",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 1,
@@ -191,7 +191,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_nw",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 1,

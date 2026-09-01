@@ -166,11 +166,11 @@ class TestVectorAnnotationSerialization:
     
     def test_arrow_to_dict(self):
         """Test arrow annotation serialization."""
-        ann = VectorAnnotation(AnnotationType.ARROW_N, 0, 0, 0)
+        ann = VectorAnnotation(AnnotationType.ARROW, 0, 0, 0)
         
         data = ann.to_dict()
         
-        assert data["ann_type"] == "arrow_n"
+        assert data["ann_type"] == "arrow"
         # 160 * 300/72 = 666.6666...
         assert abs(data["base_width"] - 666.67) < 0.01
         assert abs(data["base_height"] - 666.67) < 0.01
@@ -244,8 +244,7 @@ class TestVectorAnnotationSerialization:
         for ann_type in [
             AnnotationType.CHECKMARK,
             AnnotationType.CROSSMARK,
-            AnnotationType.ARROW_N,
-            AnnotationType.ARROW_E,
+            AnnotationType.ARROW,
             AnnotationType.TEXT,
         ]:
             if ann_type == AnnotationType.TEXT:

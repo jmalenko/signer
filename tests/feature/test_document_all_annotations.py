@@ -106,7 +106,7 @@ class TestDocumentAllAnnotations:
         assert len(annotation_types) >= 3, f"Expected at least 3 annotation types, got {len(annotation_types)}"
         
         # Verify specific types are present
-        expected_types = {"checkmark", "crossmark", "arrow_e", "arrow_n", "text"}
+        expected_types = {"checkmark", "crossmark", "arrow", "text"}
         found_types = annotation_types & expected_types
         assert len(found_types) >= 3, f"Expected at least 3 types from {expected_types}, got {found_types}"
 

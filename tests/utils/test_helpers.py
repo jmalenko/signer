@@ -184,7 +184,7 @@ class ActionRecorder:
         })
 
     def record_resize_annotation_endpoint(self, obj, handle: int, x: float, y: float):
-        """Record endpoint-handle resize for LINE/ARROW_GENERIC."""
+        """Record endpoint-handle resize for LINE/ARROW."""
         if not self._enabled:
             return
         obj_id = self._get_object_id(obj)

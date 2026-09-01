@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 from PySide6.QtCore import Qt, QPointF
 from PySide6.QtGui import QColor
-from signer.objects import VectorAnnotation, AnnotationType, DIRECTIONAL_ARROW_TYPES
+from signer.objects import VectorAnnotation, AnnotationType
 from signer.canvas import DocumentCanvas
 
 
@@ -43,9 +43,9 @@ class TestArrowWorkflow:
     """Test complete Arrow annotation workflows."""
     
     def test_create_generic_arrow_workflow(self, qtbot):
-        """Test: create generic arrow → modify width → export."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
-        assert arrow.ann_type == AnnotationType.ARROW_GENERIC
+        """Test: create arrow → modify width → export."""
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
+        assert arrow.ann_type == AnnotationType.ARROW
         
         # Modify width
         arrow._line_width_pt = 2.5
@@ -55,34 +55,19 @@ class TestArrowWorkflow:
         assert data['line_width_pt'] == 2.5
         assert 'ann_type' in data
     
-    def test_all_directional_arrows_workflow(self):
-        """Test all 8 directional arrows can be created and used."""
-        arrow_data = []
+    def test_arrow_serialization(self):
+        """Test arrow can be created and serialized."""
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
+        arrow._line_width_pt = 2.0
+        data = arrow.to_dict()
         
-        for arrow_type in DIRECTIONAL_ARROW_TYPES:
-            arrow = VectorAnnotation(arrow_type, 100, 100, 0)
-            arrow._line_width_pt = 2.0
-            data = arrow.to_dict()
-            arrow_data.append(data)
+        # Should be arrow with line width
+        assert data['line_width_pt'] == 2.0
+        assert data['ann_type'] == 'arrow'
         
-        # Should have 8 arrows
-        assert len(arrow_data) == 8
-        
-        # All should be arrows with line width
-        for data in arrow_data:
-            assert data['line_width_pt'] == 2.0
-    
-    def test_arrow_direction_in_serialization(self):
-        """Test arrow direction is preserved in serialization."""
-        arrow_e = VectorAnnotation(AnnotationType.ARROW_E, 100, 100, 0)
-        arrow_se = VectorAnnotation(AnnotationType.ARROW_SE, 100, 100, 0)
-        
-        data_e = arrow_e.to_dict()
-        data_se = arrow_se.to_dict()
-        
-        # Both should be arrows but different types
-        assert 'ann_type' in data_e
-        assert 'ann_type' in data_se
+        # Should be deserializable
+        restored = VectorAnnotation.from_dict(data)
+        assert restored.ann_type == AnnotationType.ARROW
 
 
 class TestRectangleWorkflow:
@@ -204,7 +189,7 @@ class TestMultiAnnotationWorkflow:
     def test_mixed_annotations_on_page(self):
         """Test creating multiple different annotation types on same page."""
         line = VectorAnnotation(AnnotationType.LINE, 50, 50, 0)
-        arrow = VectorAnnotation(AnnotationType.ARROW_E, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         rect = VectorAnnotation(AnnotationType.RECTANGLE, 200, 200, 0)
         text = VectorAnnotation(AnnotationType.TEXT, 300, 300, 0, text="Label")
         
@@ -263,7 +248,7 @@ class TestPropertyChangeWorkflow:
     def test_batch_width_change(self):
         """Test changing width on multiple annotations."""
         line = VectorAnnotation(AnnotationType.LINE, 50, 50, 0)
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         rect = VectorAnnotation(AnnotationType.RECTANGLE, 150, 150, 0)
         
         # Change all to same width
@@ -276,7 +261,7 @@ class TestPropertyChangeWorkflow:
         """Test changing color on multiple annotations."""
         line = VectorAnnotation(AnnotationType.LINE, 50, 50, 0)
         rect = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, 0)
-        arrow = VectorAnnotation(AnnotationType.ARROW_SE, 150, 150, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 150, 150, 0)
         
         # Change all to same color
         for ann in [line, rect, arrow]:

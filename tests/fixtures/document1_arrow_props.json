@@ -6,7 +6,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 100,
       "y": 2000,
       "page": 0,
@@ -20,7 +20,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 250,
       "y": 2000,
       "page": 0,
@@ -34,7 +34,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 400,
       "y": 2000,
       "page": 0,
@@ -48,7 +48,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 550,
       "y": 2000,
       "page": 0,
@@ -62,7 +62,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 100,
       "y": 2250,
       "page": 0,
@@ -81,7 +81,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 250,
       "y": 2250,
       "page": 0,
@@ -100,7 +100,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 400,
       "y": 2250,
       "page": 0,
@@ -119,7 +119,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 550,
       "y": 2250,
       "page": 0,
@@ -138,7 +138,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 100,
       "y": 2500,
       "page": 0,
@@ -157,7 +157,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 250,
       "y": 2500,
       "page": 0,
@@ -176,7 +176,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 400,
       "y": 2500,
       "page": 0,
@@ -195,7 +195,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 550,
       "y": 2500,
       "page": 0,

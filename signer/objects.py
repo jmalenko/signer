@@ -36,42 +36,14 @@ class AnnotationType(Enum):
     LINE = "line"  # v1.2.22
     RECTANGLE = "rectangle"  # v1.2.22
     ELLIPSE = "ellipse"  # v1.2.22
-    ARROW_GENERIC = "arrow_generic"  # v1.2.22: Generic arrow with auto-angle
-    ARROW_N = "arrow_n"
-    ARROW_NE = "arrow_ne"
-    ARROW_E = "arrow_e"
-    ARROW_SE = "arrow_se"
-    ARROW_S = "arrow_s"
-    ARROW_SW = "arrow_sw"
-    ARROW_W = "arrow_w"
-    ARROW_NW = "arrow_nw"
+    ARROW = "arrow"  # v1.2.24: Generic arrow (points right by default)
     TEXT = "text"
     IMAGE = "image"  # v1.2.22: Image overlay (signature or image annotation)
 
 
 ARROW_TYPES: set[AnnotationType] = {
-    AnnotationType.ARROW_GENERIC,  # v1.2.22
-    AnnotationType.ARROW_N,
-    AnnotationType.ARROW_NE,
-    AnnotationType.ARROW_E,
-    AnnotationType.ARROW_SE,
-    AnnotationType.ARROW_S,
-    AnnotationType.ARROW_SW,
-    AnnotationType.ARROW_W,
-    AnnotationType.ARROW_NW,
+    AnnotationType.ARROW,  # v1.2.24: Only generic arrow
 }
-
-# v1.2.22: Directional arrows (excludes generic) - ordered for menu display
-DIRECTIONAL_ARROW_TYPES = (
-    AnnotationType.ARROW_E,
-    AnnotationType.ARROW_SE,
-    AnnotationType.ARROW_S,
-    AnnotationType.ARROW_SW,
-    AnnotationType.ARROW_W,
-    AnnotationType.ARROW_NW,
-    AnnotationType.ARROW_N,
-    AnnotationType.ARROW_NE,
-)
 
 # v1.2.22: Annotation types that support line width control
 VECTOR_WITH_WIDTH: set[AnnotationType] = {
@@ -83,15 +55,7 @@ VECTOR_WITH_WIDTH: set[AnnotationType] = {
 } | ARROW_TYPES
 
 ARROW_ANGLES: dict[AnnotationType, float] = {
-    AnnotationType.ARROW_GENERIC: 0.0,  # v1.2.22: Default East direction
-    AnnotationType.ARROW_E: 0.0,
-    AnnotationType.ARROW_NE: 45.0,
-    AnnotationType.ARROW_N: 90.0,
-    AnnotationType.ARROW_NW: 135.0,
-    AnnotationType.ARROW_W: 180.0,
-    AnnotationType.ARROW_SW: 225.0,
-    AnnotationType.ARROW_S: 270.0,
-    AnnotationType.ARROW_SE: 315.0,
+    AnnotationType.ARROW: 0.0,  # v1.2.24: Points right (east)
 }
 
 LARGE_DEFAULT_TYPES: set[AnnotationType] = {
@@ -290,7 +254,7 @@ class VectorAnnotation(CanvasObject):
         self._font_size_px = font_size_px
         self._line_width_factor = line_width_factor
         self._line_width_pt = line_width_pt  # v1.2.22
-        self._angle: float | None = None  # Rotation angle in degrees for LINE/ARROW_GENERIC
+        self._angle: float | None = None  # Rotation angle in degrees for LINE/ARROW
         if ann_type == AnnotationType.TEXT:
             # Text box: 180×36 points, scale for 300 DPI rendering
             super().__init__(x, y, 180.0 * DPI_SCALE, 36.0 * DPI_SCALE, page)
@@ -318,13 +282,13 @@ class VectorAnnotation(CanvasObject):
         return self.ann_type in {
             AnnotationType.TEXT,
             AnnotationType.LINE,  # v1.2.22
-            AnnotationType.ARROW_GENERIC,  # endpoint-driven resize; avoid scale-cap clamping
+            AnnotationType.ARROW,  # v1.2.24: endpoint-driven resize; avoid scale-cap clamping
             AnnotationType.RECTANGLE,  # v1.2.22
             AnnotationType.ELLIPSE,  # v1.2.22
         }
 
     def supports_endpoint_handles(self) -> bool:
-        return self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW_GENERIC}
+        return self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}
 
     def endpoint_points_viewport(self, vx: float, vy: float, vw: float, vh: float) -> list[QPointF]:
         if not self.supports_endpoint_handles():
@@ -345,10 +309,10 @@ class VectorAnnotation(CanvasObject):
                 QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
             ]
 
-        # ARROW_GENERIC: use actual drawn tail/tip so endpoint anchors match visuals.
+        # ARROW: use actual drawn tail/tip so endpoint anchors match visuals.
         angle_deg = getattr(self, '_angle', None)
         if angle_deg is None:
-            angle_deg = ARROW_ANGLES[AnnotationType.ARROW_GENERIC]
+            angle_deg = ARROW_ANGLES[AnnotationType.ARROW]
         angle_rad = math.radians(angle_deg)
         cx, cy = vx + vw / 2.0, vy + vh / 2.0
         shaft = min(vw, vh) * 0.33
@@ -481,15 +445,11 @@ class VectorAnnotation(CanvasObject):
             painter.drawText(QRectF(vx, vy, vw, vh), Qt.AlignLeft | Qt.AlignTop, self.text or "")
 
         elif t in ARROW_TYPES:
-            # ARROW_GENERIC uses _angle for free rotation; other types use their
-            # fixed predefined direction from ARROW_ANGLES.
-            if t == AnnotationType.ARROW_GENERIC:
-                angle_deg = getattr(self, '_angle', None)
-                if angle_deg is None:
-                    angle_deg = ARROW_ANGLES[t]
-                angle_rad = math.radians(angle_deg)
-            else:
-                angle_rad = math.radians(ARROW_ANGLES[t])
+            # ARROW uses _angle for free rotation
+            angle_deg = getattr(self, '_angle', None)
+            if angle_deg is None:
+                angle_deg = ARROW_ANGLES[t]
+            angle_rad = math.radians(angle_deg)
             cx, cy = vx + vw / 2, vy + vh / 2
             shaft = min(vw, vh) * 0.33
             head = min(vw, vh) * 0.18

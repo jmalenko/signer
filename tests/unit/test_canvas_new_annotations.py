@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import Mock, MagicMock, patch
 from PySide6.QtCore import Qt, QPointF
 from PySide6.QtGui import QColor
-from signer.objects import VectorAnnotation, AnnotationType, DIRECTIONAL_ARROW_TYPES
+from signer.objects import VectorAnnotation, AnnotationType
 from signer.canvas import DocumentCanvas
 import math
 
@@ -22,23 +22,14 @@ class TestCanvasAnnotationCreation:
         assert line.ann_type == AnnotationType.LINE
         assert line._line_width_pt == 1.5
     
-    def test_create_generic_arrow(self, qtbot):
-        """Test creating generic arrow on canvas."""
+    def test_create_arrow(self, qtbot):
+        """Test creating Arrow on canvas."""
         canvas = DocumentCanvas()
         qtbot.addWidget(canvas)
         
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
-        assert arrow.ann_type == AnnotationType.ARROW_GENERIC
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
+        assert arrow.ann_type == AnnotationType.ARROW
         assert hasattr(arrow, '_line_width_pt')
-    
-    def test_create_directional_arrows(self, qtbot):
-        """Test creating all 8 directional arrows."""
-        canvas = DocumentCanvas()
-        qtbot.addWidget(canvas)
-        
-        for arrow_type in DIRECTIONAL_ARROW_TYPES:
-            arrow = VectorAnnotation(arrow_type, 100, 100, 0)
-            assert arrow.ann_type == arrow_type
     
     def test_create_rectangle(self, qtbot):
         """Test creating Rectangle on canvas."""
@@ -229,7 +220,7 @@ class TestAnnotationMovement:
     
     def test_move_arrow(self):
         """Test moving Arrow annotation."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         
         arrow.x = 250
         arrow.y = 150
@@ -269,13 +260,13 @@ class TestAnnotationSerialization:
     
     def test_arrow_roundtrip(self):
         """Test Arrow serialization and deserialization."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         arrow._line_width_pt = 3.0
         
         data = arrow.to_dict()
         restored = VectorAnnotation.from_dict(data)
         
-        assert restored.ann_type == AnnotationType.ARROW_GENERIC
+        assert restored.ann_type == AnnotationType.ARROW
         assert restored.x == 100
     
     def test_rectangle_roundtrip(self):

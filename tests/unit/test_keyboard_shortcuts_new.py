@@ -19,7 +19,7 @@ class TestBracketRightIncreaseWidth:
     
     def test_bracket_right_increases_arrow_width(self):
         """Test ] key increases arrow width."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         initial = arrow._line_width_pt
         
         arrow._line_width_pt = initial + 0.5
@@ -81,7 +81,7 @@ class TestBracketLeftDecreaseWidth:
     
     def test_bracket_left_decreases_arrow_width(self):
         """Test [ key decreases arrow width."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         arrow._line_width_pt = 2.5
         
         arrow._line_width_pt = arrow._line_width_pt - 0.5
@@ -169,7 +169,7 @@ class TestShortcutsOnlyForCompatibleTypes:
     def test_width_shortcut_on_vector_types(self):
         """Test width shortcuts work on all vector types."""
         vector_types = [
-            AnnotationType.LINE, AnnotationType.ARROW_GENERIC,
+            AnnotationType.LINE, AnnotationType.ARROW,
             AnnotationType.RECTANGLE, AnnotationType.ELLIPSE,
             AnnotationType.CHECKMARK, AnnotationType.CROSSMARK,
         ]

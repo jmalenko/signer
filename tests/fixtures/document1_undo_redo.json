@@ -69,7 +69,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_n",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 0,
@@ -95,7 +95,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 0,

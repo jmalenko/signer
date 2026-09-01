@@ -299,7 +299,7 @@ class TestColorProperty:
     def test_color_on_all_vector_types(self):
         """Test color available on all vector types."""
         types = [
-            AnnotationType.LINE, AnnotationType.ARROW_GENERIC,
+            AnnotationType.LINE, AnnotationType.ARROW,
             AnnotationType.RECTANGLE, AnnotationType.ELLIPSE,
             AnnotationType.CHECKMARK, AnnotationType.CROSSMARK,
             AnnotationType.TEXT,
@@ -356,7 +356,7 @@ class TestPropertyDefaults:
     def test_default_line_width(self):
         """Test default line width is 1.5pt."""
         line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         rect = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, 0)
         
         for ann in [line, arrow, rect]:

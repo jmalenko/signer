@@ -40,9 +40,9 @@ class TestLineExport:
 class TestArrowExport:
     """Test exporting Arrow annotation to various formats."""
     
-    def test_generic_arrow_to_pil(self):
-        """Test converting generic arrow to PIL image."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+    def test_arrow_to_pil(self):
+        """Test converting arrow to PIL image."""
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         
         img = arrow.render_to_pil()
         
@@ -50,17 +50,14 @@ class TestArrowExport:
         assert img.width > 0
         assert img.height > 0
     
-    def test_directional_arrows_to_pil(self):
-        """Test converting all directional arrows."""
-        for arrow_type in [AnnotationType.ARROW_E, AnnotationType.ARROW_SE,
-                          AnnotationType.ARROW_S, AnnotationType.ARROW_SW,
-                          AnnotationType.ARROW_W, AnnotationType.ARROW_NW,
-                          AnnotationType.ARROW_N, AnnotationType.ARROW_NE]:
-            arrow = VectorAnnotation(arrow_type, 100, 100, 0)
-            img = arrow.render_to_pil()
-            
-            assert isinstance(img, Image.Image)
-            assert img.width > 0
+    def test_arrow_with_width_to_pil(self):
+        """Test converting arrow with different width to PIL image."""
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
+        arrow._line_width_pt = 3.0
+        img = arrow.render_to_pil()
+        
+        assert isinstance(img, Image.Image)
+        assert img.width > 0
 
 
 class TestRectangleExport:
@@ -153,7 +150,7 @@ class TestMultiAnnotationExport:
         """Test multiple annotations can be serialized."""
         annotations = [
             VectorAnnotation(AnnotationType.LINE, 50, 50, 0),
-            VectorAnnotation(AnnotationType.ARROW_E, 100, 100, 0),
+            VectorAnnotation(AnnotationType.ARROW, 100, 100, 0),
             VectorAnnotation(AnnotationType.RECTANGLE, 150, 150, 0),
             VectorAnnotation(AnnotationType.ELLIPSE, 200, 200, 0),
             VectorAnnotation(AnnotationType.TEXT, 250, 250, 0, text="Text"),
@@ -232,13 +229,13 @@ class TestExportRoundtrip:
     
     def test_arrow_export_reimport(self):
         """Test Arrow export and reimport."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_SE, 150, 150, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 150, 150, 0)
         arrow._line_width_pt = 3.0
         
         data = arrow.to_dict()
         restored = VectorAnnotation.from_dict(data)
         
-        assert restored.ann_type == AnnotationType.ARROW_SE
+        assert restored.ann_type == AnnotationType.ARROW
         assert restored._line_width_pt == 3.0
     
     def test_text_export_reimport(self):

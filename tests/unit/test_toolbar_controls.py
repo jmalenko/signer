@@ -14,7 +14,7 @@ class TestWidthSpinnerVisibility:
     
     def test_width_spinner_visible_for_arrow(self):
         """Test width spinner visible when Arrow selected."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         assert arrow.ann_type in VECTOR_WITH_WIDTH
     
     def test_width_spinner_visible_for_rectangle(self):
@@ -73,7 +73,7 @@ class TestFontSizeSpinnerVisibility:
     
     def test_font_size_spinner_hidden_for_arrow(self):
         """Test font size spinner hidden when Arrow selected."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         data = arrow.to_dict()
         assert 'font_size_px' not in data
 

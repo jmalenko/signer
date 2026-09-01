@@ -67,17 +67,6 @@ from .pdf_utils import render_all_pages
 from .settings import AppSettings, SettingsStore
 
 SUPPORTED_SIGNATURE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff", ".tif", ".webp", ".ico"}
-ARROW_DIRECTIONS = [
-    ("Generic (auto-angle)", AnnotationType.ARROW_GENERIC),
-    ("East", AnnotationType.ARROW_E),
-    ("South-East", AnnotationType.ARROW_SE),
-    ("South", AnnotationType.ARROW_S),
-    ("South-West", AnnotationType.ARROW_SW),
-    ("West", AnnotationType.ARROW_W),
-    ("North-West", AnnotationType.ARROW_NW),
-    ("North", AnnotationType.ARROW_N),
-    ("North-East", AnnotationType.ARROW_NE),
-]
 
 
 class _SaveDialogWithFilterDetection(QFileDialog):
@@ -416,10 +405,8 @@ class MainWindow(QMainWindow):
         # v1.2.22: Line annotation
         ann_menu.addAction("— Line", lambda: self._add_vector(AnnotationType.LINE))
 
-        # v1.2.22: Arrow submenu with generic and directional arrows
-        arrow_menu = ann_menu.addMenu("➡ Arrow")
-        for name, atype in ARROW_DIRECTIONS:
-            arrow_menu.addAction(name, lambda checked=False, t=atype: self._add_vector(t))
+        # v1.2.24: Arrow (single item, no submenu)
+        ann_menu.addAction("➡ Arrow", lambda: self._add_vector(AnnotationType.ARROW))
 
         # v1.2.22: Rectangle and Ellipse
         ann_menu.addAction("▭ Rectangle / Square", lambda: self._add_vector(AnnotationType.RECTANGLE))
@@ -559,10 +546,8 @@ class MainWindow(QMainWindow):
         # v1.2.22: Add Line annotation
         annotations_menu.addAction("Line", lambda: self._add_vector(AnnotationType.LINE))
         
-        # v1.2.22: Arrow submenu with new order
-        arrow_submenu = annotations_menu.addMenu("Arrow")
-        for name, atype in ARROW_DIRECTIONS:
-            arrow_submenu.addAction(name, lambda checked=False, t=atype: self._add_vector(t))
+        # v1.2.24: Arrow (single item, no submenu)
+        annotations_menu.addAction("Arrow", lambda: self._add_vector(AnnotationType.ARROW))
         
         # v1.2.22: Add Rectangle and Ellipse
         annotations_menu.addAction("Rectangle / Square", lambda: self._add_vector(AnnotationType.RECTANGLE))

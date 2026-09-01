@@ -35,7 +35,7 @@ class TestControlVisibilityPerType:
     
     def test_arrow_shows_color_and_width(self, qtbot):
         """Test Arrow annotation displays color and width controls."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         
         assert hasattr(arrow, 'color')
         assert hasattr(arrow, '_line_width_pt')
@@ -156,7 +156,7 @@ class TestStateTransitions:
     
     def test_select_arrow_then_text(self):
         """Test transitioning from Arrow to Text selection."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 50, 50, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 50, 50, 0)
         text = VectorAnnotation(AnnotationType.TEXT, 150, 150, 0, text="Label")
         
         # Select arrow

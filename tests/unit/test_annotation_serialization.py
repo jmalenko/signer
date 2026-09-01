@@ -135,28 +135,15 @@ class TestAnnotationSerialization:
         assert AnnotationType.SIGNATURE.value == "signature"
         assert AnnotationType.CHECKMARK.value == "checkmark"
         assert AnnotationType.CROSSMARK.value == "crossmark"
-        assert AnnotationType.ARROW_N.value == "arrow_n"
-        assert AnnotationType.ARROW_NE.value == "arrow_ne"
-        assert AnnotationType.ARROW_E.value == "arrow_e"
-        assert AnnotationType.ARROW_SE.value == "arrow_se"
-        assert AnnotationType.ARROW_S.value == "arrow_s"
-        assert AnnotationType.ARROW_SW.value == "arrow_sw"
-        assert AnnotationType.ARROW_W.value == "arrow_w"
-        assert AnnotationType.ARROW_NW.value == "arrow_nw"
+        assert AnnotationType.ARROW.value == "arrow"  # v1.2.24: Single arrow type
         assert AnnotationType.TEXT.value == "text"
     
     def test_arrow_types_set(self):
-        """Test ARROW_TYPES set contains all arrows."""
+        """Test ARROW_TYPES set contains only the arrow type."""
         from signer.objects import ARROW_TYPES
         
-        assert AnnotationType.ARROW_N in ARROW_TYPES
-        assert AnnotationType.ARROW_NE in ARROW_TYPES
-        assert AnnotationType.ARROW_E in ARROW_TYPES
-        assert AnnotationType.ARROW_SE in ARROW_TYPES
-        assert AnnotationType.ARROW_S in ARROW_TYPES
-        assert AnnotationType.ARROW_SW in ARROW_TYPES
-        assert AnnotationType.ARROW_W in ARROW_TYPES
-        assert AnnotationType.ARROW_NW in ARROW_TYPES
+        assert AnnotationType.ARROW in ARROW_TYPES
+        assert len(ARROW_TYPES) == 1  # v1.2.24: Only one arrow type
         assert AnnotationType.CHECKMARK not in ARROW_TYPES
         assert AnnotationType.TEXT not in ARROW_TYPES
     
@@ -164,14 +151,7 @@ class TestAnnotationSerialization:
         """Test ARROW_ANGLES mapping."""
         from signer.objects import ARROW_ANGLES
         
-        assert ARROW_ANGLES[AnnotationType.ARROW_E] == 0.0
-        assert ARROW_ANGLES[AnnotationType.ARROW_NE] == 45.0
-        assert ARROW_ANGLES[AnnotationType.ARROW_N] == 90.0
-        assert ARROW_ANGLES[AnnotationType.ARROW_NW] == 135.0
-        assert ARROW_ANGLES[AnnotationType.ARROW_W] == 180.0
-        assert ARROW_ANGLES[AnnotationType.ARROW_SW] == 225.0
-        assert ARROW_ANGLES[AnnotationType.ARROW_S] == 270.0
-        assert ARROW_ANGLES[AnnotationType.ARROW_SE] == 315.0
+        assert ARROW_ANGLES[AnnotationType.ARROW] == 0.0  # v1.2.24: Points right (east)
 
 
 class TestSettingsSerialization:

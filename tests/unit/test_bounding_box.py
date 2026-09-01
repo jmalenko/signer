@@ -91,7 +91,7 @@ class TestBoundingBox:
     
     def test_arrow_annotation_bounding_box(self):
         """Test Arrow annotation bounding box (larger default)."""
-        ann = VectorAnnotation(AnnotationType.ARROW_N, 0, 0, 0)
+        ann = VectorAnnotation(AnnotationType.ARROW, 0, 0, 0)
         
         # Arrows have base size 160 points, scaled to 300 DPI (160 * 300/72 ≈ 666.67 px)
         # 160 * 300/72 = 666.6666...

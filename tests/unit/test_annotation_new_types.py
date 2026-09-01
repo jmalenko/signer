@@ -3,7 +3,7 @@
 import pytest
 from signer.objects import (
     VectorAnnotation, SignatureObject, AnnotationType, 
-    ARROW_TYPES, DIRECTIONAL_ARROW_TYPES, VECTOR_WITH_WIDTH
+    ARROW_TYPES, VECTOR_WITH_WIDTH
 )
 from PIL import Image
 from io import BytesIO
@@ -45,50 +45,33 @@ class TestLineAnnotation:
 
 
 class TestArrowAnnotation:
-    """Test Arrow annotation types (generic + 8 directional)."""
+    """Test Arrow annotation (generic arrow pointing right)."""
     
-    def test_arrow_generic_creation(self):
-        """Test creating generic arrow."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
-        assert arrow.ann_type == AnnotationType.ARROW_GENERIC
+    def test_arrow_creation(self):
+        """Test creating arrow."""
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
+        assert arrow.ann_type == AnnotationType.ARROW
         assert arrow.x == 100
         assert arrow.y == 100
     
-    def test_arrow_generic_has_width(self):
-        """Test generic arrow has line width."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+    def test_arrow_has_width(self):
+        """Test arrow has line width."""
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         assert hasattr(arrow, '_line_width_pt')
         arrow._line_width_pt = 3.0
         assert arrow._line_width_pt == 3.0
     
-    def test_arrow_directional_creation(self):
-        """Test creating all 8 directional arrows."""
-        directions = [
-            AnnotationType.ARROW_E, AnnotationType.ARROW_SE,
-            AnnotationType.ARROW_S, AnnotationType.ARROW_SW,
-            AnnotationType.ARROW_W, AnnotationType.ARROW_NW,
-            AnnotationType.ARROW_N, AnnotationType.ARROW_NE,
-        ]
-        
-        for arrow_type in directions:
-            arrow = VectorAnnotation(arrow_type, 100, 100, 0)
-            assert arrow.ann_type == arrow_type
-            assert arrow.x == 100
-            assert arrow.y == 100
-    
-    def test_all_arrows_in_arrow_types_set(self):
-        """Test all arrow types are in ARROW_TYPES set."""
-        all_arrows = {AnnotationType.ARROW_GENERIC} | set(DIRECTIONAL_ARROW_TYPES)
-        assert len(all_arrows) == 9  # 1 generic + 8 directional
-        assert all_arrows == ARROW_TYPES
+    def test_arrow_in_arrow_types_set(self):
+        """Test arrow is in ARROW_TYPES set."""
+        assert AnnotationType.ARROW in ARROW_TYPES
+        assert len(ARROW_TYPES) == 1  # Only one arrow type now
     
     def test_arrow_width_property(self):
         """Test arrow width property."""
-        for arrow_type in [AnnotationType.ARROW_GENERIC] + list(DIRECTIONAL_ARROW_TYPES):
-            arrow = VectorAnnotation(arrow_type, 100, 100, 0)
-            assert hasattr(arrow, '_line_width_pt')
-            arrow._line_width_pt = 2.5
-            assert arrow._line_width_pt == 2.5
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
+        assert hasattr(arrow, '_line_width_pt')
+        arrow._line_width_pt = 2.5
+        assert arrow._line_width_pt == 2.5
 
 
 class TestRectangleAnnotation:
@@ -196,7 +179,7 @@ class TestAnnotationTypeProperties:
     def test_line_width_only_on_vector_types(self):
         """Test line width available on all vector annotation types."""
         line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         rect = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, 0)
         ellipse = VectorAnnotation(AnnotationType.ELLIPSE, 100, 100, 0)
         
@@ -258,7 +241,7 @@ class TestAnnotationColorProperty:
     
     def test_arrow_has_color(self):
         """Test Arrow annotation has color."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         assert arrow.color is not None
     
     def test_rectangle_has_color(self):

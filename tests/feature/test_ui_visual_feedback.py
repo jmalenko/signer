@@ -121,7 +121,7 @@ class TestPropertyChangeVisualFeedback:
     
     def test_width_slider_to_thick(self):
         """Test changing width from thin to thick."""
-        arrow = VectorAnnotation(AnnotationType.ARROW_GENERIC, 100, 100, 0)
+        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         
         arrow._line_width_pt = 5.0
         

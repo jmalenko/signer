@@ -23,19 +23,18 @@ from PySide6.QtWidgets import QApplication
 WORKFLOW_TEST_CASES = [
     # New annotation types (v1.2.22)
     ("annotation", "document1_line", "line", "Line annotation"),
-    ("annotation", "document1_arrow_compass", "arrow_", "Arrow compass (8 directions)"),
-    ("annotation", "document1_arrow_generic", "arrow_", "Arrow generic (20 directions)"),
+    ("annotation", "document1_arrows", "arrow", "Arrow annotation"),
     ("annotation", "document1_rectangle", "rectangle", "Rectangle annotation"),
     ("annotation", "document1_ellipse", "ellipse", "Ellipse annotation"),
     ("annotation", "document1_line_props", "line", "Line with properties (width, color)"),
-    ("annotation", "document1_arrow_props", "arrow_", "Arrow with properties (width, color)"),
+    ("annotation", "document1_arrow_props", "arrow", "Arrow with properties (width, color)"),
     ("annotation", "document1_rectangle_props", "rectangle", "Rectangle with properties"),
     ("annotation", "document1_ellipse_props", "ellipse", "Ellipse with properties"),
     ("annotation", "document1_checkmark_props", "checkmark", "Checkmark with properties (blue, width)"),
     ("annotation", "document1_crossmark_props", "crossmark", "Crossmark with properties (blue, width)"),
     ("annotation", "document1_text_props", "text", "Text with properties (blue, 16pt, Courier)"),
     # Original annotation features on document1
-    ("annotation", "document1_arrow", "arrow_", "Arrow annotation"),
+    ("annotation", "document1_arrow", "arrow", "Arrow annotation"),
     ("annotation", "document1_checkmark", "checkmark", "Checkmark annotation"),
     ("annotation", "document1_crossmark", "crossmark", "Crossmark annotation"),
     ("annotation", "document1_text", "text", "Text annotation"),

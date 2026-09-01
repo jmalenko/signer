@@ -6,7 +6,7 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow_e",
+      "annotation_type": "arrow",
       "page": 0,
       "x": 1157.1666666666667,
       "y": 1671.1666666666667

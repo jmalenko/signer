@@ -246,7 +246,7 @@ class ActionPlayer:
         self.canvas._selected = obj
         self.canvas.objectChanged.emit()
 
-        # Endpoint-handle resize: expected for LINE/ARROW_GENERIC in modern fixtures.
+        # Endpoint-handle resize: expected for LINE/ARROW in modern fixtures.
         if "x" in action and "y" in action and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
             if handle not in (0, 1):
                 raise RuntimeError(f"Endpoint resize requires handle 0 or 1, got {handle}")
@@ -279,7 +279,7 @@ class ActionPlayer:
         self.canvas.history.record_action(resize_action)
 
     def _apply_endpoint_resize(self, obj: CanvasObject, p0: QPointF, p1: QPointF) -> None:
-        """Apply endpoint-based resize for LINE and ARROW_GENERIC.
+        """Apply endpoint-based resize for LINE and ARROW.
 
         Handle mapping:
         - 0: start/tail endpoint
@@ -299,7 +299,7 @@ class ActionPlayer:
             angle = math.degrees(math.atan2(dy, dx))
             size = max(8.0, dist)
         else:
-            # For ARROW_GENERIC, endpoint distance is 2*shaft = 0.66*size.
+            # For ARROW, endpoint distance is 2*shaft = 0.66*size.
             angle = math.degrees(math.atan2(-dy, dx))
             size = max(8.0, dist / 0.66)
 

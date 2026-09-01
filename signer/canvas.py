@@ -958,7 +958,7 @@ class DocumentCanvas(QWidget):
                     dy = tip.y() - tail.y()
                     visual_len = max(8.0, math.hypot(dx, dy))
 
-                    if getattr(self._selected, 'ann_type', None).value == 'arrow_generic':
+                    if getattr(self._selected, 'ann_type', None).value == 'arrow':
                         # Arrow tip/tail distance is 0.66 * bbox side in drawing code.
                         side = visual_len / 0.66
                     else:
@@ -978,7 +978,7 @@ class DocumentCanvas(QWidget):
                             # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
                             modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
                             self._selected._angle = self._snap_line_angle(raw_angle, modifier_pressed)
-                        elif ann_type_val == 'arrow_generic':
+                        elif ann_type_val == 'arrow':
                             raw_angle = math.degrees(math.atan2(-dy, dx))
                             # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
                             modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
