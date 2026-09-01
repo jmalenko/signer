@@ -856,6 +856,55 @@ class DocumentCanvas(QWidget):
         size = (new_w + new_h) / 2.0
         return size, size, True
 
+    @staticmethod
+    def _snap_line_angle(angle_deg: float, modifier_pressed: bool) -> float:
+        """Snap line/arrow angle to cardinal or intercardinal direction if close enough.
+
+        Snap is active when angle is within 10° of any of 8 directions:
+        0° (E), 45° (NE), 90° (N), 135° (NW), 180° (W), 225° (SW), 270° (S), 315° (SE)
+        unless any modifier key is pressed.
+        
+        Args:
+            angle_deg: Angle in degrees (from atan2)
+            modifier_pressed: Whether a modifier key (Shift/Ctrl/Alt) is pressed
+            
+        Returns:
+            Snapped angle in degrees
+        """
+        if modifier_pressed:
+            return angle_deg
+        
+        # Normalize angle to 0-360 range for easier comparison
+        normalized = angle_deg % 360.0
+        
+        # Check if within 10° of the 8 cardinal/intercardinal directions
+        # 0° (horizontal right / East)
+        if normalized <= 10.0 or normalized >= 350.0:
+            return 0.0
+        # 45° (diagonal up-right / Northeast)
+        if 35.0 <= normalized <= 55.0:
+            return 45.0
+        # 90° (vertical up / North)
+        if 80.0 <= normalized <= 100.0:
+            return 90.0
+        # 135° (diagonal up-left / Northwest)
+        if 125.0 <= normalized <= 145.0:
+            return 135.0
+        # 180° (horizontal left / West)
+        if 170.0 <= normalized <= 190.0:
+            return 180.0
+        # 225° (diagonal down-left / Southwest)
+        if 215.0 <= normalized <= 235.0:
+            return 225.0
+        # 270° (vertical down / South)
+        if 260.0 <= normalized <= 280.0:
+            return 270.0
+        # 315° (diagonal down-right / Southeast)
+        if 305.0 <= normalized <= 325.0:
+            return 315.0
+        
+        return angle_deg
+
     def mouseMoveEvent(self, event) -> None:
         pt = event.position()
 
@@ -925,7 +974,15 @@ class DocumentCanvas(QWidget):
                     if hasattr(self._selected, '_angle'):
                         ann_type_val = getattr(getattr(self._selected, 'ann_type', None), 'value', None)
                         if ann_type_val == 'line':
-                            self._selected._angle = math.degrees(math.atan2(dy, dx))
+                            raw_angle = math.degrees(math.atan2(dy, dx))
+                            # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
+                            modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
+                            self._selected._angle = self._snap_line_angle(raw_angle, modifier_pressed)
+                        elif ann_type_val == 'arrow_generic':
+                            raw_angle = math.degrees(math.atan2(-dy, dx))
+                            # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
+                            modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
+                            self._selected._angle = self._snap_line_angle(raw_angle, modifier_pressed)
                         else:
                             self._selected._angle = math.degrees(math.atan2(-dy, dx))
 

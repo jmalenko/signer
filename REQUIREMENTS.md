@@ -977,6 +977,22 @@ Provide unlimited undo/redo history for the current document session with automa
 
 10. All annotations shall support free corner dragging: dragging any corner past its opposite corner shall change how we refer to the corners (e.g., bottom-right dragged above top-left becomes top-right). This applies to all annotation types including lines and arrows. For lines and arrows, the main line is still drawn from the same corner (so the line can switch from south-east direction to north-east direction).
 
+## Version 1.2.23 - Smart line and arrow snapping
+
+1. When drawing or resizing a line or generic arrow: if the angle is within 10° of a cardinal direction (horizontal, vertical, or diagonal), the annotation shall snap to exactly that direction unless a modifier key is held.
+
+2. Snap targets are the 8 cardinal/intercardinal directions:
+   - 0° (horizontal right)
+   - 45° (diagonal up-right)
+   - 90° (vertical up)
+   - 135° (diagonal up-left)
+   - 180° (horizontal left)
+   - 225° (diagonal down-left)
+   - 270° (vertical down)
+   - 315° (diagonal down-right)
+
+3. Snapping is disabled when any modifier key (Shift, Ctrl, Alt) is held, allowing precise angle control.
+
 ### Assumption
 
 1. Signature has a transparent background.
