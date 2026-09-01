@@ -758,3 +758,64 @@ See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
 - LibreOffice configuration for multi-format tests  
 - Test infrastructure overview
 - Action recording system for creating new tests
+
+## 9. Distribution Builds
+
+### Building the Executable with PyInstaller
+
+To create `signer.exe` from the Python source code:
+
+```bash
+# Build a single-file executable (recommended for portable distribution)
+.venv\Scripts\python -m PyInstaller --noconfirm --log-level INFO --onefile --windowed --name signer --icon signer/resources/signer.ico --add-data "signer/resources:signer/resources" main.py
+```
+
+This creates:
+- `dist/signer.exe` — Single executable file containing all dependencies, resources, and icon
+- `build/` — Temporary build files (can be deleted)
+- `signer.spec` — PyInstaller spec file (for rebuilding)
+
+**Output location**: `dist/signer.exe`
+
+**For development/testing**: Run directly from source without building
+```bash
+python main.py
+# or with arguments:
+python main.py -document examples/document.pdf -signature examples/signature.png
+```
+
+**VS Code tasks**:
+- `Run Signer` — Runs the app from source code
+- `Run Signer (examples)` — Runs with example files
+- `Build signer.exe (onefile)` — Creates the PyInstaller executable in `dist/signer.exe` with icon and resources
+
+### PyInstaller Configuration
+
+Key flags used:
+- `--onefile` — Creates single executable (not directory with dependencies)
+- `--windowed` — GUI app (no console window)
+- `--name signer` — Output filename (`signer.exe`)
+- `--icon signer/resources/signer.ico` — Embeds the application icon in the executable (displays in taskbar, window title, and file icon)
+- `--add-data "signer/resources:signer/resources"` — Bundles the resources directory (icons, images) into the executable for runtime access via `sys._MEIPASS`
+- `--noconfirm` — Don't ask before overwriting
+- `--log-level INFO` — Show build progress
+- `main.py` — Entry point file
+
+### Portable Build
+
+After building the executable (see "Building the Executable with PyInstaller" above):
+
+1. Copy `dist\signer.exe` to any directory on a portable medium (USB drive, external disk, etc.)
+2. Optionally, copy or create an empty `config.json` file in the same directory to customize settings
+
+When the user runs `signer.exe` on any machine:
+- If `config.json` exists in the app directory, it will be used (portable mode)
+- If not, `config.json` will be auto-created in `%APPDATA%/Signer/` on first save (installed mode)
+
+
+### Edge Cases
+
+- **Both locations exist**: Portable mode takes precedence (app directory checked first)
+- **No write permissions to app directory**: AppData fallback ensures portability on read-only installations (e.g., network share)
+- **AppData unavailable**: Should not occur on Windows; error handling defers to existing config error handling
+- **Corrupted config**: Handled by existing error handling; mode detection unaffected

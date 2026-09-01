@@ -1050,6 +1050,83 @@ Enable drag-and-drop functionality for small images (as Signature/Image annotati
 - Drop while dialog is open: Ignore drop event
 - File permissions error: Show error "Cannot open file: Access denied"
 
+## Version 1.2.26 - Portable
+
+### Overview
+Support both portable and installed deployment models via runtime detection of configuration file location. A single codebase automatically adapts to the deployment environment without requiring separate builds or installers.
+
+### Deployment Modes
+
+| Mode | Config Location | Typical Use Case | Activation |
+|------|-----------------|------------------|------------|
+| **Portable** | `./config.json` (app directory) | USB drives, shared folders, portable installs, no AppData changes | Copy `config.json` to app directory |
+| **Installed** | `%APPDATA%/Signer/config.json` | Standard Windows installation, per-user configuration | Default when `config.json` not in app directory |
+
+### Configuration Search Order
+
+1. Check if `config.json` exists in application directory → Use portable mode
+2. Otherwise, use `%APPDATA%/Signer/config.json` → Use installed mode
+   - Directory created automatically on first use
+   - Each Windows user gets separate config
+
+
+### Migration Scenarios
+
+#### Scenario A: Install → Portable
+1. User has config at `%APPDATA%/Signer/config.json`
+2. Copy file to application directory
+3. Next run: Portable mode activated
+
+#### Scenario B: Portable → Install
+1. User has config at `./config.json` in app directory
+2. Move file to `%APPDATA%/Signer/config.json`
+3. Next run: Installed mode activated
+
+### How Users Create a Portable Application
+
+A portable application runs from any directory (USB drive, shared folder, local disk) without requiring AppData. For Signer, the executable itself is already portable by nature—it's a single `signer.exe` file. Making it fully portable is just a matter of where the config file lives.
+
+#### Default Behavior (Installed Mode)
+1. User downloads/copies `signer.exe` to any directory
+2. Runs `signer.exe`
+3. App checks for `config.json` in the same directory as the executable
+4. If not found, app creates config in `%APPDATA%/Signer/config.json`
+5. Settings persist in AppData (tied to that Windows user account)
+
+#### Enable Portable Mode
+To make the application fully portable (settings travel with the executable):
+
+**Scenario: Migrate from Installed to Portable**
+
+*Initial State (Installed Mode):*
+- Location of `signer.exe`: Any directory (e.g., `C:\Program Files\Signer\`, `Downloads\`, etc.)
+- Location of config: `%APPDATA%\Signer\config.json` (expands to `C:\Users\username\AppData\Roaming\Signer\config.json`)
+
+*Steps to Enable Portable Mode:*
+1. User has been running `signer.exe` normally (config in AppData)
+2. Run `signer.exe` and use the app normally (any adjustments get saved to AppData)
+3. Close the application
+4. Copy `%APPDATA%\Signer\config.json` to the **same directory** as `signer.exe`
+   - Example: If `signer.exe` is at `C:\Program Files\Signer\signer.exe`, copy config to `C:\Program Files\Signer\config.json`
+   - Or copy both files to a USB drive: `D:\signer.exe` and `D:\config.json`
+5. Next run: Portable mode activated; app checks the app directory first and finds `config.json` there
+
+*Result: Fully Portable*
+- `config.json` now lives next to `signer.exe` in the **same directory**
+- Entire folder can be:
+  - Moved to USB drive (e.g., `D:\` or `E:\portable-signer\`)
+  - Copied to different computer
+  - Shared on network drive
+  - Synced to cloud (OneDrive, Dropbox, Google Drive)
+- Settings travel with the executable
+- Each directory containing `signer.exe` + `config.json` is independent
+- Uninstall = delete the folder (no AppData cleanup needed)
+
+#### Edge Cases
+- **Both locations exist** (`config.json` in app dir + AppData): App directory version takes precedence (portable mode)
+- **AppData unavailable** (e.g., network share with restrictions): App still works via portable mode
+- **No config file anywhere**: App creates it in AppData on first run (default installed mode)
+
 ### Assumption
 
 1. Signature has a transparent background.

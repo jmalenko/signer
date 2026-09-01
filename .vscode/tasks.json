@@ -44,6 +44,10 @@
         "--windowed",
         "--name",
         "signer",
+        "--icon",
+        "signer/resources/signer.ico",
+        "--add-data",
+        "signer/resources:signer/resources",
         "main.py"
       ],
       "options": {

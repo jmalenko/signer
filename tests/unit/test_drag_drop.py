@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QMimeData, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import QApplication, QMessageBox, QDialog
 
-from signer.main_window import MainWindow, _SavePromptDialog
+from signer.main_window import MainWindow
 from signer.canvas import DocumentCanvas
 from signer.settings import SettingsStore, AppSettings
 from signer.objects import SignatureObject
@@ -316,7 +316,8 @@ class TestFileDropEvent:
         
         # Check signal was emitted with correct file path
         assert len(signal_data) == 1
-        assert str(small_test_image) in signal_data[0]
+        # Compare as Path objects to normalize path separators
+        assert Path(small_test_image) == Path(signal_data[0])
         event.acceptProposedAction.assert_called_once()
     
     def test_drop_event_no_urls(self, canvas):

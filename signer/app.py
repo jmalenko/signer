@@ -23,7 +23,14 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
     
     # Set application icon (prefer transparent PNG for UI consistency)
-    resources_dir = Path(__file__).parent / "resources"
+    # Handle both source and PyInstaller modes
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller executable - resources are in sys._MEIPASS
+        resources_dir = Path(sys._MEIPASS) / "signer" / "resources"
+    else:
+        # Running from source
+        resources_dir = Path(__file__).parent / "resources"
+    
     icon_path = resources_dir / "signer-transparent.png"
     if not icon_path.exists():
         icon_path = resources_dir / "signer.png"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -12,6 +13,38 @@ DEFAULT_LINE_WIDTH_PT: float = 1.5
 DEFAULT_FONT_FAMILY: str = "Arial"
 DEFAULT_FONT_SIZE_PT: int = 11
 
+
+def get_config_dir(app_name: str = "Signer") -> Path:
+    """
+    Determine config directory based on deployment mode.
+    
+    - Portable mode: config.json exists in application directory
+    - Installed mode: config.json in %APPDATA%/Signer/ (default)
+    
+    Returns the directory where config.json should be stored.
+    """
+    # Get the application directory (where signer.exe/main.py lives)
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller executable: sys.executable is signer.exe
+        app_dir = Path(sys.executable).parent
+    else:
+        # Running from source: __file__ is signer/settings.py, parent.parent gets project root
+        app_dir = Path(__file__).parent.parent
+    
+    # Check if config.json exists in app directory (portable mode)
+    if (app_dir / "config.json").exists():
+        return app_dir
+    
+    # Fall back to AppData (installed mode)
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        config_dir = Path(appdata) / app_name
+    else:
+        # Fallback if APPDATA not available (shouldn't happen on Windows)
+        config_dir = Path.home() / f".{app_name.lower()}"
+    
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir
 
 @dataclass
 class AppSettings:
@@ -49,11 +82,8 @@ class AppSettings:
 
 class SettingsStore:
     def __init__(self, app_name: str = "Signer") -> None:
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            self._settings_path = Path(appdata) / app_name / "config.json"
-        else:
-            self._settings_path = Path.home() / ".signer" / "config.json"
+        config_dir = get_config_dir(app_name)
+        self._settings_path = config_dir / "config.json"
 
     @property
     def settings_path(self) -> Path:
