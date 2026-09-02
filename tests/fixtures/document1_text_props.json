@@ -7,190 +7,190 @@
     {
       "type": "add_annotation",
       "annotation_type": "text",
-      "x": 60,
-      "y": 2000,
+      "x": 100,
+      "y": 2100,
       "page": 0,
       "object_id": 0,
-      "text": "8"
-    },
-    {
-      "type": "set_font_size",
-      "object_id": 0,
-      "font_size_px": 8
-    },
-    {
-      "type": "add_annotation",
-      "annotation_type": "text",
-      "x": 640,
-      "y": 2000,
-      "page": 0,
-      "object_id": 1,
-      "text": "14"
-    },
-    {
-      "type": "set_font_size",
-      "object_id": 1,
-      "font_size_px": 14
-    },
-    {
-      "type": "add_annotation",
-      "annotation_type": "text",
-      "x": 1220,
-      "y": 2000,
-      "page": 0,
-      "object_id": 2,
-      "text": "24"
-    },
-    {
-      "type": "set_font_size",
-      "object_id": 2,
-      "font_size_px": 24
-    },
-    {
-      "type": "add_annotation",
-      "annotation_type": "text",
-      "x": 1800,
-      "y": 2000,
-      "page": 0,
-      "object_id": 3,
-      "text": "36"
-    },
-    {
-      "type": "set_font_size",
-      "object_id": 3,
-      "font_size_px": 36
-    },
-    {
-      "type": "add_annotation",
-      "annotation_type": "text",
-      "x": 60,
-      "y": 2250,
-      "page": 0,
-      "object_id": 4,
       "text": "Red"
     },
     {
       "type": "set_color",
-      "object_id": 4,
+      "object_id": 0,
       "color": "#ff0000"
     },
     {
       "type": "add_annotation",
       "annotation_type": "text",
-      "x": 640,
-      "y": 2250,
+      "x": 500,
+      "y": 2100,
       "page": 0,
-      "object_id": 5,
+      "object_id": 1,
       "text": "Green"
     },
     {
       "type": "set_color",
-      "object_id": 5,
+      "object_id": 1,
       "color": "#00ff00"
     },
     {
       "type": "add_annotation",
       "annotation_type": "text",
-      "x": 1220,
-      "y": 2250,
+      "x": 900,
+      "y": 2100,
       "page": 0,
-      "object_id": 6,
+      "object_id": 2,
       "text": "Blue"
     },
     {
       "type": "set_color",
-      "object_id": 6,
+      "object_id": 2,
       "color": "#0000ff"
     },
     {
       "type": "add_annotation",
       "annotation_type": "text",
-      "x": 1800,
-      "y": 2250,
+      "x": 1300,
+      "y": 2100,
       "page": 0,
-      "object_id": 7,
-      "text": "Yellow"
+      "object_id": 3,
+      "text": "Magenta"
     },
     {
       "type": "set_color",
-      "object_id": 7,
-      "color": "#ffff00"
+      "object_id": 3,
+      "color": "#ff00ff"
     },
     {
       "type": "add_annotation",
       "annotation_type": "text",
-      "x": 60,
-      "y": 2500,
+      "x": 100,
+      "y": 2300,
       "page": 0,
-      "object_id": 8,
+      "object_id": 4,
       "text": "Arial"
     },
     {
       "type": "set_font_family",
-      "object_id": 8,
+      "object_id": 4,
       "font_family": "Arial"
     },
     {
       "type": "set_font_size",
-      "object_id": 8,
-      "font_size_px": 36
+      "object_id": 4,
+      "font_size_px": 32
     },
     {
       "type": "add_annotation",
       "annotation_type": "text",
-      "x": 640,
-      "y": 2500,
+      "x": 500,
+      "y": 2300,
       "page": 0,
-      "object_id": 9,
+      "object_id": 5,
       "text": "Courier"
     },
     {
       "type": "set_font_family",
-      "object_id": 9,
+      "object_id": 5,
       "font_family": "Courier New"
     },
     {
       "type": "set_font_size",
-      "object_id": 9,
-      "font_size_px": 36
+      "object_id": 5,
+      "font_size_px": 32
     },
     {
       "type": "add_annotation",
       "annotation_type": "text",
-      "x": 1220,
-      "y": 2500,
+      "x": 900,
+      "y": 2300,
       "page": 0,
-      "object_id": 10,
+      "object_id": 6,
       "text": "Times"
     },
     {
       "type": "set_font_family",
-      "object_id": 10,
+      "object_id": 6,
       "font_family": "Times New Roman"
     },
     {
       "type": "set_font_size",
-      "object_id": 10,
-      "font_size_px": 36
+      "object_id": 6,
+      "font_size_px": 32
     },
     {
       "type": "add_annotation",
       "annotation_type": "text",
-      "x": 1800,
-      "y": 2500,
+      "x": 1300,
+      "y": 2300,
       "page": 0,
-      "object_id": 11,
+      "object_id": 7,
       "text": "Georgia"
     },
     {
       "type": "set_font_family",
-      "object_id": 11,
+      "object_id": 7,
       "font_family": "Georgia"
     },
     {
       "type": "set_font_size",
+      "object_id": 7,
+      "font_size_px": 32
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "text",
+      "x": 100,
+      "y": 2500,
+      "page": 0,
+      "object_id": 8,
+      "text": "8px"
+    },
+    {
+      "type": "set_font_size",
+      "object_id": 8,
+      "font_size_px": 8
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "text",
+      "x": 500,
+      "y": 2500,
+      "page": 0,
+      "object_id": 9,
+      "text": "16px"
+    },
+    {
+      "type": "set_font_size",
+      "object_id": 9,
+      "font_size_px": 16
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "text",
+      "x": 900,
+      "y": 2500,
+      "page": 0,
+      "object_id": 10,
+      "text": "32px"
+    },
+    {
+      "type": "set_font_size",
+      "object_id": 10,
+      "font_size_px": 32
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "text",
+      "x": 1300,
+      "y": 2500,
+      "page": 0,
       "object_id": 11,
-      "font_size_px": 36
+      "text": "48px"
+    },
+    {
+      "type": "set_font_size",
+      "object_id": 11,
+      "font_size_px": 48
     },
     {
       "type": "save_document"

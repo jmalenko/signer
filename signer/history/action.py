@@ -242,8 +242,11 @@ class MoveAnnotationAction(MergeableAction):
 class ResizeAnnotationAction(MergeableAction):
     """Action: Resize an annotation.
     
-    Partial format: {type, object_id, width, height}
-    Full format: {type, object_id, from_width, from_height, to_width, to_height}
+    Partial format: {type, object_id, width, height, handle (optional)}
+    Full format: {type, object_id, from_width, from_height, to_width, to_height, handle (optional)}
+    
+    For endpoint-based shapes (arrows/lines) with handle 0 or 1, the non-dragged endpoint
+    is kept fixed at its original position.
     """
 
     def __init__(
@@ -255,6 +258,7 @@ class ResizeAnnotationAction(MergeableAction):
         from_height: float | None = None,
         to_width: float | None = None,
         to_height: float | None = None,
+        handle: int | None = None,
     ) -> None:
         """Initialize resize action."""
         data: dict[str, Any] = {"object_id": object_id}
@@ -268,23 +272,58 @@ class ResizeAnnotationAction(MergeableAction):
         else:
             raise ValueError("ResizeAnnotationAction requires either (width, height) or (from_width, from_height, to_width, to_height)")
         
+        if handle is not None:
+            data["handle"] = handle
+        
         super().__init__("resize_annotation", data)
 
     def execute(self, canvas: Any) -> None:
-        """Resize annotation to target size."""
+        """Resize annotation to target size.
+        
+        For endpoint-based shapes (arrows/lines), keeps the non-dragged endpoint fixed.
+        """
         obj_id = self.data["object_id"]
+        handle = self.data.get("handle")
         target = self.get_target_state()
         
         # Use the object map to find the object by ID
         if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
             obj_id in canvas._object_map):
             obj = canvas._object_map[obj_id]
-            obj.set_scaled_size(target["width"], target["height"])
         else:
             # Fallback to array index lookup for backward compatibility
             page_objs = canvas.current_page_objects()
             if obj_id < len(page_objs):
-                page_objs[obj_id].set_scaled_size(target["width"], target["height"])
+                obj = page_objs[obj_id]
+            else:
+                canvas.objectChanged.emit()
+                return
+        
+        # For endpoint-based shapes (arrows/lines) with specific handle, preserve the fixed endpoint
+        if handle is not None and handle in (0, 1) and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
+            # Get the fixed endpoint position before resizing
+            old_endpoints = obj.endpoint_points_doc()
+            if len(old_endpoints) == 2:
+                fixed_idx = 1 - handle  # If dragging handle 1, keep 0 fixed; if dragging 0, keep 1 fixed
+                fixed_endpoint_doc = old_endpoints[fixed_idx]
+                
+                # Resize the annotation
+                obj.set_scaled_size(target["width"], target["height"])
+                
+                # Get the new endpoint positions after resizing
+                new_endpoints = obj.endpoint_points_doc()
+                if len(new_endpoints) == 2:
+                    new_fixed_endpoint = new_endpoints[fixed_idx]
+                    
+                    # Adjust object position to keep the fixed endpoint at its original location
+                    dx = fixed_endpoint_doc.x() - new_fixed_endpoint.x()
+                    dy = fixed_endpoint_doc.y() - new_fixed_endpoint.y()
+                    obj.x += dx
+                    obj.y += dy
+            else:
+                obj.set_scaled_size(target["width"], target["height"])
+        else:
+            obj.set_scaled_size(target["width"], target["height"])
         
         canvas.objectChanged.emit()
 
@@ -296,19 +335,48 @@ class ResizeAnnotationAction(MergeableAction):
         
         from_w = self.data["from_width"]
         from_h = self.data["from_height"]
+        handle = self.data.get("handle")
         
         # Use the object map to find the object by ID
         if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
             obj_id in canvas._object_map):
             obj = canvas._object_map[obj_id]
-            obj.set_scaled_size(from_w, from_h)
-            canvas.objectChanged.emit()
         else:
             # Fallback to array index lookup for backward compatibility
             page_objs = canvas.current_page_objects()
             if obj_id < len(page_objs):
-                page_objs[obj_id].set_scaled_size(from_w, from_h)
+                obj = page_objs[obj_id]
+            else:
                 canvas.objectChanged.emit()
+                return
+        
+        # For endpoint-based shapes (arrows/lines) with specific handle, preserve the fixed endpoint
+        if handle is not None and handle in (0, 1) and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
+            # Get the fixed endpoint position before resizing back
+            old_endpoints = obj.endpoint_points_doc()
+            if len(old_endpoints) == 2:
+                fixed_idx = 1 - handle  # If dragging handle 1, keep 0 fixed; if dragging 0, keep 1 fixed
+                fixed_endpoint_doc = old_endpoints[fixed_idx]
+                
+                # Resize the annotation back
+                obj.set_scaled_size(from_w, from_h)
+                
+                # Get the new endpoint positions after resizing
+                new_endpoints = obj.endpoint_points_doc()
+                if len(new_endpoints) == 2:
+                    new_fixed_endpoint = new_endpoints[fixed_idx]
+                    
+                    # Adjust object position to keep the fixed endpoint at its original location
+                    dx = fixed_endpoint_doc.x() - new_fixed_endpoint.x()
+                    dy = fixed_endpoint_doc.y() - new_fixed_endpoint.y()
+                    obj.x += dx
+                    obj.y += dy
+            else:
+                obj.set_scaled_size(from_w, from_h)
+        else:
+            obj.set_scaled_size(from_w, from_h)
+        
+        canvas.objectChanged.emit()
 
     def get_target_state(self) -> dict[str, Any]:
         """Get target size (width, height)."""
@@ -337,6 +405,7 @@ class ResizeAnnotationAction(MergeableAction):
             from_height=data.get("from_height"),
             to_width=data.get("to_width"),
             to_height=data.get("to_height"),
+            handle=data.get("handle"),
         )
 
 
@@ -354,7 +423,7 @@ class AddAnnotationAction(Action):
 
     def execute(self, canvas: Any) -> None:
         """Add annotation to current page."""
-        from ..objects import canvas_object_from_dict, AnnotationType, VectorAnnotation, ARROW_TYPES, DPI_SCALE, DEFAULT_LINE_WIDTH_FACTOR
+        from ..objects import canvas_object_from_dict, AnnotationType, VectorAnnotation, ARROW_TYPES, LARGE_DEFAULT_TYPES, DPI_SCALE, DEFAULT_LINE_WIDTH_FACTOR
         
         # Convert annotation_type to VectorAnnotation format
         data_for_creation = dict(self.data)  # Copy to avoid modifying original
@@ -369,24 +438,17 @@ class AddAnnotationAction(Action):
             # Use VectorAnnotation.from_dict if we have the right format
             try:
                 # Determine default base size for annotations created from
-                # minimal action payloads.
+                # minimal action payloads. Match VectorAnnotation.__init__:
+                # - 80 PDF points (333 px) for LARGE_DEFAULT_TYPES (arrow, line, rectangle, ellipse)
+                # - 20 PDF points (83 px) for others (checkmark, crossmark)
                 ann_type_str = data_for_creation["ann_type"]
                 try:
                     ann_type = AnnotationType(ann_type_str)
-                    is_arrow = ann_type in ARROW_TYPES
                 except ValueError:
-                    is_arrow = False
                     ann_type = None
                 
                 # Add default values for any missing fields
-                # Base size in PDF points:
-                # - 20 for checkmark/cross (legacy compact size)
-                # - 80 for line/rectangle/ellipse
-                # - 160 for arrows
-                # These get scaled by DPI_SCALE (300/72) for 300 DPI rendering
-                if is_arrow:
-                    default_base_size_points = 160.0
-                elif ann_type in {AnnotationType.LINE, AnnotationType.RECTANGLE, AnnotationType.ELLIPSE}:
+                if ann_type in LARGE_DEFAULT_TYPES:
                     default_base_size_points = 80.0
                 else:
                     default_base_size_points = 20.0

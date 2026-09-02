@@ -93,10 +93,10 @@ class TestBoundingBox:
         """Test Arrow annotation bounding box (larger default)."""
         ann = VectorAnnotation(AnnotationType.ARROW, 0, 0, 0)
         
-        # Arrows have base size 160 points, scaled to 300 DPI (160 * 300/72 ≈ 666.67 px)
-        # 160 * 300/72 = 666.6666...
-        assert abs(ann._base_width - 666.67) < 0.01
-        assert abs(ann._base_height - 666.67) < 0.01
+        # Arrows have base size 80 points, scaled to 300 DPI (80 * 300/72 ≈ 333.33 px)
+        # 80 * 300/72 = 333.3333...
+        assert abs(ann._base_width - 333.33) < 0.01
+        assert abs(ann._base_height - 333.33) < 0.01
     
     def test_text_annotation_bounding_box(self, qapp):
         """Test Text annotation bounding box."""

@@ -42,7 +42,7 @@ class AnnotationType(Enum):
 
 
 ARROW_TYPES: set[AnnotationType] = {
-    AnnotationType.ARROW,  # v1.2.24: Only generic arrow
+    AnnotationType.ARROW,  # v1.2.24
 }
 
 # v1.2.22: Annotation types that support line width control
@@ -52,7 +52,8 @@ VECTOR_WITH_WIDTH: set[AnnotationType] = {
     AnnotationType.LINE,
     AnnotationType.RECTANGLE,
     AnnotationType.ELLIPSE,
-} | ARROW_TYPES
+    AnnotationType.ARROW,  # v1.2.24
+}
 
 ARROW_ANGLES: dict[AnnotationType, float] = {
     AnnotationType.ARROW: 0.0,  # v1.2.24: Points right (east)
@@ -62,6 +63,7 @@ LARGE_DEFAULT_TYPES: set[AnnotationType] = {
     AnnotationType.LINE,
     AnnotationType.RECTANGLE,
     AnnotationType.ELLIPSE,
+    AnnotationType.ARROW,  # v1.2.24
 }
 
 # 8 handles: TL, TC, TR, ML, MR, BL, BC, BR
@@ -264,9 +266,7 @@ class VectorAnnotation(CanvasObject):
         else:
             # v1.2.22 UX tweak: larger defaults for line/arrow/rectangle/ellipse.
             # Keep checkmark/crossmark at legacy size for document-density use.
-            if ann_type in ARROW_TYPES:
-                base = 8.0 * self.DEFAULT_BASE_SIZE
-            elif ann_type in LARGE_DEFAULT_TYPES:
+            if ann_type in LARGE_DEFAULT_TYPES:
                 base = 4.0 * self.DEFAULT_BASE_SIZE
             else:
                 base = self.DEFAULT_BASE_SIZE
@@ -444,7 +444,7 @@ class VectorAnnotation(CanvasObject):
             painter.setBrush(Qt.NoBrush)
             painter.drawText(QRectF(vx, vy, vw, vh), Qt.AlignLeft | Qt.AlignTop, self.text or "")
 
-        elif t in ARROW_TYPES:
+        elif t == AnnotationType.ARROW:
             # ARROW uses _angle for free rotation
             angle_deg = getattr(self, '_angle', None)
             if angle_deg is None:

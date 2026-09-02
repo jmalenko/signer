@@ -171,9 +171,9 @@ class TestVectorAnnotationSerialization:
         data = ann.to_dict()
         
         assert data["ann_type"] == "arrow"
-        # 160 * 300/72 = 666.6666...
-        assert abs(data["base_width"] - 666.67) < 0.01
-        assert abs(data["base_height"] - 666.67) < 0.01
+        # 80 * 300/72 = 333.3333...
+        assert abs(data["base_width"] - 333.33) < 0.01
+        assert abs(data["base_height"] - 333.33) < 0.01
     
     def test_text_annotation_to_dict(self, qapp):
         """Test text annotation serialization."""

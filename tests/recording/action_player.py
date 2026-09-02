@@ -246,35 +246,89 @@ class ActionPlayer:
         self.canvas._selected = obj
         self.canvas.objectChanged.emit()
 
-        # Endpoint-handle resize: expected for LINE/ARROW in modern fixtures.
-        if "x" in action and "y" in action and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
-            if handle not in (0, 1):
-                raise RuntimeError(f"Endpoint resize requires handle 0 or 1, got {handle}")
-            points = self._endpoint_state.get(obj_id, obj.endpoint_points_doc())
-            if len(points) != 2:
-                raise RuntimeError(f"Object with id {obj_id} does not expose exactly two endpoint handles")
-            points[handle] = QPointF(float(action["x"]), float(action["y"]))
-            self._apply_endpoint_resize(obj, points[0], points[1])
-            self._endpoint_state[obj_id] = [QPointF(points[0]), QPointF(points[1])]
-            width = obj.scaled_width
-            height = obj.scaled_height
+        # Handle endpoint-based resize (for LINE/ARROW with handle 0 or 1)
+        if hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles() and handle in (0, 1):
+            # Endpoint-handle resize: explicit x,y coordinates (from interactive drag)
+            if "x" in action and "y" in action:
+                points = self._endpoint_state.get(obj_id, obj.endpoint_points_doc())
+                if len(points) != 2:
+                    raise RuntimeError(f"Object with id {obj_id} does not expose exactly two endpoint handles")
+                points[handle] = QPointF(float(action["x"]), float(action["y"]))
+                self._apply_endpoint_resize(obj, points[0], points[1])
+                self._endpoint_state[obj_id] = [QPointF(points[0]), QPointF(points[1])]
+                width = obj.scaled_width
+                height = obj.scaled_height
+            # Endpoint-handle resize: width/height with handle specification (for fixture-based resize)
+            elif "width" in action and "height" in action:
+                # Get old endpoints to determine which one to preserve
+                old_endpoints = self._endpoint_state.get(obj_id, obj.endpoint_points_doc())
+                if len(old_endpoints) != 2:
+                    raise RuntimeError(f"Object with id {obj_id} does not expose exactly two endpoint handles")
+                
+                # The non-dragged endpoint stays fixed
+                fixed_idx = 1 - handle
+                fixed_point = old_endpoints[fixed_idx]
+                
+                # Calculate new endpoint position based on new size and angle
+                from signer.objects import AnnotationType
+                new_width = action["width"]
+                new_height = action["height"]
+                ann_type = getattr(obj, 'ann_type', None)
+                
+                if ann_type == AnnotationType.ARROW:
+                    # For arrows: distance = size * 0.66
+                    dist = max(8.0, max(new_width, new_height)) * 0.66
+                    # Use current angle or default
+                    angle_deg = getattr(obj, '_angle', 0.0)
+                    if angle_deg is None:
+                        from signer.objects import ARROW_ANGLES
+                        angle_deg = ARROW_ANGLES.get(ann_type, 0.0)
+                else:  # LINE
+                    # For lines: distance = size
+                    dist = max(8.0, max(new_width, new_height))
+                    angle_deg = getattr(obj, '_angle', 0.0)
+                    if angle_deg is None:
+                        from signer.objects import ARROW_ANGLES
+                        angle_deg = ARROW_ANGLES.get(ann_type, 0.0)
+                
+                # Calculate the dragged endpoint position
+                angle_rad = math.radians(angle_deg)
+                dx = dist * math.cos(angle_rad)
+                dy = -dist * math.sin(angle_rad) if ann_type == AnnotationType.ARROW else dist * math.sin(angle_rad)
+                
+                if handle == 0:  # Dragging tail
+                    dragged_point = fixed_point
+                    other_point = QPointF(fixed_point.x() + dx, fixed_point.y() + dy)
+                else:  # Dragging tip (handle == 1)
+                    other_point = fixed_point
+                    dragged_point = QPointF(fixed_point.x() + dx, fixed_point.y() + dy)
+                
+                self._apply_endpoint_resize(obj, dragged_point if handle == 0 else other_point,
+                                          other_point if handle == 0 else dragged_point)
+                self._endpoint_state[obj_id] = [dragged_point if handle == 0 else other_point,
+                                               other_point if handle == 0 else dragged_point]
+                width = obj.scaled_width
+                height = obj.scaled_height
+            else:
+                # No size or position info, just use legacy resize
+                width = obj.scaled_width
+                height = obj.scaled_height
         else:
             # Legacy resize format: width/height based.
-            width = action["width"]
-            height = action["height"]
+            width = action.get("width", obj.scaled_width)
+            height = action.get("height", obj.scaled_height)
             obj.set_scaled_size(width, height)
 
         self.canvas.objectChanged.emit()
         self.canvas.update()
-        
-        # Record to history with full format (from and to sizes)
         from signer.history.action import ResizeAnnotationAction
         resize_action = ResizeAnnotationAction(
             object_id=obj_id,
             from_width=from_width,
             from_height=from_height,
             to_width=width,
-            to_height=height
+            to_height=height,
+            handle=handle
         )
         self.canvas.history.record_action(resize_action)
 
