@@ -1,9 +1,8 @@
 """Unit tests for unsaved changes tracking feature."""
 
-import os
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from signer.main_window import MainWindow
@@ -109,44 +108,35 @@ class TestUnsavedChangesTracking:
         """Test _check_unsaved_changes returns False when user cancels."""
         main_window._has_unsaved_changes = True
         main_window.document_path = "test.pdf"
-        
-        # Remove test mode to show dialog
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("PYTEST_CURRENT_TEST", None)
-            with patch('signer.main_window.QMessageBox.warning') as mock_warning:
-                mock_warning.return_value = QMessageBox.Cancel
-                result = main_window._check_unsaved_changes()
-        
+        main_window._in_test_mode = False
+        with patch('signer.main_window.QMessageBox.warning') as mock_warning:
+            mock_warning.return_value = QMessageBox.Cancel
+            result = main_window._check_unsaved_changes()
+
         assert result is False
     
     def test_check_unsaved_changes_dialog_discard(self, main_window):
         """Test _check_unsaved_changes returns True when user discards."""
         main_window._has_unsaved_changes = True
         main_window.document_path = "test.pdf"
-        
-        # Remove test mode to show dialog
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("PYTEST_CURRENT_TEST", None)
-            with patch('signer.main_window.QMessageBox.warning') as mock_warning:
-                mock_warning.return_value = QMessageBox.Discard
-                result = main_window._check_unsaved_changes()
-        
+        main_window._in_test_mode = False
+        with patch('signer.main_window.QMessageBox.warning') as mock_warning:
+            mock_warning.return_value = QMessageBox.Discard
+            result = main_window._check_unsaved_changes()
+
         assert result is True
     
     def test_close_event_with_unsaved_changes_and_cancel(self, main_window):
         """Test closeEvent ignores close when user cancels save prompt."""
         main_window._has_unsaved_changes = True
         main_window.document_path = "test.pdf"
-        
+        main_window._in_test_mode = False
+
         event = Mock()
-        
-        # Remove test mode to show dialog
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("PYTEST_CURRENT_TEST", None)
-            with patch('signer.main_window.QMessageBox.warning') as mock_warning:
-                mock_warning.return_value = QMessageBox.Cancel
-                main_window.closeEvent(event)
-        
+        with patch('signer.main_window.QMessageBox.warning') as mock_warning:
+            mock_warning.return_value = QMessageBox.Cancel
+            main_window.closeEvent(event)
+
         event.ignore.assert_called_once()
         event.accept.assert_not_called()
     
@@ -163,14 +153,12 @@ class TestUnsavedChangesTracking:
         """Test _check_unsaved_changes automatically discards in test mode."""
         main_window._has_unsaved_changes = True
         main_window.document_path = "test.pdf"
-        
-        # Simulate test mode by setting PYTEST_CURRENT_TEST
-        with patch.dict(os.environ, {"PYTEST_CURRENT_TEST": "test_module::test_func"}):
-            # Mock the warning dialog - it should NOT be called
-            with patch('signer.main_window.QMessageBox.warning') as mock_warning:
-                result = main_window._check_unsaved_changes()
-                # Dialog should not be shown
-                mock_warning.assert_not_called()
-        
+        main_window._in_test_mode = True
+        # Mock the warning dialog - it should NOT be called
+        with patch('signer.main_window.QMessageBox.warning') as mock_warning:
+            result = main_window._check_unsaved_changes()
+            # Dialog should not be shown
+            mock_warning.assert_not_called()
+
         # Should return True (discard)
         assert result is True

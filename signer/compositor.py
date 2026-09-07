@@ -404,17 +404,16 @@ def build_overwrite_dialog_info(
     return "Overwrite Files", "Do you want to overwrite the existing files?", False
 
 
-def composite_objects_to_jpg(
-    page_image: Image.Image,
+def _composite_objects(
+    base: Image.Image,
     objects: list[CanvasObject],
-    output_path: str | Path,
-    jpg_quality: int = 95,
 ) -> None:
-    """Composite all objects over the page image and save as JPEG.
-    """
-    base = page_image.convert("RGBA")
-    pw, ph = base.size
+    """Composite all objects over the base RGBA image using alpha_composite.
 
+    Each object's render is clamped to the image bounds before compositing.
+    Render failures are silently skipped (matching the per-format behavior).
+    """
+    pw, ph = base.size
     for obj in objects:
         try:
             overlay = obj.render_to_pil().convert("RGBA")
@@ -427,6 +426,17 @@ def composite_objects_to_jpg(
         y = max(0, min(y, ph - 1))
         base.alpha_composite(overlay, dest=(x, y))
 
+
+def composite_objects_to_jpg(
+    page_image: Image.Image,
+    objects: list[CanvasObject],
+    output_path: str | Path,
+    jpg_quality: int = 95,
+) -> None:
+    """Composite all objects over the page image and save as JPEG.
+    """
+    base = page_image.convert("RGBA")
+    _composite_objects(base, objects)
     base.convert("RGB").save(str(output_path), format="JPEG", quality=jpg_quality, optimize=True)
 
 
@@ -437,19 +447,7 @@ def composite_objects_to_png(
 ) -> None:
     """Composite all objects over the page image and save as PNG with maximum compression."""
     base = page_image.convert("RGBA")
-    pw, ph = base.size
-
-    for obj in objects:
-        try:
-            overlay = obj.render_to_pil().convert("RGBA")
-        except Exception:
-            continue
-        x = int(round(obj.x))
-        y = int(round(obj.y))
-        # Clamp destination to avoid out-of-bounds
-        x = max(0, min(x, pw - 1))
-        y = max(0, min(y, ph - 1))
-        base.alpha_composite(overlay, dest=(x, y))
+    _composite_objects(base, objects)
 
     # Use compress_level=9 for maximum lossless compression
     base.save(str(output_path), format="PNG", optimize=True, compress_level=9)
@@ -462,19 +460,7 @@ def composite_objects_to_bmp(
 ) -> None:
     """Composite all objects over the page image and save as BMP."""
     base = page_image.convert("RGBA")
-    pw, ph = base.size
-
-    for obj in objects:
-        try:
-            overlay = obj.render_to_pil().convert("RGBA")
-        except Exception:
-            continue
-        x = int(round(obj.x))
-        y = int(round(obj.y))
-        # Clamp destination to avoid out-of-bounds
-        x = max(0, min(x, pw - 1))
-        y = max(0, min(y, ph - 1))
-        base.alpha_composite(overlay, dest=(x, y))
+    _composite_objects(base, objects)
 
     base.convert("RGB").save(str(output_path), format="BMP")
 
@@ -497,20 +483,7 @@ def composite_pages_to_pdf(
     
     for page_image, objects in zip(page_images, page_objects):
         base = page_image.convert("RGBA")
-        pw, ph = base.size
-
-        for obj in objects:
-            try:
-                overlay = obj.render_to_pil().convert("RGBA")
-            except Exception:
-                continue
-            x = int(round(obj.x))
-            y = int(round(obj.y))
-            # Clamp destination to avoid out-of-bounds
-            x = max(0, min(x, pw - 1))
-            y = max(0, min(y, ph - 1))
-            base.alpha_composite(overlay, dest=(x, y))
-
+        _composite_objects(base, objects)
         composited_images.append(base.convert("RGB"))
     
     if composited_images:
@@ -533,20 +506,7 @@ def composite_pages_to_tiff(
     
     for page_image, objects in zip(page_images, page_objects):
         base = page_image.convert("RGBA")
-        pw, ph = base.size
-
-        for obj in objects:
-            try:
-                overlay = obj.render_to_pil().convert("RGBA")
-            except Exception:
-                continue
-            x = int(round(obj.x))
-            y = int(round(obj.y))
-            # Clamp destination to avoid out-of-bounds
-            x = max(0, min(x, pw - 1))
-            y = max(0, min(y, ph - 1))
-            base.alpha_composite(overlay, dest=(x, y))
-
+        _composite_objects(base, objects)
         composited_images.append(base.convert("RGB"))
     
     if composited_images:

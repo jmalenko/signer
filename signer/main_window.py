@@ -4,6 +4,9 @@ import locale
 import logging
 import os
 import re
+
+logger = logging.getLogger(__name__)
+
 from datetime import datetime
 from pathlib import Path
 
@@ -353,6 +356,8 @@ class MainWindow(QMainWindow):
         # Ensure color button reflects the persisted color after full initialization
         # Use QTimer to ensure the widget is fully initialized and shown
         QTimer.singleShot(0, self._update_color_btn)
+
+        self._in_test_mode = os.environ.get("PYTEST_CURRENT_TEST") is not None
 
     def run_startup_load(self, document: str | None, signature: str | None) -> None:
         def _load() -> None:
@@ -1236,14 +1241,13 @@ class MainWindow(QMainWindow):
     def save_document_as(self) -> bool:
         """Save document in selected format with Save As dialog."""
         # In test mode, skip dialogs that require user interaction
-        in_test_mode = os.environ.get("PYTEST_CURRENT_TEST") is not None
         
         if not self.canvas.has_document:
-            if not in_test_mode:
+            if not self._in_test_mode:
                 QMessageBox.warning(self, "Missing document", "Open a document first.")
             return False
         if not self.document_path:
-            if not in_test_mode:
+            if not self._in_test_mode:
                 QMessageBox.warning(self, "Missing document path", "Document path is unavailable.")
             return False
 
@@ -1253,7 +1257,7 @@ class MainWindow(QMainWindow):
 
         any_objects = any(self.canvas.page_objects_at(i) for i in range(total))
         if not any_objects:
-            if not in_test_mode:
+            if not self._in_test_mode:
                 QMessageBox.warning(self, "Nothing to save", "Add a signature or annotation to the document first.")
             return False
 
@@ -1295,7 +1299,7 @@ class MainWindow(QMainWindow):
             
             # In test mode, use static dialog method (easier to mock)
             # In normal mode, use custom dialog with real-time filter detection
-            if in_test_mode:
+            if self._in_test_mode:
                 # Note: Also disable built-in overwrite confirmation for consistency
                 # We handle it with our own custom dialog (v1.2.13)
                 chosen, selected_filter = QFileDialog.getSaveFileName(
@@ -1404,7 +1408,7 @@ class MainWindow(QMainWindow):
                     # Extension is correct, validation passes
                     pass  # Continue with export
                 else:
-                    if not in_test_mode:
+                    if not self._in_test_mode:
                         QMessageBox.information(
                             self, "Invalid extension",
                             f"File extension doesn't match the {export_format.value.upper()} format.\n\n"
@@ -1424,7 +1428,7 @@ class MainWindow(QMainWindow):
                 )
                 
                 if not is_valid:
-                    if not in_test_mode:
+                    if not self._in_test_mode:
                         result = QMessageBox.warning(
                             self, "Invalid filename",
                             error_msg + "\n\nDo you want to choose a different filename?",
@@ -1456,7 +1460,7 @@ class MainWindow(QMainWindow):
             
             # If there are files to overwrite, show confirmation dialog
             if existing_files:
-                if not in_test_mode:
+                if not self._in_test_mode:
                     cleanup_checkbox_result = False
                     
                     if show_cleanup_checkbox:
@@ -1578,7 +1582,7 @@ class MainWindow(QMainWindow):
                         saved = total
                         exported_files = [output]
                     except PermissionError:
-                        if not in_test_mode:
+                        if not self._in_test_mode:
                             QMessageBox.critical(
                                 self, "Save failed",
                                 f"Permission denied. Check write permissions for:\n{directory}\n\n"
@@ -1587,18 +1591,18 @@ class MainWindow(QMainWindow):
                         return False
                     except OSError as exc:
                         if "No space left" in str(exc):
-                            if not in_test_mode:
+                            if not self._in_test_mode:
                                 QMessageBox.critical(
                                     self, "Save failed",
                                     "Insufficient disk space. Free up space and try again."
                                 )
                             return False
                         else:
-                            if not in_test_mode:
+                            if not self._in_test_mode:
                                 QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                             return False
                     except Exception as exc:
-                        if not in_test_mode:
+                        if not self._in_test_mode:
                             QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                         return False
             
@@ -1616,7 +1620,7 @@ class MainWindow(QMainWindow):
                         saved = total
                         exported_files = [output]
                     except PermissionError:
-                        if not in_test_mode:
+                        if not self._in_test_mode:
                             QMessageBox.critical(
                                 self, "Save failed",
                                 f"Permission denied. Check write permissions for:\n{directory}\n\n"
@@ -1625,18 +1629,18 @@ class MainWindow(QMainWindow):
                         return False
                     except OSError as exc:
                         if "No space left" in str(exc):
-                            if not in_test_mode:
+                            if not self._in_test_mode:
                                 QMessageBox.critical(
                                     self, "Save failed",
                                     "Insufficient disk space. Free up space and try again."
                                 )
                             return False
                         else:
-                            if not in_test_mode:
+                            if not self._in_test_mode:
                                 QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                             return False
                     except Exception as exc:
-                        if not in_test_mode:
+                        if not self._in_test_mode:
                             QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                         return False
             
@@ -1661,7 +1665,7 @@ class MainWindow(QMainWindow):
                         failed_pages.append((idx, "Permission denied"))
                     except OSError as exc:
                         if "No space left" in str(exc):
-                            if not in_test_mode:
+                            if not self._in_test_mode:
                                 QMessageBox.critical(
                                     self, "Save failed",
                                     "Insufficient disk space. Free up space and try again."
@@ -1674,7 +1678,7 @@ class MainWindow(QMainWindow):
                 
                 # If some pages failed, show error
                 if failed_pages:
-                    if not in_test_mode:
+                    if not self._in_test_mode:
                         failed_list = "\n".join([f"Page {p+1}: {e}" for p, e in failed_pages])
                         QMessageBox.critical(
                             self, "Save failed",
@@ -1686,7 +1690,7 @@ class MainWindow(QMainWindow):
                         return False
             
             if saved == 0:
-                if not in_test_mode:
+                if not self._in_test_mode:
                     QMessageBox.warning(self, "Nothing to save", "No pages could be saved.")
                 return False
             
@@ -1698,7 +1702,7 @@ class MainWindow(QMainWindow):
             self._has_unsaved_changes = False
             
             # Show auto-dismissing notification with clickable directory link
-            if not in_test_mode:
+            if not self._in_test_mode:
                 if total == 1:
                     # Single-page: show filename
                     filename = output.name
@@ -1717,17 +1721,16 @@ class MainWindow(QMainWindow):
 
     def print_document(self) -> None:
         """Print the current document with all annotations."""
-        in_test_mode = os.environ.get("PYTEST_CURRENT_TEST") is not None
         
         try:
             if not self.canvas.has_document:
-                if not in_test_mode:
+                if not self._in_test_mode:
                     QMessageBox.warning(self, "Missing document", "Open a document first.")
                 return
             
             total = self.canvas.page_count
             if total == 0:
-                if not in_test_mode:
+                if not self._in_test_mode:
                     QMessageBox.warning(self, "Empty document", "Document has no pages.")
                 return
             
@@ -1744,7 +1747,7 @@ class MainWindow(QMainWindow):
             # Render all pages to printer
             painter = QPainter()
             if not painter.begin(printer):
-                if not in_test_mode:
+                if not self._in_test_mode:
                     QMessageBox.critical(self, "Print failed", "Failed to initialize printer.")
                 return
             
@@ -1803,11 +1806,11 @@ class MainWindow(QMainWindow):
             finally:
                 painter.end()
             
-            if not in_test_mode:
+            if not self._in_test_mode:
                 NotificationToast(self, "Document sent to printer successfully.")
         
         except Exception as exc:
-            if not in_test_mode:
+            if not self._in_test_mode:
                 QMessageBox.critical(self, "Print error", f"Unexpected error during printing:\n{exc}")
             import traceback
             traceback.print_exc()
@@ -1817,8 +1820,8 @@ class MainWindow(QMainWindow):
     def _save_settings_safe(self) -> None:
         try:
             self._settings_store.save(self._settings)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Failed to save settings: %s", exc)
 
     def _adjust_window_to_document(self, doc_w: int, doc_h: int) -> None:
         if doc_w <= 0 or doc_h <= 0:
@@ -1894,7 +1897,7 @@ class MainWindow(QMainWindow):
             return True
         
         # In test mode, automatically discard changes without showing dialog
-        if os.environ.get("PYTEST_CURRENT_TEST"):
+        if self._in_test_mode:
             return True
         
         doc_name = Path(self.document_path).name

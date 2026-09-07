@@ -171,7 +171,7 @@ def text_annotation():
 @pytest.fixture
 def arrow_annotation():
     """Create an arrow VectorAnnotation."""
-    return VectorAnnotation(AnnotationType.ARROW_N, 100, 100, 0)
+    return VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
 
 
 # Test data paths

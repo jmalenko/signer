@@ -11,13 +11,16 @@ from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
-from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction
+from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction, ChangeLineWidthAction, ChangeFontSizeAction
 from .objects import (
     ANCHOR_HANDLE,
     HANDLE_FX,
     HANDLE_FY,
+    ARROW_TYPES,
+    AnnotationType,
     CanvasObject,
     canvas_object_from_dict,
+    VectorAnnotation,
 )
 
 
@@ -137,7 +140,6 @@ class DocumentCanvas(QWidget):
             
             # Create a shallow copy of the object with transformed coordinates
             # Annotations keep their original size and are NOT rotated
-            import copy
             obj_copy = copy.copy(obj)
             obj_copy.x = new_x
             obj_copy.y = new_y
@@ -382,8 +384,6 @@ class DocumentCanvas(QWidget):
     # v1.2.22: Adjust annotation properties (line width, font size) with keyboard
     def _adjust_annotation_property(self, selected, direction: str) -> None:
         """Adjust line width for vector annotations or font size for text annotations."""
-        from .objects import VectorAnnotation, AnnotationType
-        from .history import ChangeLineWidthAction, ChangeFontSizeAction
         
         sign = -1 if direction == 'decrease' else 1
         
@@ -569,7 +569,6 @@ class DocumentCanvas(QWidget):
 
     def set_line_width_selected(self, width_factor: float) -> None:
         """Set line width factor for vector annotations in selection."""
-        from .objects import ARROW_TYPES, AnnotationType
         
         selected = self.get_selected_annotations()
         if not selected:

@@ -5,7 +5,6 @@ Normalizes various document formats (PDF, Word, ODT, Images) to PIL Image lists.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List
 from PIL import Image
 import fitz
 
@@ -19,7 +18,7 @@ class DocumentLoader(ABC):
         pass
     
     @abstractmethod
-    def load(self, file_path: str | Path) -> List[Image.Image]:
+    def load(self, file_path: str | Path) -> list[Image.Image]:
         """Load document and return list of PIL Image objects (one per page).
         
         Raises:
@@ -36,12 +35,12 @@ class PDFLoader(DocumentLoader):
     def supports(self, file_path: str | Path) -> bool:
         return Path(file_path).suffix.lower() in self.SUPPORTED_EXTENSIONS
     
-    def load(self, file_path: str | Path, password: str = "") -> List[Image.Image]:
+    def load(self, file_path: str | Path, password: str = "") -> list[Image.Image]:
         """Load PDF and render all pages to images at 300 DPI."""
         file_path = str(file_path)
         zoom = 300 / 72.0
         matrix = fitz.Matrix(zoom, zoom)
-        pages: List[Image.Image] = []
+        pages: list[Image.Image] = []
         
         with fitz.open(file_path) as doc:
             # Handle encrypted PDFs
@@ -69,14 +68,14 @@ class ImageLoader(DocumentLoader):
     def supports(self, file_path: str | Path) -> bool:
         return Path(file_path).suffix.lower() in self.SUPPORTED_EXTENSIONS
     
-    def load(self, file_path: str | Path) -> List[Image.Image]:
+    def load(self, file_path: str | Path) -> list[Image.Image]:
         """Load image(s) and return as list of PIL Images.
         
         For single-page formats: returns [image]
         For multi-page formats (TIFF): returns [page0, page1, ...]
         """
         file_path = str(file_path)
-        pages: List[Image.Image] = []
+        pages: list[Image.Image] = []
         
         with Image.open(file_path) as img:
             # Convert to RGB if needed
@@ -115,7 +114,7 @@ class LibreOfficeLoader(DocumentLoader):
     def supports(self, file_path: str | Path) -> bool:
         return Path(file_path).suffix.lower() in self.SUPPORTED_EXTENSIONS
     
-    def load(self, file_path: str | Path) -> List[Image.Image]:
+    def load(self, file_path: str | Path) -> list[Image.Image]:
         """Convert document to PDF via LibreOffice, then render pages."""
         import subprocess
         import tempfile
@@ -234,7 +233,7 @@ class DocumentLoaderRegistry:
                 loader.libreoffice_path = path
                 break
     
-    def load(self, file_path: str | Path, password: str = "") -> List[Image.Image]:
+    def load(self, file_path: str | Path, password: str = "") -> list[Image.Image]:
         """Load document using appropriate loader."""
         file_path = str(file_path)
         
