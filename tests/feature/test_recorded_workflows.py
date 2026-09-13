@@ -72,7 +72,6 @@ class TestRecordedWorkflows:
         QApplication.processEvents()
 
         # Verify output matches reference (pixel-perfect)
-<<<<<<< HEAD
         # On first run, if expected image doesn't exist, create it from actual output
         if not expected_image.exists() and output_image.exists():
             # Create baseline by copying actual to expected (in fixtures)
@@ -81,8 +80,6 @@ class TestRecordedWorkflows:
             copy2(output_image, expected_image)
             pytest.skip(f"Baseline image created for {fixture_name}. Re-run test to compare.")
         
-=======
->>>>>>> 73c8dc659ec61e262f56042e32b38ce3b95245cf
         assert_images_equal_with_results(
             output_image,
             expected_image,
