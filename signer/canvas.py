@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
-from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction, ChangeLineWidthAction, ChangeFontSizeAction
+from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction, ChangeLineWidthAction, ChangeFontSizeAction, AddAnnotationAction, DeleteAnnotationAction, ChangeColorAction, PasteAnnotationAction
 from .objects import (
     ANCHOR_HANDLE,
     HANDLE_FX,
@@ -38,6 +38,7 @@ class DocumentCanvas(QWidget):
 
         # History management
         self.history = HistoryStack()
+        self._next_object_id: int = 0  # Auto-incrementing ID for stable object references
 
         self._pages: list[Image.Image] = []
         self._page_pixmaps: list[QPixmap] = []
@@ -153,6 +154,7 @@ class DocumentCanvas(QWidget):
         self._current_page = 0
         self._page_objects = {}
         self._object_map = {}  # Clear object map when resetting document
+        self._next_object_id = 0  # Reset object ID counter
         self._selected = None
         self._selected_multiple.clear()
         self._recompute_fit()
@@ -275,10 +277,24 @@ class DocumentCanvas(QWidget):
         return self._selected
 
     def add_object(self, obj: CanvasObject) -> None:
+        # Assign an auto-incrementing ID and register in _object_map
+        obj_id = self._next_object_id
+        self._next_object_id += 1
+        self._object_map[obj_id] = obj
+
         self._page_objects.setdefault(self._current_page, []).append(obj)
         self._selected = obj
         self.objectChanged.emit()
         self.update()
+
+        # Record the addition to history for undo support
+        annotation_data = obj.to_dict()
+        annotation_data["object_id"] = obj_id
+        if hasattr(obj, 'ann_type'):
+            annotation_data["ann_type"] = obj.ann_type.value
+        action = AddAnnotationAction(annotation_data)
+        action._added_object = obj  # So undo knows what to remove
+        self.history.record_action(action)
 
     def remove_selected(self) -> None:
         """Remove selected annotation(s). Works with single or multi-selection."""
@@ -287,10 +303,15 @@ class DocumentCanvas(QWidget):
         elif self._selected is None:
             return
         else:
-            # Single selection - original behavior
+            # Single selection - record delete action
             objs = self._page_objects.get(self._current_page, [])
             if self._selected in objs:
+                obj_idx = objs.index(self._selected)
+                obj_data = self._selected.to_dict()
                 objs.remove(self._selected)
+                self._object_map = {k: v for k, v in self._object_map.items() if v is not self._selected}
+                action = DeleteAnnotationAction(object_id=obj_idx, object_data=obj_data)
+                self.history.record_action(action)
             self._selected = None
             self.objectChanged.emit()
             self.update()
@@ -401,8 +422,8 @@ class DocumentCanvas(QWidget):
                     if obj_idx >= 0:
                         action = ChangeFontSizeAction(
                             object_id=obj_idx,
-                            from_size=old_size,
-                            to_size=new_size,
+                            font_size_px=new_size,
+                            from_font_size_px=old_size,
                         )
                         self.history.record_action(action)
                 elif obj.ann_type not in {AnnotationType.TEXT}:
@@ -414,8 +435,8 @@ class DocumentCanvas(QWidget):
                     if obj_idx >= 0:
                         action = ChangeLineWidthAction(
                             object_id=obj_idx,
-                            from_width=old_width,
-                            to_width=new_width,
+                            line_width_pt=new_width,
+                            from_line_width_pt=old_width,
                         )
                         self.history.record_action(action)
         
@@ -428,12 +449,29 @@ class DocumentCanvas(QWidget):
         selected = self.get_selected_annotations()
         if not selected:
             return
-        
-        # Remove all selected from page
+
+        # Find indices and data for all selected objects before removing
+        delete_actions = []
         for obj in selected:
             if obj in objs:
-                objs.remove(obj)
-        
+                obj_idx = objs.index(obj)
+                obj_data = obj.to_dict()
+                delete_actions.append((obj_idx, obj_data))
+
+        # Sort by index ascending for recording (undo restores in correct order)
+        # But pop from highest index first to preserve lower indices
+        delete_actions.sort(key=lambda x: x[0])
+
+        # Remove from highest index to lowest to preserve indices
+        for obj_idx, obj_data in reversed(delete_actions):
+            if obj_idx < len(objs):
+                objs.pop(obj_idx)
+            # Record delete action (will be undone in reverse order of recording)
+            action = DeleteAnnotationAction(object_id=obj_idx, object_data=obj_data)
+            self.history.record_action(action)
+
+        # Clean up _object_map
+        self._object_map = {k: v for k, v in self._object_map.items() if v not in selected}
         self.clear_selection()
         self.objectChanged.emit()
 
@@ -454,7 +492,7 @@ class DocumentCanvas(QWidget):
                 dup.clamp_to_page(pw, ph)
             objs.append(dup)
             new_objs.append(dup)
-        
+
         # Select new duplicates
         self._selected_multiple.clear()
         self._selected_multiple.update(new_objs)
@@ -555,6 +593,13 @@ class DocumentCanvas(QWidget):
         self._selected_multiple.update(pasted_objs)
         self._selected = pasted_objs[0] if pasted_objs else None
         self.objectChanged.emit()
+
+        # Record paste action for undo support
+        pasted_data = [obj.to_dict() for obj in pasted_objs]
+        if pasted_data:
+            action = PasteAnnotationAction(pasted_objects_data=pasted_data)
+            self.history.record_action(action)
+
         self.update()
 
     def set_color_selected(self, color: QColor) -> None:
@@ -562,8 +607,21 @@ class DocumentCanvas(QWidget):
         selected = self.get_selected_annotations()
         if not selected:
             return
+
+        # Record color change actions for undo support
+        objs = self.current_page_objects()
         for obj in selected:
+            obj_idx = objs.index(obj) if obj in objs else -1
+            if obj_idx >= 0:
+                from_color = obj.color.name()
+                action = ChangeColorAction(
+                    object_id=obj_idx,
+                    color=color.name(),
+                    from_color=from_color,
+                )
+                self.history.record_action(action)
             obj.color = color
+
         self.objectChanged.emit()
         self.update()
 
