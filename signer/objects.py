@@ -149,6 +149,48 @@ class CanvasObject:
                 return i
         return -1
 
+    def hit_test_point(self, vx: float, vy: float, vw: float, vh: float, pt: QPointF) -> bool:
+        """Return True only when the point lands on a visible alpha pixel."""
+        if vw <= 0 or vh <= 0:
+            return False
+        if not QRectF(vx, vy, vw, vh).contains(pt):
+            return False
+
+        img = self.render_to_pil().convert("RGBA")
+        if img.width <= 0 or img.height <= 0:
+            return False
+
+        rel_x = ((pt.x() - vx) / vw) * img.width
+        rel_y = ((pt.y() - vy) / vh) * img.height
+        x = int(round(rel_x))
+        y = int(round(rel_y))
+        if x < 0 or x >= img.width or y < 0 or y >= img.height:
+            return False
+
+        alpha = img.getpixel((x, y))[3]
+        return alpha > 0
+
+    def distance_to_visible_pixel(self, vx: float, vy: float, vw: float, vh: float, pt: QPointF) -> float:
+        """Distance from pt to the nearest visible rendered pixel in this object."""
+        if vw <= 0 or vh <= 0:
+            return float("inf")
+
+        img = self.render_to_pil().convert("RGBA")
+        if img.width <= 0 or img.height <= 0:
+            return float("inf")
+
+        nearest = float("inf")
+        for y in range(img.height):
+            for x in range(img.width):
+                if img.getpixel((x, y))[3] <= 0:
+                    continue
+                px = vx + (x / max(1, img.width)) * vw
+                py = vy + (y / max(1, img.height)) * vh
+                distance = math.hypot(pt.x() - px, pt.y() - py)
+                if distance < nearest:
+                    nearest = distance
+        return nearest if nearest != float("inf") else float("inf")
+
     # ------------------------------------------------------------------ serialization
 
     def to_dict(self) -> dict[str, Any]:

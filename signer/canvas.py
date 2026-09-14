@@ -726,6 +726,22 @@ class DocumentCanvas(QWidget):
         
         return QPointF(doc_x, doc_y)
 
+    def _hit_test_object_at_point(self, pt: QPointF) -> CanvasObject | None:
+        """Return the nearest annotation whose bounding box contains the point."""
+        best_obj: CanvasObject | None = None
+        best_distance: float | None = None
+
+        for obj in reversed(self.current_page_objects()):
+            r = self._object_view_rect(obj)
+            if not r.contains(pt):
+                continue
+            distance = obj.distance_to_visible_pixel(r.x(), r.y(), r.width(), r.height(), pt)
+            if best_distance is None or distance < best_distance - 1e-9:
+                best_distance = distance
+                best_obj = obj
+
+        return best_obj
+
     def _recompute_fit(self) -> None:
         if not self._pages:
             self._fit_scale = 1.0
@@ -822,28 +838,27 @@ class DocumentCanvas(QWidget):
                 self._start_handle_drag(h_idx, pt)
                 return
 
-        for obj in reversed(objects):
-            r = self._object_view_rect(obj)
-            if r.contains(pt):
-                # Check for Shift+click (multi-select)
-                if event.modifiers() & Qt.ShiftModifier:
-                    self.select_annotation(obj, multi=True)
-                else:
-                    # Regular click (single select)
-                    self.select_annotation(obj, multi=False)
-                
-                # Start dragging the clicked object
-                self._dragging = True
-                self._drag_handle = -1
-                doc_pt = self._view_to_doc(pt)
-                self._drag_doc_offset_x = doc_pt.x() - obj.x
-                self._drag_doc_offset_y = doc_pt.y() - obj.y
-                
-                # Capture initial position for action recording
-                self._drag_start_x = obj.x
-                self._drag_start_y = obj.y
-                self._action_recorded_this_drag = False
-                return
+        clicked_obj = self._hit_test_object_at_point(pt)
+        if clicked_obj is not None:
+            # Check for Shift+click (multi-select)
+            if event.modifiers() & Qt.ShiftModifier:
+                self.select_annotation(clicked_obj, multi=True)
+            else:
+                # Regular click (single select)
+                self.select_annotation(clicked_obj, multi=False)
+
+            # Start dragging the clicked object
+            self._dragging = True
+            self._drag_handle = -1
+            doc_pt = self._view_to_doc(pt)
+            self._drag_doc_offset_x = doc_pt.x() - clicked_obj.x
+            self._drag_doc_offset_y = doc_pt.y() - clicked_obj.y
+
+            # Capture initial position for action recording
+            self._drag_start_x = clicked_obj.x
+            self._drag_start_y = clicked_obj.y
+            self._action_recorded_this_drag = False
+            return
 
         # Clicked on empty space
         if event.modifiers() & Qt.ShiftModifier:
@@ -1162,10 +1177,10 @@ class DocumentCanvas(QWidget):
                 self.setCursor(cursor_map.get(h, Qt.SizeAllCursor))
                 return
 
-        for obj in reversed(objects):
-            if self._object_view_rect(obj).contains(pt):
-                self.setCursor(Qt.SizeAllCursor)
-                return
+        hovered_obj = self._hit_test_object_at_point(pt)
+        if hovered_obj is not None:
+            self.setCursor(Qt.SizeAllCursor)
+            return
         self.setCursor(Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, event) -> None:

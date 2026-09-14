@@ -1130,3 +1130,9 @@ To make the application fully portable (settings travel with the executable):
 ### Assumption
 
 1. Signature has a transparent background.
+
+## Version 1.2.27 - Nearest annotation selection
+
+1. When the cursor is inside the bounding box of one or more annotations, transparent pixels within those bounding boxes shall count as selectable space.
+2. When multiple annotation bounding boxes contain the cursor, the nearest annotation shall be selected based on the distance to its nearest rendered visible pixel.
+3. A cursor outside all annotation bounding boxes shall select nothing.

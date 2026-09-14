@@ -151,6 +151,53 @@ class TestBoundingBox:
         assert sig.scaled_width == 100
         assert sig.scaled_height == 50
 
+    def test_vector_annotation_hit_test_ignores_transparent_pixels(self):
+        """Transparent pixels should not count as a hit for selection."""
+        ann = VectorAnnotation(AnnotationType.CROSSMARK, 0, 0, 0)
+        img = ann.render_to_pil()
+
+        transparent = None
+        opaque = None
+        for y in range(img.height):
+            for x in range(img.width):
+                alpha = img.getpixel((x, y))[3]
+                if alpha == 0 and transparent is None:
+                    transparent = (x, y)
+                if alpha > 0 and opaque is None:
+                    opaque = (x, y)
+            if transparent is not None and opaque is not None:
+                break
+
+        assert transparent is not None
+        assert opaque is not None
+        assert not ann.hit_test_point(0, 0, ann.scaled_width, ann.scaled_height, QPointF(*transparent))
+        assert ann.hit_test_point(0, 0, ann.scaled_width, ann.scaled_height, QPointF(*opaque))
+
+    def test_nearest_visible_annotation_is_selected_when_overlapping(self, canvas):
+        """Clicking on overlapping line/arrow should pick the nearer visible annotation."""
+        canvas._pages = [Image.new("RGB", (500, 500), (255, 255, 255))]
+        canvas._page_objects[0] = []
+        canvas._fit_scale = 1.0
+        canvas._doc_offset_x = 0.0
+        canvas._doc_offset_y = 0.0
+
+        line = VectorAnnotation(AnnotationType.LINE, 90, 90, 0)
+        line._angle = 45.0
+        line.set_scaled_size(200, 200)
+
+        arrow = VectorAnnotation(AnnotationType.ARROW, 90, 90, 0)
+        arrow._angle = 0.0
+        arrow.set_scaled_size(200, 200)
+
+        canvas._page_objects[0] = [line, arrow]
+
+        assert canvas._hit_test_object_at_point(QPointF(150, 150)) is line
+        assert canvas._hit_test_object_at_point(QPointF(220, 190)) is arrow
+        # Transparent space inside the annotation bounding box is selectable.
+        assert canvas._hit_test_object_at_point(QPointF(220, 170)) is arrow
+        # Overlapping bounding boxes choose the annotation nearest to visible content.
+        assert canvas._hit_test_object_at_point(QPointF(145, 135)) is line
+
 
 class TestHandleRectangles:
     """Tests for handle rectangle calculations."""
