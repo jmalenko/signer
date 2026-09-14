@@ -118,6 +118,34 @@ class TestDocumentDependentWorkflowButtons:
         assert main_window._save_as_file_action.isEnabled()
         assert main_window._hamburger_annotations_menu.menuAction().isEnabled()
 
+    def test_page_navigation_hidden_for_single_page_document(self, main_window, sample_pdf):
+        """Single-page documents should hide the toolbar page navigation controls."""
+        assert main_window.open_document(str(sample_pdf))
+        assert main_window.canvas.page_count == 1
+
+        assert main_window._page_nav_prev_action is not None
+        assert main_window._page_nav_next_action is not None
+        assert main_window._page_nav_label is not None
+        assert not main_window._page_nav_prev_action.isVisible()
+        assert not main_window._page_nav_next_action.isVisible()
+        assert not main_window._page_nav_label.isVisible()
+
+    def test_property_controls_hidden_when_no_selection(self, main_window, sample_pdf):
+        """No selection should hide all annotation property controls even on a single-page document."""
+        assert main_window.open_document(str(sample_pdf))
+        assert main_window.canvas.page_count == 1
+        assert main_window.canvas.selected is None
+
+        main_window._update_annotation_action_state()
+
+        assert not main_window._color_btn.isVisible()
+        assert not main_window._width_spinner.isVisible()
+        assert not main_window._width_label.isVisible()
+        assert not main_window._font_size_spinner.isVisible()
+        assert not main_window._font_size_label.isVisible()
+        assert not main_window._font_family_combo.isVisible()
+        assert not main_window._font_label.isVisible()
+
 
 class TestStateTransitions:
     """Test UI state transitions when changing selections."""

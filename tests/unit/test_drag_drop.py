@@ -87,6 +87,7 @@ def test_pdf(temp_dir):
 def main_window_no_doc(qapp, temp_dir):
     """Create a MainWindow with no document loaded."""
     store = SettingsStore()
+    store._settings_path = temp_dir / "config_never_exists.json"
     settings = AppSettings()
     window = MainWindow(settings_store=store, settings=settings)
     window.show()
@@ -98,6 +99,7 @@ def main_window_no_doc(qapp, temp_dir):
 def main_window_with_doc(qapp, temp_dir, test_pdf):
     """Create a MainWindow with a document loaded."""
     store = SettingsStore()
+    store._settings_path = temp_dir / "config_never_exists.json"
     settings = AppSettings()
     window = MainWindow(settings_store=store, settings=settings)
     window.show()
@@ -116,6 +118,7 @@ def main_window_with_doc(qapp, temp_dir, test_pdf):
 def main_window_with_unsaved(qapp, temp_dir, test_pdf):
     """Create a MainWindow with a document loaded and unsaved changes."""
     store = SettingsStore()
+    store._settings_path = temp_dir / "config_never_exists.json"
     settings = AppSettings()
     window = MainWindow(settings_store=store, settings=settings)
     window.show()

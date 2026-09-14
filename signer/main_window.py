@@ -339,6 +339,9 @@ class MainWindow(QMainWindow):
         self._add_annotation_btn: QToolButton | None = None
         self._save_as_toolbar_action: QAction | None = None
         self._save_as_file_action: QAction | None = None
+        self._page_nav_prev_action: QAction | None = None
+        self._page_nav_next_action: QAction | None = None
+        self._page_nav_label: QLabel | None = None
 
         self.document_path: str | None = None
         self._has_unsaved_changes: bool = False
@@ -370,11 +373,23 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- toolbar
 
     def _build_toolbar(self) -> None:
+        # macOS unified title/toolbar doesn't reliably re-layout when toolbar
+        # widgets are hidden/shown dynamically; use a regular toolbar instead.
+        self.setUnifiedTitleAndToolBarOnMac(False)
+
         tb = QToolBar("Main", self)
         tb.setMovable(False)
         tb.setIconSize(QSize(24, 24))
         tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        # Fixed height so toggling the color button (38px) doesn't resize the toolbar.
+        tb.setFixedHeight(44)
+        # Unify font size across buttons, labels and inputs (native button style otherwise renders smaller).
+        tb.setStyleSheet(
+            "QToolBar QLabel, QToolBar QToolButton, QToolBar QPushButton, "
+            "QToolBar QComboBox, QToolBar QSpinBox, QToolBar QDoubleSpinBox { font-size: 13px; }"
+        )
         self.addToolBar(tb)
+        self._main_toolbar = tb
 
         def big_action(text: str, slot) -> QAction:
             act = QAction(text, self)
@@ -437,20 +452,24 @@ class MainWindow(QMainWindow):
         # Save action (3rd, same workflow group)
         self._save_as_toolbar_action = big_action("💾 Save As…", self.save_document_as)
 
-        tb.addSeparator()
+        self._page_nav_separator_action = tb.addSeparator()
 
         # Page navigation
-        big_action("◀ Prev", lambda: self.canvas.goto_page(self.canvas.current_page - 1))
-        self.page_label = QLabel("  Page — / —  ")
-        tb.addWidget(self.page_label)
-        big_action("Next ▶", lambda: self.canvas.goto_page(self.canvas.current_page + 1))
+        self._page_nav_prev_action = QAction("◀ Prev", self)
+        self._page_nav_prev_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page - 1))
+        tb.addAction(self._page_nav_prev_action)
 
-        tb.addSeparator()
+        self._page_nav_label = QLabel("  Page — / —  ")
+        self._page_nav_label_action = tb.addWidget(self._page_nav_label)
+
+        self._page_nav_next_action = QAction("Next ▶", self)
+        self._page_nav_next_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page + 1))
+        tb.addAction(self._page_nav_next_action)
 
         self._dup_action = big_action("❏ Duplicate", lambda: self.canvas.duplicate_selected())
         self._del_action = big_action("🗑 Delete", lambda: self.canvas.remove_selected())
 
-        tb.addSeparator()
+        self._properties_separator_action = tb.addSeparator()
 
         # Color button
         self._color_btn = QPushButton("●")
@@ -458,12 +477,11 @@ class MainWindow(QMainWindow):
         self._color_btn.setToolTip("Annotation color")
         self._color_btn.clicked.connect(self._pick_color)
         self._update_color_btn()
-        tb.addWidget(self._color_btn)
+        self._color_btn_action = tb.addWidget(self._color_btn)
 
         # v1.2.22: Line width spinner (for vector annotations)
-        tb.addSeparator()
-        self._width_label = QLabel("Width (pt):")
-        tb.addWidget(self._width_label)
+        self._width_label = QLabel("Width:")
+        self._width_label_action = tb.addWidget(self._width_label)
         self._width_spinner = QDoubleSpinBox()
         self._width_spinner.setMinimum(0.5)
         self._width_spinner.setMaximum(10.0)
@@ -473,11 +491,11 @@ class MainWindow(QMainWindow):
         self._width_spinner.setMaximumWidth(60)
         self._width_spinner.setToolTip("Line width in points")
         self._width_spinner.valueChanged.connect(self._on_width_changed)
-        tb.addWidget(self._width_spinner)
+        self._width_spinner_action = tb.addWidget(self._width_spinner)
 
         # v1.2.22: Font size spinner (for text annotations)
         self._font_size_label = QLabel("Font Size (pt):")
-        tb.addWidget(self._font_size_label)
+        self._font_size_label_action = tb.addWidget(self._font_size_label)
         self._font_size_spinner = QSpinBox()
         self._font_size_spinner.setMinimum(6)
         self._font_size_spinner.setMaximum(72)
@@ -486,18 +504,18 @@ class MainWindow(QMainWindow):
         self._font_size_spinner.setMaximumWidth(60)
         self._font_size_spinner.setToolTip("Font size in points")
         self._font_size_spinner.valueChanged.connect(self._on_font_size_changed)
-        tb.addWidget(self._font_size_spinner)
+        self._font_size_spinner_action = tb.addWidget(self._font_size_spinner)
 
         # v1.2.22: Font family combo (for text annotations)
         self._font_label = QLabel("Font:")
-        tb.addWidget(self._font_label)
+        self._font_label_action = tb.addWidget(self._font_label)
         self._font_family_combo = QComboBox()
         self._font_family_combo.addItems(self._get_system_fonts())
         self._font_family_combo.setCurrentText(DEFAULT_FONT_FAMILY)
         self._font_family_combo.setMaximumWidth(120)
         self._font_family_combo.setToolTip("Font family")
         self._font_family_combo.currentTextChanged.connect(self._on_font_family_changed)
-        tb.addWidget(self._font_family_combo)
+        self._font_family_combo_action = tb.addWidget(self._font_family_combo)
 
         # Add stretch to push hamburger menu to the right
         spacer = QWidget()
@@ -596,6 +614,40 @@ class MainWindow(QMainWindow):
             self._save_as_file_action.setEnabled(has_doc)
         if self._hamburger_annotations_menu is not None:
             self._hamburger_annotations_menu.menuAction().setEnabled(has_doc)
+
+        self._update_page_navigation_visibility()
+
+    def _update_page_navigation_visibility(self) -> None:
+        """Hide page navigation controls when the current document has a single page."""
+        show_navigation = self.canvas.has_document and self.canvas.page_count > 1
+
+        if self._page_nav_prev_action is not None:
+            self._page_nav_prev_action.setVisible(show_navigation)
+        if self._page_nav_next_action is not None:
+            self._page_nav_next_action.setVisible(show_navigation)
+        if self._page_nav_label is not None:
+            self._page_nav_label.setVisible(show_navigation)
+        if getattr(self, "_page_nav_label_action", None) is not None:
+            self._page_nav_label_action.setVisible(show_navigation)
+
+        self._update_page_nav_separator_visibility()
+        self._refresh_toolbar_layout()
+
+    def _update_page_nav_separator_visibility(self) -> None:
+        """Show the separator after Save As only if page nav or Duplicate/Delete are visible."""
+        separator = getattr(self, "_page_nav_separator_action", None)
+        if separator is None:
+            return
+        show_navigation = self.canvas.has_document and self.canvas.page_count > 1
+        has_selection = self.canvas.selected is not None
+        separator.setVisible(show_navigation or has_selection)
+
+    def _refresh_toolbar_layout(self) -> None:
+        """Force the toolbar to repaint after widget visibility changes."""
+        toolbar = getattr(self, "_main_toolbar", None)
+        if toolbar is None:
+            return
+        toolbar.update()
 
     def _rebuild_sig_ann_menu(self) -> None:
         if self._sig_ann_menu is None:
@@ -727,29 +779,61 @@ class MainWindow(QMainWindow):
         has_selection = selected is not None
         self._dup_action.setEnabled(has_selection)
         self._del_action.setEnabled(has_selection)
-        self._color_btn.setEnabled(True)
-        
+        self._dup_action.setVisible(has_selection)
+        self._del_action.setVisible(has_selection)
+
+        # Color control applies to vector annotations only; Signature/Image has no color control.
+        color_visible = has_selection and isinstance(selected, VectorAnnotation)
+        self._color_btn.setVisible(color_visible)
+        self._color_btn.setEnabled(color_visible)
+        self._color_btn_action.setVisible(color_visible)
+
         # v1.2.22: Context-sensitive control visibility based on annotation type
         # Width spinner and label: visible for vector types (not TEXT, not Signature/Image)
-        width_visible = (has_selection and isinstance(selected, VectorAnnotation) and 
-                        selected.ann_type != AnnotationType.TEXT)
+        width_visible = (
+            has_selection and
+            isinstance(selected, VectorAnnotation) and
+            selected.ann_type != AnnotationType.TEXT
+        )
         self._width_spinner.setVisible(width_visible)
         self._width_label.setVisible(width_visible)
-        
+        self._width_spinner_action.setVisible(width_visible)
+        self._width_label_action.setVisible(width_visible)
+
         # Font controls and labels: visible only for TEXT
-        font_visible = (has_selection and isinstance(selected, VectorAnnotation) and 
-                       selected.ann_type == AnnotationType.TEXT)
+        font_visible = (
+            has_selection and
+            isinstance(selected, VectorAnnotation) and
+            selected.ann_type == AnnotationType.TEXT
+        )
         self._font_size_spinner.setVisible(font_visible)
         self._font_size_label.setVisible(font_visible)
         self._font_family_combo.setVisible(font_visible)
         self._font_label.setVisible(font_visible)
+        self._font_size_spinner_action.setVisible(font_visible)
+        self._font_size_label_action.setVisible(font_visible)
+        self._font_family_combo_action.setVisible(font_visible)
+        self._font_label_action.setVisible(font_visible)
+
+        # Single separator before the whole property group; shown only if something in it is visible.
+        self._properties_separator_action.setVisible(color_visible or width_visible or font_visible)
+
+        self._update_page_nav_separator_visibility()
+
+        # Keep property controls consistent when no selection remains.
+        if not has_selection:
+            self._update_color_btn()
+
+        self._refresh_toolbar_layout()
+
 
     def _on_page_changed(self, current: int, total: int) -> None:
         self._update_document_workflow_state()
-        if total > 0:
-            self.page_label.setText(f"  Page {current + 1} / {total}  ")
-        else:
-            self.page_label.setText("  Page — / —  ")
+        if self._page_nav_label is not None:
+            if total > 0:
+                self._page_nav_label.setText(f"  Page {current + 1} / {total}  ")
+            else:
+                self._page_nav_label.setText("  Page — / —  ")
 
     def _on_edit_requested(self, obj: object) -> None:
         from .objects import CanvasObject, VectorAnnotation
@@ -1026,6 +1110,8 @@ class MainWindow(QMainWindow):
         self._update_title()
         self._rebuild_recent_menus()
         self._update_document_workflow_state()
+        self._update_annotation_action_state()
+        self._update_color_btn()
         return True
 
     def _on_file_drop(self, file_path: str) -> None:

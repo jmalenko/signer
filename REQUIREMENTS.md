@@ -1127,12 +1127,28 @@ To make the application fully portable (settings travel with the executable):
 - **AppData unavailable** (e.g., network share with restrictions): App still works via portable mode
 - **No config file anywhere**: App creates it in AppData on first run (default installed mode)
 
-### Assumption
-
-1. Signature has a transparent background.
-
 ## Version 1.2.27 - Nearest annotation selection
 
 1. When the cursor is inside the bounding box of one or more annotations, transparent pixels within those bounding boxes shall count as selectable space.
 2. When multiple annotation bounding boxes contain the cursor, the nearest annotation shall be selected based on the distance to its nearest rendered visible pixel.
 3. A cursor outside all annotation bounding boxes shall select nothing.
+
+## Version 1.2.28 - Context-sensitive toolbar visibility
+
+1. Toolbar property controls shall be shown only for the currently selected annotation type.
+2. When no annotation is selected, annotation-specific toolbar controls shall be hidden.
+3. The page navigation block shall be shown only for documents with more than one page.
+4. When the document has exactly one page, the entire page navigation section shall be hidden, including any page label such as "Page 1/1".
+5. The toolbar property section shall be defined per annotation type as follows:
+   - No selection: hide all annotation property controls (color, width, font size, font family).
+   - Text: show color, font size, and font family controls
+   - Signature / Image: show no controls
+   - Other: show color and width controls
+6. The Duplicate and Delete toolbar buttons shall be visible only when an annotation is selected.
+7. Toolbar group separators shall not be duplicated: when a group of controls (e.g. page navigation, or the color/width/font property group) is hidden, only a single dividing separator shall remain, never two adjacent separators.
+8. When multiple annotations are selected, the toolbar shall show only the controls that are relevant to at least one selected annotation.
+9. When a property is changed while multiple annotations are selected, the change shall be applied only to the selected annotations that support that property.
+
+### Assumption
+
+1. Signature has a transparent background.
