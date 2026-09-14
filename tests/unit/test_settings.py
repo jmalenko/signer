@@ -56,6 +56,12 @@ class TestAppSettings:
         assert "recent_line_width_pt" in data
         assert "recent_signature_paths" in data
 
+    def test_asdict_does_not_include_duplicate_image_paths(self):
+        """Recent image paths use the unified signature paths setting."""
+        data = AppSettings().__dict__
+
+        assert "recent_image_paths" not in data
+
 
 class TestSettingsStore:
     """Tests for SettingsStore."""
