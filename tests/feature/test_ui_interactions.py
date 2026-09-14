@@ -194,6 +194,19 @@ class TestMultipageAnnotations:
         # End -> last page
         QTest.keyClick(main_window.canvas, Qt.Key_End)
         assert main_window.canvas.current_page == total_pages - 1
+
+    def test_plus_opens_annotation_menu(self, main_window, sample_pdf):
+        """The plus hotkey opens the toolbar annotation menu."""
+        assert main_window.open_document(str(sample_pdf))
+
+        from unittest.mock import patch
+        from PySide6.QtTest import QTest
+        from PySide6.QtCore import Qt
+        main_window.canvas.setFocus()
+        with patch.object(main_window._add_annotation_btn, "showMenu") as show_menu:
+            QTest.keyClick(main_window.canvas, Qt.Key_Plus)
+
+        show_menu.assert_called_once_with()
     
     def test_page_navigation_toolbar(self, main_window, sample_multipage_pdf):
         """Test page navigation via toolbar buttons."""

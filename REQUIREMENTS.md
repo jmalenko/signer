@@ -1163,6 +1163,10 @@ To make the application fully portable (settings travel with the executable):
    - "Rotate Current Page Left/Right" and "Rotate All Pages Left/Right" shall be enabled only when a document is open.
 4. Menu item state shall be re-evaluated whenever the menu is about to be shown, so it always reflects the latest document, selection, and history state regardless of how that state changed (menu action, toolbar action, or keyboard shortcut).
 
+## Version 1.2.30 - Add Annotation menu hotkey
+
+1. In the default document view, pressing `+` shall open the Add Annotation menu in the toolbar.
+
 ### Assumption
 
 1. Signature has a transparent background.

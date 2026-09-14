@@ -619,6 +619,11 @@ class MainWindow(QMainWindow):
         self._update_document_workflow_state()
         self._update_menu_state()
 
+    def show_annotation_menu(self) -> None:
+        """Open the toolbar annotation menu from a keyboard shortcut."""
+        if self._add_annotation_btn.isEnabled():
+            self._add_annotation_btn.showMenu()
+
     def _update_menu_state(self) -> None:
         """Enable/disable hamburger menu items based on document/selection/history state."""
         has_doc = self.canvas.has_document

@@ -1335,7 +1335,12 @@ class DocumentCanvas(QWidget):
         else:
             # ================================================================ Single-key hotkey variants (no Ctrl)
             # These are available only in default document view (no Ctrl modifier)
-            if key == Qt.Key_O:
+            if key == Qt.Key_Plus:
+                # +: Open the toolbar annotation menu
+                if hasattr(self.parent(), 'show_annotation_menu'):
+                    self.parent().show_annotation_menu()
+                return
+            elif key == Qt.Key_O:
                 # O: Open document
                 if hasattr(self.parent(), 'open_document'):
                     self.parent().open_document()
