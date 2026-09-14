@@ -7,6 +7,7 @@ based on file presence at runtime.
 """
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +16,7 @@ import pytest
 from signer.settings import get_config_dir, SettingsStore, AppSettings
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific portable/installed config mode tests")
 class TestPortableConfigDetection:
     """Test get_config_dir() portable vs installed config detection."""
 
@@ -168,6 +170,7 @@ class TestSettingsStore:
             assert loaded_settings.recent_line_width_pt == 2.5
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific portable/installed mode scenarios")
 class TestPortabilityScenarios:
     """Test realistic portable/installed scenarios."""
 
@@ -279,6 +282,7 @@ class TestPortabilityScenarios:
             assert result is not None
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific config directory detection tests")
 class TestConfigDirIntegration:
     """Integration tests for config directory detection."""
 

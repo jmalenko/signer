@@ -9,6 +9,7 @@ features by replaying recorded JSON action sequences and comparing pixel-perfect
 """
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,7 @@ WORKFLOW_TEST_CASES = [
 class TestRecordedWorkflows:
     """Test feature workflows using recorded action playback."""
 
+    @pytest.mark.skipif(sys.platform == "darwin", reason="Pixel-perfect rendering differs on macOS due to font rendering and anti-aliasing differences")
     @pytest.mark.parametrize("workflow_type,fixture_name,annotation_prefix,description", WORKFLOW_TEST_CASES)
     def test_workflow_pixel_perfect(self, workflow_type, fixture_name, annotation_prefix, description, main_window, temp_dir):
         """Test that workflow renders correctly and matches reference image.

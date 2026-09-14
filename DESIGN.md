@@ -819,3 +819,104 @@ When the user runs `signer.exe` on any machine:
 - **No write permissions to app directory**: AppData fallback ensures portability on read-only installations (e.g., network share)
 - **AppData unavailable**: Should not occur on Windows; error handling defers to existing config error handling
 - **Corrupted config**: Handled by existing error handling; mode detection unaffected
+
+---
+
+## 10. User Installation & Configuration
+
+### System Requirements
+
+- **Windows**: 7 or later
+- **macOS**: 10.13 or later
+- **Linux**: Ubuntu 18.04+, Fedora 28+, or equivalent
+
+For Word (.docx/.doc) and ODT file support, LibreOffice is optional.
+
+### Running Signer
+
+Double-click to launch the app:
+- Use menu: File → Open Document to load a PDF, image, or Word/ODT file
+- Menu: Annotations to add signatures and marks
+- Menu: File → Save As... to export as JPG, PNG, PDF, TIFF, or BMP
+
+### Optional: LibreOffice for Word/ODT Support
+
+To open Word (.docx/.doc) and OpenDocument (.odt) files, install LibreOffice:
+
+```bash
+brew install libreoffice                # macOS
+sudo apt install libreoffice            # Ubuntu/Debian
+choco install libreoffice               # Windows (via Chocolatey)
+# Or download from https://www.libreoffice.org/download/
+```
+
+The app auto-detects LibreOffice. If installed in a custom location, manually set in config.json:
+```json
+{
+  "libreoffice_path": "/path/to/soffice"
+}
+```
+
+### Settings & Configuration
+
+Configuration is stored in:
+- **macOS**: `~/Library/Application Support/Signer/config.json`
+- **Linux**: `~/.config/Signer/config.json`
+- **Windows**: `%APPDATA%\Signer\config.json`
+- **Portable mode**: `./config.json` in app directory (takes precedence if exists)
+
+Settings persist: recent documents, signatures, colors, export quality, LibreOffice path.
+
+---
+
+## 10.1 For Developers
+
+### Setup
+
+**Prerequisites**: Python 3.10+, pip, git
+
+```bash
+git clone <repository-url>
+cd signer
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate              # macOS/Linux
+# .venv\Scripts\activate               # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Running Tests
+
+```bash
+pytest                                  # Run all tests
+pytest -v                              # Verbose output
+pytest --cov=signer --cov-report=html  # With coverage
+```
+
+See [TESTING.md](TESTING.md) for detailed testing documentation.
+
+### Building Executables
+
+**Windows:**
+```bash
+pyinstaller --onefile --windowed --name signer --icon signer/resources/signer.ico --add-data "signer/resources:signer/resources" main.py
+```
+
+**macOS/Linux:**
+```bash
+pyinstaller --onefile --windowed --name signer --icon signer/resources/signer.ico --add-data "signer/resources:signer/resources" main.py
+```
+
+Output: `dist/signer.exe` (Windows), `dist/signer.app` (macOS), or `dist/signer` (Linux)
+
+### Architecture
+
+Cross-platform support via:
+- `sys.platform` for platform detection (`"win32"`, `"darwin"`, `"linux"`)
+- `pathlib.Path` for cross-platform paths (no hardcoded separators)
+- `get_config_dir()` in `settings.py` for platform-specific config locations
+- PySide6 for native GUI on all platforms
+

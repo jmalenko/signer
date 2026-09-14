@@ -160,6 +160,7 @@ class LibreOfficeLoader(DocumentLoader):
         """Find LibreOffice executable on system."""
         import shutil
         import os
+        import sys
         from pathlib import Path
         
         # If path was explicitly set, use it
@@ -168,18 +169,29 @@ class LibreOfficeLoader(DocumentLoader):
             if os.path.exists(lo_exe):
                 return lo_exe
         
-        # Try common Windows paths
-        windows_paths = [
-            r"C:\Program Files\LibreOffice\program\soffice.exe",
-            r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
-            r"C:\Program Files\LibreOffice\soffice.exe",
-        ]
+        # Platform-specific paths
+        if sys.platform == "win32":
+            # Windows paths
+            windows_paths = [
+                r"C:\Program Files\LibreOffice\program\soffice.exe",
+                r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+                r"C:\Program Files\LibreOffice\soffice.exe",
+            ]
+            for path in windows_paths:
+                if os.path.exists(path):
+                    return path
+        elif sys.platform == "darwin":
+            # macOS paths
+            macos_paths = [
+                "/Applications/LibreOffice.app/Contents/MacOS/soffice",
+                "/opt/homebrew/opt/libreoffice/bin/soffice",  # Homebrew ARM64
+                "/usr/local/opt/libreoffice/bin/soffice",      # Homebrew Intel
+            ]
+            for path in macos_paths:
+                if os.path.exists(path):
+                    return path
         
-        for path in windows_paths:
-            if os.path.exists(path):
-                return path
-        
-        # Try system PATH
+        # Try system PATH (works on all platforms)
         lo_exe = shutil.which("soffice")
         if lo_exe:
             return lo_exe

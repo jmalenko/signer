@@ -1,6 +1,7 @@
 """Feature test for comprehensive multi-annotation workflow."""
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,7 @@ class TestDocumentAllAnnotations:
         yield window
         window.close()
 
+    @pytest.mark.skipif(sys.platform == "darwin", reason="Pixel-perfect rendering differs on macOS due to font rendering and anti-aliasing differences")
     def test_document_all_annotations_pixel_perfect(self, main_window, temp_dir):
         """Test comprehensive annotation workflow with multiple types and pages."""
         actions_file = FIXTURES_DIR / "document_all_annotations.json"

@@ -35,14 +35,15 @@ def get_config_dir(app_name: str = "Signer") -> Path:
     if (app_dir / "config.json").exists():
         return app_dir
     
-    # Fall back to AppData (installed mode)
-    appdata = os.environ.get("APPDATA")
-    if appdata:
-        config_dir = Path(appdata) / app_name
+    # Fall back to platform-specific config directory (installed mode)
+    if sys.platform == "win32":
+        config_dir = Path(os.environ["APPDATA"]) / app_name
+    elif sys.platform == "darwin":
+        # macOS uses ~/Library/Application Support/
+        config_dir = Path.home() / "Library" / "Application Support" / app_name
     else:
-        # Fallback if APPDATA not available (shouldn't happen on Windows)
-        config_dir = Path.home() / f".{app_name.lower()}"
-    
+        # Linux and other Unix-like systems
+        config_dir = Path.home() / ".config" / app_name
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
 
