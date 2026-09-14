@@ -951,8 +951,8 @@ class MainWindow(QMainWindow):
         start_dir = ""
         if self._settings.recent_signature_paths:
             start_dir = str(Path(self._settings.recent_signature_paths[0]).parent)
-        elif self._settings.last_open_document_path:
-            start_dir = str(Path(self._settings.last_open_document_path).parent)
+        elif self._settings.recent_document_paths:
+            start_dir = str(Path(self._settings.recent_document_paths[0]).parent)
         path, _ = QFileDialog.getOpenFileName(
             self, "Open Signature", start_dir,
             "Image files (*.png *.jpg *.jpeg);;All files (*.*)",
@@ -973,8 +973,8 @@ class MainWindow(QMainWindow):
             start_dir = ""
             if self.document_path:
                 start_dir = str(Path(self.document_path).parent)
-            elif self._settings.last_open_document_path:
-                start_dir = str(Path(self._settings.last_open_document_path).parent)
+            elif self._settings.recent_document_paths:
+                start_dir = str(Path(self._settings.recent_document_paths[0]).parent)
             chosen, _ = QFileDialog.getOpenFileName(
                 self, "Open Document", start_dir,
                 "All Supported Files (*.pdf *.docx *.doc *.odt *.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif);;"
@@ -1019,7 +1019,6 @@ class MainWindow(QMainWindow):
         self.canvas.clear_history()  # Clear undo/redo history when opening a new document
         self.document_path = str(p)
         self._has_unsaved_changes = False
-        self._settings.last_open_document_path = str(p)
         self._update_recent_documents(str(p))
         self._save_settings_safe()
         if pages:
@@ -1156,8 +1155,8 @@ class MainWindow(QMainWindow):
             start_dir = ""
             if self._settings.recent_signature_paths:
                 start_dir = str(Path(self._settings.recent_signature_paths[0]).parent)
-            elif self._settings.last_open_document_path:
-                start_dir = str(Path(self._settings.last_open_document_path).parent)
+            elif self._settings.recent_document_paths:
+                start_dir = str(Path(self._settings.recent_document_paths[0]).parent)
             chosen, _ = QFileDialog.getOpenFileName(
                 self, "Open Signature", start_dir,
                 "Image files (*.png *.jpg *.jpeg);;All files (*.*)",
@@ -1199,7 +1198,6 @@ class MainWindow(QMainWindow):
         if self.canvas.has_document:
             self.canvas.add_object(obj)
 
-        self._settings.last_signature_path = str(p)
         self._update_recent_signatures(str(p))
         self._save_settings_safe()
         self._rebuild_sig_ann_menu()

@@ -63,9 +63,7 @@ class AppSettings:
     # LibreOffice path (for Word/ODT support)
     libreoffice_path: str | None = None
 
-    # Signature/document paths (file paths or None if not set)
-    last_signature_path: str | None = None
-    last_open_document_path: str | None = None
+    # Last save location and export preferences
     last_save_directory: str | None = None
     last_export_format: str = "jpg"  # Default export format
     last_export_folder: str | None = None  # Last used export folder
@@ -106,9 +104,6 @@ class SettingsStore:
                 recent_font_size_pt=data.get("recent_font_size_pt", DEFAULT_FONT_SIZE_PT),
                 # LibreOffice path
                 libreoffice_path=data.get("libreoffice_path"),
-                # File paths (str or None)
-                last_signature_path=data.get("last_signature_path"),
-                last_open_document_path=data.get("last_open_document_path"),
                 last_save_directory=data.get("last_save_directory"),
                 last_export_format=data.get("last_export_format", "jpg"),
                 last_export_folder=data.get("last_export_folder"),

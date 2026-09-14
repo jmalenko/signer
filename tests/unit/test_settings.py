@@ -20,8 +20,6 @@ class TestAppSettings:
         assert settings.recent_line_width_pt == 1.5
         assert settings.recent_font_family == "Arial"
         assert settings.recent_font_size_pt == 11
-        assert settings.last_signature_path is None
-        assert settings.last_open_document_path is None
         assert settings.last_save_directory is None
         assert settings.recent_signature_paths == []
         assert settings.recent_text_strings == []
@@ -34,8 +32,6 @@ class TestAppSettings:
             recent_line_width_pt=2.0,
             recent_font_family="Times",
             recent_font_size_pt=36,
-            last_signature_path="/path/sig.png",
-            last_open_document_path="/path/doc.pdf",
             last_save_directory="/output",
             recent_signature_paths=["/path/sig1.png", "/path/sig2.png"],
             recent_text_strings=["Text 1", "Text 2"],
@@ -46,8 +42,6 @@ class TestAppSettings:
         assert settings.recent_line_width_pt == 2.0
         assert settings.recent_font_family == "Times"
         assert settings.recent_font_size_pt == 36
-        assert settings.last_signature_path == "/path/sig.png"
-        assert settings.last_open_document_path == "/path/doc.pdf"
         assert settings.last_save_directory == "/output"
         assert settings.recent_signature_paths == ["/path/sig1.png", "/path/sig2.png"]
         assert settings.recent_text_strings == ["Text 1", "Text 2"]
@@ -100,8 +94,6 @@ class TestSettingsStore:
             recent_line_width_pt=2.0,
             recent_font_family="Times",
             recent_font_size_pt=11,
-            last_signature_path="/path/sig.png",
-            last_open_document_path="/path/doc.pdf",
             last_save_directory="/output",
             recent_signature_paths=["/path/sig1.png", "/path/sig2.png"],
             recent_text_strings=["Text 1", "Text 2"],
@@ -115,8 +107,6 @@ class TestSettingsStore:
         assert loaded.recent_line_width_pt == original.recent_line_width_pt
         assert loaded.recent_font_family == original.recent_font_family
         assert loaded.recent_font_size_pt == original.recent_font_size_pt
-        assert loaded.last_signature_path == original.last_signature_path
-        assert loaded.last_open_document_path == original.last_open_document_path
         assert loaded.last_save_directory == original.last_save_directory
         assert loaded.recent_signature_paths == original.recent_signature_paths
         assert loaded.recent_text_strings == original.recent_text_strings
@@ -194,14 +184,12 @@ class TestSettingsStore:
         store._settings_path = config_path
         
         settings = AppSettings(
-            last_signature_path="/path/签名.png",
             recent_document_paths=["/path/文档.pdf", "/path/документ.pdf"]
         )
         
         store.save(settings)
         loaded = store.load()
         
-        assert loaded.last_signature_path == "/path/签名.png"
         assert loaded.recent_document_paths == ["/path/文档.pdf", "/path/документ.pdf"]
 
 
