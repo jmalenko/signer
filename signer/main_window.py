@@ -469,14 +469,14 @@ class MainWindow(QMainWindow):
         self._page_nav_separator_action = tb.addSeparator()
 
         # Page navigation
-        self._page_nav_prev_action = QAction("◀ Prev", self)
+        self._page_nav_prev_action = QAction("◀", self)
         self._page_nav_prev_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page - 1))
         tb.addAction(self._page_nav_prev_action)
 
         self._page_nav_label = QLabel("  Page — / —  ")
         self._page_nav_label_action = tb.addWidget(self._page_nav_label)
 
-        self._page_nav_next_action = QAction("Next ▶", self)
+        self._page_nav_next_action = QAction("▶", self)
         self._page_nav_next_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page + 1))
         tb.addAction(self._page_nav_next_action)
 

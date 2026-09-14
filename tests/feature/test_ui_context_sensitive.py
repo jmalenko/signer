@@ -126,6 +126,8 @@ class TestDocumentDependentWorkflowButtons:
         assert main_window._page_nav_prev_action is not None
         assert main_window._page_nav_next_action is not None
         assert main_window._page_nav_label is not None
+        assert main_window._page_nav_prev_action.text() == "◀"
+        assert main_window._page_nav_next_action.text() == "▶"
         assert not main_window._page_nav_prev_action.isVisible()
         assert not main_window._page_nav_next_action.isVisible()
         assert not main_window._page_nav_label.isVisible()
