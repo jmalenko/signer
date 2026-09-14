@@ -17,6 +17,11 @@ from signer.objects import AnnotationType, SignatureObject, VectorAnnotation
 from signer.settings import AppSettings, SettingsStore
 
 
+# Run Qt in offscreen mode so tests don't pop up visible application windows.
+# Respect an existing QT_QPA_PLATFORM (e.g. set by the user) if already defined.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
 @pytest.fixture(scope="session")
 def qapp():
     """Create a QApplication instance for the test session."""
