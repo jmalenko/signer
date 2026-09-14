@@ -761,6 +761,10 @@ LibreOffice path resolution:
 - Drag/scale objects with smooth interaction (no visible lag).
 - Export quality suitable for typical print/email workflows.
 - Window aspect ratio should adapt to document aspect ratio while keeping the full toolbar visible.
+- Before a document is loaded, size the window using portrait A4 dimensions at the
+  internal 300 DPI rendering resolution.
+- Derive vertical window chrome from the fixed toolbar height. The remaining canvas
+  follows the document aspect ratio so an A4 page has no avoidable bars above or below.
 
 ---
 

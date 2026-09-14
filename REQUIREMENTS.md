@@ -1196,6 +1196,12 @@ in Version 1.2.11, so error toasts are visually distinct and require explicit ac
 2. `]` moves to the next larger step, `[` moves to the next smaller step; at the top/bottom of
    the list the value stays clamped (no wraparound).
 
+## Version 1.2.33 - A4 startup window size
+
+1. When started without a document, the window shall use portrait A4 geometry.
+2. Canvas space outside the document shall be minimized. Document-sized canvas height shall
+   use the actual toolbar height and shall not include unused allowances for window chrome.
+
 ### Assumption
 
 1. Signature has a transparent background.

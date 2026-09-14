@@ -363,6 +363,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.canvas)
 
         self._build_toolbar()
+        a4_size = QPageSize(QPageSize.A4).sizePixels(300)
+        self._adjust_window_to_document(a4_size.width(), a4_size.height())
 
         self.canvas.objectChanged.connect(self._on_object_changed)
         self.canvas.pageChanged.connect(self._on_page_changed)
@@ -1992,8 +1994,12 @@ class MainWindow(QMainWindow):
     def _adjust_window_to_document(self, doc_w: int, doc_h: int) -> None:
         if doc_w <= 0 or doc_h <= 0:
             return
+        a4_size = QPageSize(QPageSize.A4).sizePixels(300)
+        a4_ratio = a4_size.width() / a4_size.height()
+        if abs(doc_w / doc_h - a4_ratio) < 0.005:
+            doc_w, doc_h = a4_size.width(), a4_size.height()
         toolbar_hint_w = self.findChildren(QToolBar)[0].sizeHint().width() if self.findChildren(QToolBar) else 0
-        chrome_h = max(120, self.height() - self.canvas.height())
+        chrome_h = self._main_toolbar.height()
 
         screen = self.screen()
         if screen is None:
@@ -2001,20 +2007,20 @@ class MainWindow(QMainWindow):
         avail = screen.availableGeometry()
 
         # Calculate the maximum canvas size that fits on screen
-        max_canvas_h = avail.height() - chrome_h - 60
-        max_canvas_w = avail.width() - 20 - 32  # account for toolbar and margins
+        max_canvas_h = avail.height() - chrome_h - 20
+        max_canvas_w = avail.width() - 20
 
         # Scale document to fit within max canvas size while maintaining aspect ratio
         scale_h = max_canvas_h / doc_h
         scale_w = max_canvas_w / doc_w
         scale = min(scale_h, scale_w, 1.0)  # Don't upscale beyond 100%
 
-        target_canvas_h = int(doc_h * scale)
-        target_canvas_w = int(doc_w * scale)
+        target_canvas_h = round(doc_h * scale)
+        target_canvas_w = round(doc_w * scale)
 
         # Ensure minimum canvas size
-        target_canvas_h = max(520, target_canvas_h)
-        target_canvas_w = max(640, target_canvas_w)
+        target_canvas_h = max(640, target_canvas_h)
+        target_canvas_w = max(520, target_canvas_w)
 
         target_w = max(target_canvas_w, toolbar_hint_w + 32)
         target_h = target_canvas_h + chrome_h
