@@ -1149,6 +1149,20 @@ To make the application fully portable (settings travel with the executable):
 8. When multiple annotations are selected, the toolbar shall show only the controls that are relevant to at least one selected annotation.
 9. When a property is changed while multiple annotations are selected, the change shall be applied only to the selected annotations that support that property.
 
+## Version 1.2.29 - Context-sensitive main menu items
+
+1. Main menu (hamburger) items shall be disabled when the corresponding action is not applicable, consistent with the toolbar's context-sensitive behavior.
+2. File menu:
+   - "Save As…" and "Print" shall be enabled only when a document is open.
+3. Edit menu:
+   - "Undo" shall be enabled only when there is an action available to undo.
+   - "Redo" shall be enabled only when there is an action available to redo.
+   - "Cut", "Copy", "Duplicate", and "Delete" shall be enabled only when at least one annotation is selected.
+   - "Paste" shall be enabled only when a document is open and there is annotation data available to paste (from a prior copy/cut, in-app cache, or the system clipboard).
+   - "Select All" shall be enabled only when the current page has at least one annotation.
+   - "Rotate Current Page Left/Right" and "Rotate All Pages Left/Right" shall be enabled only when a document is open.
+4. Menu item state shall be re-evaluated whenever the menu is about to be shown, so it always reflects the latest document, selection, and history state regardless of how that state changed (menu action, toolbar action, or keyboard shortcut).
+
 ### Assumption
 
 1. Signature has a transparent background.

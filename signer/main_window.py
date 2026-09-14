@@ -339,6 +339,19 @@ class MainWindow(QMainWindow):
         self._add_annotation_btn: QToolButton | None = None
         self._save_as_toolbar_action: QAction | None = None
         self._save_as_file_action: QAction | None = None
+        self._print_action: QAction | None = None
+        self._menu_undo_action: QAction | None = None
+        self._menu_redo_action: QAction | None = None
+        self._menu_cut_action: QAction | None = None
+        self._menu_copy_action: QAction | None = None
+        self._menu_paste_action: QAction | None = None
+        self._menu_duplicate_action: QAction | None = None
+        self._menu_select_all_action: QAction | None = None
+        self._menu_delete_action: QAction | None = None
+        self._menu_rotate_page_left_action: QAction | None = None
+        self._menu_rotate_page_right_action: QAction | None = None
+        self._menu_rotate_all_left_action: QAction | None = None
+        self._menu_rotate_all_right_action: QAction | None = None
         self._page_nav_prev_action: QAction | None = None
         self._page_nav_next_action: QAction | None = None
         self._page_nav_label: QLabel | None = None
@@ -535,31 +548,33 @@ class MainWindow(QMainWindow):
         self._hamburger_file_menu = hamburger_menu.addMenu("File")
         self._hamburger_file_menu.addAction("Open Document (Ctrl+O or O)", self.open_document)
         self._save_as_file_action = self._hamburger_file_menu.addAction("Save As… (Ctrl+S or S)", self.save_document_as)
-        self._hamburger_file_menu.addAction("Print (Ctrl+P or P)", self.print_document)
+        self._print_action = self._hamburger_file_menu.addAction("Print (Ctrl+P or P)", self.print_document)
         self._hamburger_file_menu.addSeparator()
         self._file_recent_docs_actions = []  # Track recent doc actions for rebuilding
         self._rebuild_file_recent_documents_top_level(self._hamburger_file_menu)
         self._hamburger_file_menu.addSeparator()
         self._hamburger_file_menu.addAction("Exit", self.close)
+        self._hamburger_file_menu.aboutToShow.connect(self._update_menu_state)
 
         # Edit menu
         edit_menu = hamburger_menu.addMenu("Edit")
-        edit_menu.addAction("Undo (Ctrl+Z or Z)", self.undo)
-        edit_menu.addAction("Redo (Ctrl+Y or Y)", self.redo)
+        self._menu_undo_action = edit_menu.addAction("Undo (Ctrl+Z or Z)", self.undo)
+        self._menu_redo_action = edit_menu.addAction("Redo (Ctrl+Y or Y)", self.redo)
         edit_menu.addSeparator()
-        edit_menu.addAction("Cut (Ctrl+X or X)", self.canvas.cut_selected)
-        edit_menu.addAction("Copy (Ctrl+C or C)", self.canvas.copy_selected)
-        edit_menu.addAction("Paste (Ctrl+V or V)", self.canvas.paste_selected)
-        edit_menu.addAction("Duplicate (Ctrl+D or D)", self.canvas.duplicate_selected)
+        self._menu_cut_action = edit_menu.addAction("Cut (Ctrl+X or X)", self.canvas.cut_selected)
+        self._menu_copy_action = edit_menu.addAction("Copy (Ctrl+C or C)", self.canvas.copy_selected)
+        self._menu_paste_action = edit_menu.addAction("Paste (Ctrl+V or V)", self.canvas.paste_selected)
+        self._menu_duplicate_action = edit_menu.addAction("Duplicate (Ctrl+D or D)", self.canvas.duplicate_selected)
         edit_menu.addSeparator()
-        edit_menu.addAction("Select All (Ctrl+A or A)", self.canvas.select_all_on_page)
-        edit_menu.addAction("Delete", self.canvas.remove_selected)
+        self._menu_select_all_action = edit_menu.addAction("Select All (Ctrl+A or A)", self.canvas.select_all_on_page)
+        self._menu_delete_action = edit_menu.addAction("Delete", self.canvas.remove_selected)
         edit_menu.addSeparator()
-        edit_menu.addAction("Rotate Current Page Left (Shift+Ctrl+L or Shift+L)", self.canvas.rotate_current_page_left)
-        edit_menu.addAction("Rotate Current Page Right (Shift+Ctrl+R or Shift+R)", self.canvas.rotate_current_page_right)
+        self._menu_rotate_page_left_action = edit_menu.addAction("Rotate Current Page Left (Shift+Ctrl+L or Shift+L)", self.canvas.rotate_current_page_left)
+        self._menu_rotate_page_right_action = edit_menu.addAction("Rotate Current Page Right (Shift+Ctrl+R or Shift+R)", self.canvas.rotate_current_page_right)
         edit_menu.addSeparator()
-        edit_menu.addAction("Rotate All Pages Left (Ctrl+L or L)", self.canvas.rotate_all_pages_left)
-        edit_menu.addAction("Rotate All Pages Right (Ctrl+R or R)", self.canvas.rotate_all_pages_right)
+        self._menu_rotate_all_left_action = edit_menu.addAction("Rotate All Pages Left (Ctrl+L or L)", self.canvas.rotate_all_pages_left)
+        self._menu_rotate_all_right_action = edit_menu.addAction("Rotate All Pages Right (Ctrl+R or R)", self.canvas.rotate_all_pages_right)
+        edit_menu.aboutToShow.connect(self._update_menu_state)
 
         # Annotations menu
         annotations_menu = hamburger_menu.addMenu("Annotations")
@@ -601,6 +616,41 @@ class MainWindow(QMainWindow):
         # Update UI state after all controls are created
         self._update_annotation_action_state()
         self._update_document_workflow_state()
+        self._update_menu_state()
+
+    def _update_menu_state(self) -> None:
+        """Enable/disable hamburger menu items based on document/selection/history state."""
+        has_doc = self.canvas.has_document
+        has_selection = self.canvas.selected is not None
+        has_page_objects = has_doc and bool(self.canvas.current_page_objects())
+        can_paste = has_doc and self.canvas.has_pasteable_data()
+
+        if self._print_action is not None:
+            self._print_action.setEnabled(has_doc)
+        if self._menu_undo_action is not None:
+            self._menu_undo_action.setEnabled(self.canvas.can_undo())
+        if self._menu_redo_action is not None:
+            self._menu_redo_action.setEnabled(self.canvas.can_redo())
+        if self._menu_cut_action is not None:
+            self._menu_cut_action.setEnabled(has_selection)
+        if self._menu_copy_action is not None:
+            self._menu_copy_action.setEnabled(has_selection)
+        if self._menu_paste_action is not None:
+            self._menu_paste_action.setEnabled(can_paste)
+        if self._menu_duplicate_action is not None:
+            self._menu_duplicate_action.setEnabled(has_selection)
+        if self._menu_select_all_action is not None:
+            self._menu_select_all_action.setEnabled(has_page_objects)
+        if self._menu_delete_action is not None:
+            self._menu_delete_action.setEnabled(has_selection)
+        for action in (
+            self._menu_rotate_page_left_action,
+            self._menu_rotate_page_right_action,
+            self._menu_rotate_all_left_action,
+            self._menu_rotate_all_right_action,
+        ):
+            if action is not None:
+                action.setEnabled(has_doc)
 
     def _update_document_workflow_state(self) -> None:
         """Enable/disable document-dependent workflow controls."""
@@ -770,6 +820,7 @@ class MainWindow(QMainWindow):
     def _on_object_changed(self) -> None:
         self._update_document_workflow_state()
         self._update_annotation_action_state()
+        self._update_menu_state()
         self._update_color_btn()
         self._has_unsaved_changes = True
 
@@ -829,6 +880,7 @@ class MainWindow(QMainWindow):
 
     def _on_page_changed(self, current: int, total: int) -> None:
         self._update_document_workflow_state()
+        self._update_menu_state()
         if self._page_nav_label is not None:
             if total > 0:
                 self._page_nav_label.setText(f"  Page {current + 1} / {total}  ")
@@ -1957,11 +2009,13 @@ class MainWindow(QMainWindow):
         """Undo the last action."""
         if self.canvas.undo():
             self.canvas.update()
+        self._update_menu_state()
 
     def redo(self) -> None:
         """Redo the last undone action."""
         if self.canvas.redo():
             self.canvas.update()
+        self._update_menu_state()
 
     # ---------------------------------------------------------------- unsaved changes handling
 

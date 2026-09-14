@@ -521,6 +521,19 @@ class DocumentCanvas(QWidget):
         # Update cache so new copy operations are reflected in pastes
         self._cached_copy_data = data
 
+    def has_pasteable_data(self) -> bool:
+        """Return True if there is annotation data available to paste (cached copy or clipboard)."""
+        if self._cached_copy_data:
+            return True
+        text = QApplication.clipboard().text()
+        if not text:
+            return False
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return False
+        return isinstance(data, (list, dict))
+
     def cut_selected(self) -> None:
         """Cut selected annotations (copy to clipboard, then delete)."""
         self.copy_selected()
