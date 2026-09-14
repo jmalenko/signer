@@ -186,6 +186,7 @@ Save As Dialog Behavior:
 ### 5.9 Post-Export Notification (v1.2.11)
 After successful export:
 - Display an auto-dismissing notification toast (bottom-right corner)
+- Color: green
 - Duration: auto-dismiss after 5 seconds or manual close with X button
 - Message format: "Exported {filename} to [directory link]"
 - Directory link is clickable (underlined, colored) and opens Windows Explorer at that location
@@ -197,6 +198,11 @@ On export failure:
 - Dialog shows specific error message, file path, and recovery suggestions
 - Provide "Retry" and "Cancel" buttons
 - Errors demand user acknowledgment; success notifications are non-intrusive
+
+On brief/non-fatal errors that don't warrant a modal dialog (e.g. directory link no longer
+exists), use the same toast widget styled red instead of green, and do **not** start the
+auto-dismiss timer — the user must close it manually via the X button. This signals "needs
+acknowledgment" without blocking the window like a modal dialog would.
 
 ### 5.10 Export Quality Options (v1.2.14)
 
@@ -703,12 +709,13 @@ class SavePromptDialog:
 - Corrupt image/document: show validation error and keep app responsive.
 - Save failure (permissions/locked file/disk full): show modal error dialog with specific cause and recovery suggestions; offer retry or cancel.
 - Invalid export path (bad characters, too long): validate before export and show error with corrected suggestion.
-- Directory link failure (path no longer exists): show brief toast notification "Unable to open directory"; do not crash.
+- Directory link failure (path no longer exists): show a red, manually-dismissed toast notification "Unable to open directory"; do not crash.
 - Partial export failure (multi-page): stop process, show error listing failed pages and reason, offer retry or cancel.
 
 ### Error Dialog vs Notification Toast
 - **Modal error dialogs** (block interaction): export failures, validation errors, missing dependencies
-- **Auto-dismissing toasts** (non-intrusive): success notifications, secondary warnings that don't block workflow
+- **Auto-dismissing toasts** (non-intrusive, green): success notifications
+- **Manually-dismissed toasts** (non-intrusive but red): brief/non-fatal errors that don't need a blocking dialog (e.g. directory link failure); user must click the X button to close them
 
 ## 6.1 Selection-Dependent Toolbar Actions
 - Duplicate/Delete actions are enabled only when an annotation is selected.

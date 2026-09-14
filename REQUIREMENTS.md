@@ -1170,3 +1170,20 @@ To make the application fully portable (settings travel with the executable):
 ### Assumption
 
 1. Signature has a transparent background.
+
+## Version 1.2.31 - Error Notification are Manually Dismissed
+
+### Overview
+Clarify and enforce the distinction between success and error notification toasts introduced
+in Version 1.2.11, so error toasts are visually distinct and require explicit acknowledgment.
+
+1. **Success toasts** (e.g. post-export notification): green, auto-dismiss after 5 seconds,
+   can also be closed early via the X button.
+2. **Error toasts** (e.g. "Unable to open directory" when the export directory link fails):
+   red, do **not** auto-dismiss — the user must manually close them via the X button.
+3. This distinguishes non-critical successes (safe to miss) from errors (must be acknowledged)
+   while still avoiding blocking modal dialogs for brief/non-fatal errors.
+4. Export/save failures (e.g. insufficient disk space, permission denied) remain a separate
+   category from toasts: they are shown using the native system dialog style (`QMessageBox`),
+   modal to the application window (blocks further interaction with the app until dismissed,
+   but does not block other applications on the system).

@@ -1,4 +1,4 @@
-"""Notification toast widget for displaying auto-dismissing messages."""
+"""Notification toast widget for displaying success and error messages."""
 
 import subprocess
 from pathlib import Path
@@ -13,7 +13,13 @@ from PySide6.QtWidgets import (
 
 
 class NotificationToast(QWidget):
-    """Auto-dismissing notification widget displayed at bottom-right of parent window."""
+    """Notification widget displayed at bottom-right of parent window.
+
+    Success notifications (default) are green and auto-dismiss after
+    ``duration_ms``. Error notifications (``is_error=True``) are red and
+    must be manually dismissed via the close button; no auto-dismiss timer
+    is started for them.
+    """
     
     DEFAULT_DURATION_MS = 5000  # 5 seconds
     MAX_WIDTH = 700  # Maximum width for the notification
@@ -25,6 +31,7 @@ class NotificationToast(QWidget):
         directory: Path | None = None,
         exported_files: list[Path] | None = None,
         duration_ms: int = DEFAULT_DURATION_MS,
+        is_error: bool = False,
     ) -> None:
         """
         Create a notification toast.
@@ -34,7 +41,9 @@ class NotificationToast(QWidget):
             message: Message text to display (may contain placeholder for directory)
             directory: Optional directory path that becomes a clickable link
             exported_files: List of exported file paths to select in Explorer
-            duration_ms: Auto-dismiss duration in milliseconds
+            duration_ms: Auto-dismiss duration in milliseconds (ignored if is_error)
+            is_error: If True, style as a red error notification that only
+                dismisses when the user clicks the close button
         """
         super().__init__(parent)
         self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -75,33 +84,61 @@ class NotificationToast(QWidget):
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn)
         
-        # Styling - more visible with solid background
-        self.setStyleSheet(
-            """
-            NotificationToast {
-                background-color: #c8e6c9;
-                border: 2px solid #2e7d32;
-                border-radius: 6px;
-            }
-            QLabel {
-                color: #1b5e20;
-                font-size: 11px;
-                background-color: transparent;
-            }
-            QPushButton {
-                color: #1b5e20;
-                border: none;
-                padding: 0px;
-                margin: 0px;
-                background-color: transparent;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #a5d6a7;
-                border-radius: 3px;
-            }
-            """
-        )
+        # Styling - more visible with solid background; red for errors, green for success
+        if is_error:
+            self.setStyleSheet(
+                """
+                NotificationToast {
+                    background-color: #ffcdd2;
+                    border: 2px solid #c62828;
+                    border-radius: 6px;
+                }
+                QLabel {
+                    color: #b71c1c;
+                    font-size: 11px;
+                    background-color: transparent;
+                }
+                QPushButton {
+                    color: #b71c1c;
+                    border: none;
+                    padding: 0px;
+                    margin: 0px;
+                    background-color: transparent;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #ef9a9a;
+                    border-radius: 3px;
+                }
+                """
+            )
+        else:
+            self.setStyleSheet(
+                """
+                NotificationToast {
+                    background-color: #c8e6c9;
+                    border: 2px solid #2e7d32;
+                    border-radius: 6px;
+                }
+                QLabel {
+                    color: #1b5e20;
+                    font-size: 11px;
+                    background-color: transparent;
+                }
+                QPushButton {
+                    color: #1b5e20;
+                    border: none;
+                    padding: 0px;
+                    margin: 0px;
+                    background-color: transparent;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #a5d6a7;
+                    border-radius: 3px;
+                }
+                """
+            )
         
         # Dynamic sizing based on content
         self.adjustSize()
@@ -114,18 +151,17 @@ class NotificationToast(QWidget):
         self._reposition()
         self.show()
         
-        # Start auto-dismiss timer
-        self._timer.start(duration_ms)
+        # Error notifications require manual dismissal; only success auto-dismisses
+        if not is_error:
+            self._timer.start(duration_ms)
     
     def _on_link_clicked(self, url: str) -> None:
         """Handle directory link click - select exported files in Explorer."""
         try:
             path = Path(url)
             if not path.exists():
-                # If path no longer exists, show brief error
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self.parent(), "Unable to open directory",
-                                  f"The directory no longer exists:\n{path}")
+                # If path no longer exists, show a red error notification (manual dismiss)
+                NotificationToast(self.parent(), "Unable to open directory", is_error=True)
                 return
             
             # If we have exported files, select the first one (or all if possible)
@@ -141,10 +177,8 @@ class NotificationToast(QWidget):
             else:
                 # No exported files provided, just open the directory
                 subprocess.Popen(f'explorer.exe "{path}"')
-        except Exception as exc:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self.parent(), "Unable to open directory",
-                              f"Could not open directory:\n{url}\n\nError: {exc}")
+        except Exception:
+            NotificationToast(self.parent(), "Unable to open directory", is_error=True)
     
     def _on_timeout(self) -> None:
         """Auto-dismiss after timeout."""
