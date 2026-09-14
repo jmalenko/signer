@@ -392,6 +392,7 @@ class MainWindow(QMainWindow):
 
         tb = QToolBar("Main", self)
         tb.setMovable(False)
+        tb.setContextMenuPolicy(Qt.CustomContextMenu)
         tb.setIconSize(QSize(24, 24))
         tb.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         # Fixed height so toggling the color button (38px) doesn't resize the toolbar.

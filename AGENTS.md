@@ -22,7 +22,7 @@ Key docs, keep them consistent with each other and with the code (incl. tests):
   - MUST NOT commit without explicit user approval.
   - Propose the commit message: one summary sentence; add further detail
     lines only if needed, and don't use them to narrate the code changes
-    (the diff already shows that).
+    (the diff already shows that). Do not mention test updates in the commit message; they are an expected part of implementation.
   - MUST clean up any temporary files you created. If unsure whether a file
     is temporary, ask the user rather than deleting it.
 

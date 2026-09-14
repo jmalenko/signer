@@ -1,6 +1,9 @@
 """Unit tests for toolbar controls and context-sensitive visibility."""
 
 import pytest
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtWidgets import QApplication
 from signer.objects import VectorAnnotation, AnnotationType, VECTOR_WITH_WIDTH
 
 
@@ -36,7 +39,6 @@ class TestWidthSpinnerVisibility:
         """Test width spinner visible when Crossmark selected."""
         crossmark = VectorAnnotation(AnnotationType.CROSSMARK, 100, 100, 0)
         assert crossmark.ann_type in VECTOR_WITH_WIDTH
-    
     def test_width_spinner_hidden_for_text(self):
         """Test width spinner hidden when Text selected."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
@@ -48,6 +50,20 @@ class TestWidthSpinnerVisibility:
         # Test conceptually
         ann_type = AnnotationType.SIGNATURE
         assert ann_type not in VECTOR_WITH_WIDTH
+
+
+class TestToolbarContextMenu:
+    """Test that the toolbar does not expose Qt's hide-toolbar menu."""
+
+    def test_toolbar_has_no_context_menu(self, main_window):
+        toolbar = main_window._main_toolbar
+        assert toolbar.contextMenuPolicy() == Qt.CustomContextMenu
+
+        event = QContextMenuEvent(QContextMenuEvent.Mouse, QPoint(1, 1))
+        QApplication.sendEvent(toolbar, event)
+
+        assert event.isAccepted()
+        assert QApplication.activePopupWidget() is None
 
 
 class TestFontSizeSpinnerVisibility:
