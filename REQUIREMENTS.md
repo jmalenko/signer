@@ -1167,10 +1167,6 @@ To make the application fully portable (settings travel with the executable):
 
 1. In the default document view, pressing `+` shall open the Add Annotation menu in the toolbar.
 
-### Assumption
-
-1. Signature has a transparent background.
-
 ## Version 1.2.31 - Error Notification are Manually Dismissed
 
 ### Overview
@@ -1187,3 +1183,20 @@ in Version 1.2.11, so error toasts are visually distinct and require explicit ac
    category from toasts: they are shown using the native system dialog style (`QMessageBox`),
    modal to the application window (blocks further interaction with the app until dismissed,
    but does not block other applications on the system).
+
+## Version 1.2.32 - Discrete step sizes for `[` / `]` shortcuts
+
+1. The `[` / `]` keyboard shortcuts (introduced in Version 1.2.22) shall step through a fixed
+   list of "usual" sizes instead of a small fixed increment, so a single press produces a
+   noticeable change:
+    - Font size steps: 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 54, 60,
+      66, 72 (points) — matches the existing 6-72 point range.
+    - Line width steps: 0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16 (points) — matches
+      the existing 0.5-16 point range.
+2. `]` moves to the next larger step, `[` moves to the next smaller step; at the top/bottom of
+   the list the value stays clamped (no wraparound).
+
+### Assumption
+
+1. Signature has a transparent background.
+

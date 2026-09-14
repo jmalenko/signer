@@ -17,9 +17,12 @@ from .objects import (
     HANDLE_FX,
     HANDLE_FY,
     ARROW_TYPES,
+    FONT_SIZE_STEPS_PT,
+    LINE_WIDTH_STEPS_PT,
     AnnotationType,
     CanvasObject,
     canvas_object_from_dict,
+    step_size,
     VectorAnnotation,
 )
 
@@ -402,11 +405,10 @@ class DocumentCanvas(QWidget):
                 obj.clamp_to_page(pw, ph)
         self.objectChanged.emit()
 
-    # v1.2.22: Adjust annotation properties (line width, font size) with keyboard
+    # v1.2.32: Adjust annotation properties (line width, font size) with keyboard,
+    # stepping through a fixed list of "usual" sizes instead of a small increment.
     def _adjust_annotation_property(self, selected, direction: str) -> None:
         """Adjust line width for vector annotations or font size for text annotations."""
-        
-        sign = -1 if direction == 'decrease' else 1
         
         objs = self.current_page_objects()
         for obj in selected:
@@ -415,7 +417,7 @@ class DocumentCanvas(QWidget):
                 if obj.ann_type == AnnotationType.TEXT:
                     # Adjust font size for text
                     old_size = obj._font_size_px
-                    new_size = max(6, min(72, obj._font_size_px + sign * 1))
+                    new_size = step_size(old_size, FONT_SIZE_STEPS_PT, direction)
                     obj._font_size_px = new_size
                     obj.fit_text_box()
                     # Record to history
@@ -429,7 +431,7 @@ class DocumentCanvas(QWidget):
                 elif obj.ann_type not in {AnnotationType.TEXT}:
                     # Adjust line width for vector annotations (not TEXT)
                     old_width = obj._line_width_pt
-                    new_width = max(0.5, min(10.0, obj._line_width_pt + sign * 0.5))
+                    new_width = step_size(old_width, LINE_WIDTH_STEPS_PT, direction)
                     obj._line_width_pt = new_width
                     # Record to history
                     if obj_idx >= 0:

@@ -498,7 +498,7 @@ class MainWindow(QMainWindow):
         self._width_label_action = tb.addWidget(self._width_label)
         self._width_spinner = QDoubleSpinBox()
         self._width_spinner.setMinimum(0.5)
-        self._width_spinner.setMaximum(10.0)
+        self._width_spinner.setMaximum(16.0)
         self._width_spinner.setSingleStep(0.5)
         self._width_spinner.setValue(DEFAULT_LINE_WIDTH_PT)
         self._width_spinner.setDecimals(1)
@@ -870,6 +870,11 @@ class MainWindow(QMainWindow):
         self._width_label.setVisible(width_visible)
         self._width_spinner_action.setVisible(width_visible)
         self._width_label_action.setVisible(width_visible)
+        if width_visible:
+            # Reflect the selected annotation's actual width (e.g. after a [ / ] shortcut).
+            self._width_spinner.blockSignals(True)
+            self._width_spinner.setValue(selected._line_width_pt)
+            self._width_spinner.blockSignals(False)
 
         # Font controls and labels: visible only for TEXT
         font_visible = (
@@ -879,6 +884,11 @@ class MainWindow(QMainWindow):
         )
         self._font_size_spinner.setVisible(font_visible)
         self._font_size_label.setVisible(font_visible)
+        if font_visible:
+            # Reflect the selected annotation's actual font size (e.g. after a [ / ] shortcut).
+            self._font_size_spinner.blockSignals(True)
+            self._font_size_spinner.setValue(selected._font_size_px)
+            self._font_size_spinner.blockSignals(False)
         self._font_family_combo.setVisible(font_visible)
         self._font_label.setVisible(font_visible)
         self._font_size_spinner_action.setVisible(font_visible)

@@ -438,19 +438,25 @@ The application maintains unlimited undo/redo history during a document session.
 
 **Line Width Property** (applies to: Line, Arrow, Rectangle, Ellipse, Checkmark, Crossmark):
 - Unit: points (1 point = 1/72 inch)
-- Range: 0.5 to 10 points, step 0.5
+- Range: 0.5 to 16 points
 - Default: 1.5 points
-- UI Control: Toolbar spinner showing value in points
-- Keyboard control: `[` to decrease, `]` to increase (step 0.5 points)
+- UI Control: Toolbar spinner showing value in points (free-form, 0.5 point step)
+- Keyboard control: `[` to decrease, `]` to increase — steps through the fixed list
+  `LINE_WIDTH_STEPS_PT` = (0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16); clamped at the
+  ends (no wraparound), matching the 0.5-16 point range above. Current value snaps to the
+  nearest step in the press direction if it isn't already on the list.
 - Context-sensitive: visible and enabled only for vector annotation types
 - Excluded from: Text, Signature/Image annotations
 
 **Font Size Property** (applies to: Text annotations only):
 - Unit: points (1 point = 1/72 inch)
-- Range: 6 to 72 points, step 1
+- Range: 6 to 72 points
 - Default: 11 points
-- UI Control: Toolbar spinner showing value in points
-- Keyboard control: `[` to decrease, `]` to increase (step 1 point)
+- UI Control: Toolbar spinner showing value in points (free-form, 1 point step)
+- Keyboard control: `[` to decrease, `]` to increase — steps through the fixed list
+  `FONT_SIZE_STEPS_PT` = (6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 54, 60,
+  66, 72); clamped at the ends (no wraparound). Current value snaps to the nearest step in the
+  press direction if it isn't already on the list.
 - Resize behavior: When text bounding box is resized, font size scales proportionally
   - Calculation: `new_font_size = old_font_size × (new_height / old_height)`
 - Context-sensitive: visible and enabled only for Text annotations

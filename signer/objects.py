@@ -28,6 +28,34 @@ DEFAULT_FONT_FAMILY: str = "Arial"
 DEFAULT_LINE_WIDTH_FACTOR: float = 0.07
 DEFAULT_LINE_WIDTH_PT: float = 1.5  # v1.2.22: Default line width in points
 
+# v1.2.32: Discrete step lists for the `[` / `]` keyboard shortcuts, so each press
+# jumps to a "usual" size rather than a small fixed increment.
+FONT_SIZE_STEPS_PT: tuple[float, ...] = (
+    6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 54, 60, 66, 72,
+)
+LINE_WIDTH_STEPS_PT: tuple[float, ...] = (
+    0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16,
+)
+
+
+def step_size(value: float, steps: tuple[float, ...], direction: str) -> float:
+    """Return the next value from `steps` in the given direction ('increase'/'decrease').
+
+    Snaps to the nearest step in that direction if `value` isn't already on the list.
+    Clamps at the ends of `steps` (no wraparound).
+    """
+    epsilon = 1e-6
+    if direction == "increase":
+        for step in steps:
+            if step > value + epsilon:
+                return step
+        return steps[-1]
+    else:
+        for step in reversed(steps):
+            if step < value - epsilon:
+                return step
+        return steps[0]
+
 
 class AnnotationType(Enum):
     SIGNATURE = "signature"

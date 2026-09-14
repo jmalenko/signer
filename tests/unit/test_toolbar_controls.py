@@ -219,6 +219,24 @@ class TestSpinnerStateManagement:
         
         # Spinner value should match
         assert text._font_size_px == 28
+
+    def test_width_spinner_reflects_keyboard_shortcut_change(self, main_window):
+        """Test width spinner value updates after ] keyboard shortcut changes width (real code path)."""
+        line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
+        main_window.canvas.add_object(line)
+
+        main_window.canvas._adjust_annotation_property([line], 'increase')
+
+        assert main_window._width_spinner.value() == line._line_width_pt
+
+    def test_font_size_spinner_reflects_keyboard_shortcut_change(self, main_window):
+        """Test font size spinner value updates after ] keyboard shortcut changes size (real code path)."""
+        text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
+        main_window.canvas.add_object(text)
+
+        main_window.canvas._adjust_annotation_property([text], 'increase')
+
+        assert main_window._font_size_spinner.value() == text._font_size_px
     
     def test_font_family_combo_updates_on_selection(self):
         """Test font family combo updates when Text selected."""
