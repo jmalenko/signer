@@ -1207,7 +1207,13 @@ in Version 1.2.11, so error toasts are visually distinct and require explicit ac
 2. Canvas space outside the document shall be minimized. Document-sized canvas height shall
    use the actual toolbar height and shall not include unused allowances for window chrome.
 
+## Version 1.2.34 - Consistent copy/paste and duplicate positions
+
+1. Pasting shall use the annotation coordinates captured when it was copied, even if the
+   source annotation is subsequently moved.
+2. Pasting on the same page and duplicating shall apply the same 20-pixel offset.
+3. Pasting on a different page shall not apply a coordinate offset.
+
 ### Assumption
 
 1. Signature has a transparent background.
-

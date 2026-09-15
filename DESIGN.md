@@ -359,8 +359,8 @@ When multiple annotations are selected, the following operations apply to all se
 | **Delete** (Delete key) | Delete all selected annotations in single undo/redo unit |
 | **Copy** (Ctrl+C) | Copy all selected annotations to clipboard as JSON |
 | **Cut** (Ctrl+X) | Copy all selected to clipboard, then delete in single undo unit |
-| **Paste** (Ctrl+V) | Paste copied annotations onto current page; applies ~10px offset on same page, no offset on different page |
-| **Duplicate** (Ctrl+D) | Create copies of all selected, offset by ~15px; single undo unit |
+| **Paste** (Ctrl+V) | Paste copied annotations at their copy-time coordinates; applies the 20px duplicate offset on the same page and no offset on a different page |
+| **Duplicate** (Ctrl+D) | Create copies of all selected, offset by 20px; single undo unit |
 | **Color change** | Apply color to all selected annotation types that support it |
 
 **Visual Feedback**:
@@ -369,9 +369,10 @@ When multiple annotations are selected, the following operations apply to all se
 
 **Clipboard Format (JSON)**:
 Annotations are serialized as a JSON array when copied/cut, preserving all object properties including type, position, size, color, and content.
+Serialization happens at copy time, so moving the source annotations afterward does not change the pasted coordinates.
 
 When pasted:
-- **Same page**: Offset applied (~10 pixels) to avoid exact overlap with originals
+- **Same page**: The same 20-pixel offset used by Duplicate is applied to avoid exact overlap with originals
 - **Different page**: No offset applied (already distinct location)
 
 **Menu Items** (Edit menu):

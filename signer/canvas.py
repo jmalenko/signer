@@ -17,6 +17,7 @@ from .objects import (
     HANDLE_FX,
     HANDLE_FY,
     ARROW_TYPES,
+    DUPLICATE_OFFSET,
     FONT_SIZE_STEPS_PT,
     LINE_WIDTH_STEPS_PT,
     AnnotationType,
@@ -488,8 +489,6 @@ class DocumentCanvas(QWidget):
         new_objs = []
         for obj in selected:
             dup = obj.duplicate()
-            dup.x += 10  # Small offset to avoid exact overlap
-            dup.y += 10
             if self.current_page_image:
                 pw, ph = self.current_page_image.size
                 dup.clamp_to_page(pw, ph)
@@ -550,7 +549,7 @@ class DocumentCanvas(QWidget):
         intermediate copy operations. This ensures copy->paste->paste sequences
         always use the position from the original copy.
         
-        Offset (~10 pixels) is applied when pasting on the same page to avoid exact overlap.
+        The duplicate offset is applied when pasting on the same page to avoid exact overlap.
         No offset is applied when pasting to a different page (already distinct location).
         """
         # If no cache, read from clipboard and cache it
@@ -591,8 +590,8 @@ class DocumentCanvas(QWidget):
                 
                 # Apply offset only if pasting on same page as original
                 if original_page == self._current_page:
-                    obj.x += 10  # Offset to avoid exact overlap
-                    obj.y += 10
+                    obj.x += DUPLICATE_OFFSET
+                    obj.y += DUPLICATE_OFFSET
                 
                 if self.current_page_image:
                     pw, ph = self.current_page_image.size

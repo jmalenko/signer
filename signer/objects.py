@@ -28,6 +28,7 @@ DPI_SCALE: float = 300.0 / 72.0  # 4.16667
 DEFAULT_FONT_FAMILY: str = "Arial"
 DEFAULT_LINE_WIDTH_FACTOR: float = 0.07
 DEFAULT_LINE_WIDTH_PT: float = 1.5  # v1.2.22: Default line width in points
+DUPLICATE_OFFSET: float = 20.0
 
 # v1.2.32: Discrete step lists for the `[` / `]` keyboard shortcuts, so each press
 # jumps to a "usual" size rather than a small fixed increment.
@@ -276,7 +277,13 @@ class SignatureObject(CanvasObject):
         return self._image.resize((w, h), Image.Resampling.LANCZOS)
 
     def duplicate(self) -> "SignatureObject":
-        obj = SignatureObject(self._image.copy(), self.path, self.x + 20, self.y + 20, self.page)
+        obj = SignatureObject(
+            self._image.copy(),
+            self.path,
+            self.x + DUPLICATE_OFFSET,
+            self.y + DUPLICATE_OFFSET,
+            self.page,
+        )
         obj.scale = self.scale
         obj.color = QColor(self.color)
         return obj
@@ -612,7 +619,11 @@ class VectorAnnotation(CanvasObject):
 
     def duplicate(self) -> "VectorAnnotation":
         obj = VectorAnnotation(
-            self.ann_type, self.x + 20, self.y + 20, self.page, self.text,
+            self.ann_type,
+            self.x + DUPLICATE_OFFSET,
+            self.y + DUPLICATE_OFFSET,
+            self.page,
+            self.text,
             font_family=self._font_family,
             font_size_px=self._font_size_px,
             line_width_factor=self._line_width_factor,
