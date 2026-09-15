@@ -20,12 +20,13 @@ Key docs, keep them consistent with each other and with the code (incl. tests):
 
 - When I tell you to do a final review: Just before committing, do a detailed, critical self-review of the diff.
   - Do a critical review all changes.
+  - Ensure no tests are failing.
+  - Clean up any temporary files you created. If unsure whether a file
+    is temporary, ask the user rather than deleting it.
   - Propose the commit message: one summary sentence; add further detail
     lines only if needed, and don't use them to narrate the code changes
     (the diff already shows that). Do not mention test updates in the commit message; they are an expected part of implementation.
-  - Clean up any temporary files you created. If unsure whether a file
-    is temporary, ask the user rather than deleting it.
--You MUST NOT commit without explicit user approval.
+- You MUST NOT commit without explicit user approval.
 
 ## Implementation
 

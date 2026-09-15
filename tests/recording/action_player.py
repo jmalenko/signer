@@ -281,15 +281,13 @@ class ActionPlayer:
                     # Use current angle or default
                     angle_deg = getattr(obj, '_angle', 0.0)
                     if angle_deg is None:
-                        from signer.objects import ARROW_ANGLES
-                        angle_deg = ARROW_ANGLES.get(ann_type, 0.0)
+                        angle_deg = 0.0
                 else:  # LINE
                     # For lines: distance = size
                     dist = max(8.0, max(new_width, new_height))
                     angle_deg = getattr(obj, '_angle', 0.0)
                     if angle_deg is None:
-                        from signer.objects import ARROW_ANGLES
-                        angle_deg = ARROW_ANGLES.get(ann_type, 0.0)
+                        angle_deg = 0.0
                 
                 # Calculate the dragged endpoint position
                 angle_rad = math.radians(angle_deg)

@@ -147,13 +147,6 @@ class TestAnnotationSerialization:
         assert AnnotationType.CHECKMARK not in ARROW_TYPES
         assert AnnotationType.TEXT not in ARROW_TYPES
     
-    def test_arrow_angles(self):
-        """Test ARROW_ANGLES mapping."""
-        from signer.objects import ARROW_ANGLES
-        
-        assert ARROW_ANGLES[AnnotationType.ARROW] == 0.0  # v1.2.24: Points right (east)
-
-
 class TestSettingsSerialization:
     """Tests for settings serialization."""
     

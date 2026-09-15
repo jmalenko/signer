@@ -83,10 +83,6 @@ VECTOR_WITH_WIDTH: set[AnnotationType] = {
     AnnotationType.ARROW,  # v1.2.24
 }
 
-ARROW_ANGLES: dict[AnnotationType, float] = {
-    AnnotationType.ARROW: 0.0,  # v1.2.24: Points right (east)
-}
-
 LARGE_DEFAULT_TYPES: set[AnnotationType] = {
     AnnotationType.LINE,
     AnnotationType.RECTANGLE,
@@ -382,7 +378,7 @@ class VectorAnnotation(CanvasObject):
         # ARROW: use actual drawn tail/tip so endpoint anchors match visuals.
         angle_deg = getattr(self, '_angle', None)
         if angle_deg is None:
-            angle_deg = ARROW_ANGLES[AnnotationType.ARROW]
+            angle_deg = 0.0
         angle_rad = math.radians(angle_deg)
         cx, cy = vx + vw / 2.0, vy + vh / 2.0
         shaft = min(vw, vh) * 0.33
@@ -545,7 +541,7 @@ class VectorAnnotation(CanvasObject):
             # ARROW uses _angle for free rotation
             angle_deg = getattr(self, '_angle', None)
             if angle_deg is None:
-                angle_deg = ARROW_ANGLES[t]
+                angle_deg = 0.0
             angle_rad = math.radians(angle_deg)
             cx, cy = vx + vw / 2, vy + vh / 2
             shaft = min(vw, vh) * 0.33
