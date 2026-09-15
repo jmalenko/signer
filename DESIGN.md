@@ -158,12 +158,10 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 
 ### 5.7 Persistence
 Use a lightweight local config file (JSON) in user profile (e.g., `%APPDATA%/Signer/config.json`) storing:
-- `lastSignaturePath`
-- `recentSignaturePaths` (up to 10, ordered by LRU)
-- `recentTextStrings` (up to 10, ordered by LRU, excludes predefined date/time strings)
-- `recentDocumentPaths` (up to 10, ordered by LRU)
-- `lastOpenDocumentPath` (optional)
-- `lastSaveDirectory` (optional)
+- `recent_signature_paths` (up to 10, ordered by LRU)
+- `recent_text_strings` (up to 10, ordered by LRU, excludes predefined date/time strings)
+- `recent_document_paths` (up to 10, ordered by LRU)
+- `last_save_directory` (optional)
 
 Recent items appear in relevant menus:
 - **File menu**: Recent documents at top level after static items, separated by horizontal rule
@@ -268,8 +266,8 @@ acknowledgment" without blocking the window like a modal dialog would.
 
 **Settings Persistence:**
 - Configuration fields in `config.json`:
-  - `lastJpegQuality` (int, 1-100, default: 95)
-  - `lastPdfImageQuality` (int, 1-100, default: 95)
+  - `last_jpeg_quality` (int, 1-100, default: 95)
+  - `last_pdf_image_quality` (int, 1-100, default: 95)
 - PNG and TIFF settings NOT persisted (always use best quality automatically)
 - Options panel pre-populates with last-used values for JPG and PDF
 - Settings updated when user clicks "OK" in options panel (not during export)
@@ -544,7 +542,7 @@ Control visibility and enable/disable state based on:
 #### Recent Images Tracking
 
 **Configuration**:
-- Store in `config.json` as `recentImagePaths: List[str]`
+- Store in `config.json` as `recent_signature_paths` (unified with signature recents, see 5.7)
 - Maximum entries: 10
 - Persistence: Across application sessions
 - No explicit clear option in UI (user can edit settings file if needed)

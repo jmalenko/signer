@@ -113,7 +113,7 @@ def libreoffice_path(request):
     
     Can be provided via:
     - Command line: pytest --libreoffice-path <path>
-    - Settings: config.json libreOffice_path field
+    - Settings: config.json libreoffice_path field
     
     If a path is specified (either via CLI or settings), it must exist.
     If the path does not exist, the test fails.

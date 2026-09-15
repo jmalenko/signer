@@ -160,7 +160,43 @@ class TestSettingsStore:
         
         assert settings.recent_color == "#ff0000"
         assert not hasattr(settings, "unknown_key")
-    
+
+    def test_config_json_uses_snake_case_keys(self, temp_dir):
+        """config.json is a user-facing/hand-editable file and uses snake_case keys
+        per REQUIREMENTS.md, matching the AppSettings field names."""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps({
+            "libreoffice_path": "C:\\Program Files\\LibreOffice\\program\\soffice.exe",
+            "last_export_format": "png",
+            "last_export_folder": "/exports",
+            "last_jpeg_quality": 80,
+            "last_pdf_image_quality": 70,
+            "recent_document_paths": ["/path/doc1.pdf"],
+        }))
+
+        store = SettingsStore(app_name="TestApp")
+        store._settings_path = config_path
+
+        settings = store.load()
+
+        assert settings.libreoffice_path == "C:\\Program Files\\LibreOffice\\program\\soffice.exe"
+        assert settings.last_export_format == "png"
+        assert settings.last_export_folder == "/exports"
+        assert settings.last_jpeg_quality == 80
+        assert settings.last_pdf_image_quality == 70
+        assert settings.recent_document_paths == ["/path/doc1.pdf"]
+
+    def test_save_writes_snake_case_keys(self, temp_dir):
+        """Saving writes snake_case JSON keys, matching what load() reads back."""
+        config_path = temp_dir / "config.json"
+        store = SettingsStore(app_name="TestApp")
+        store._settings_path = config_path
+
+        store.save(AppSettings(libreoffice_path="/opt/libreoffice/soffice"))
+
+        data = json.loads(config_path.read_text())
+        assert data["libreoffice_path"] == "/opt/libreoffice/soffice"
+
     def test_settings_path_property(self, temp_dir):
         """Test settings_path property."""
         config_path = temp_dir / "config.json"

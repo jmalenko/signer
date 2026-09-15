@@ -122,6 +122,8 @@ Feedback after implementation, round 3:
     - Recent font family and size
     - Recent lists (documents, texts and signature annotations)
 
+2. Fields in `config.json` use snake_case names (e.g. `libreoffice_path`, `last_export_format`), matching the Python settings model, since the file is user-facing and may be hand-edited.
+
 ## Version 1.2.4 - Window size and position
 
 1. The application shall automatically size the window to fit the document:
@@ -209,7 +211,7 @@ The application shall support opening and editing documents in the following for
 
 3. **LibreOffice Integration for Word and ODT**
    - LibreOffice path resolution (priority order):
-     1. Try LibreOffice path from settings file (new field: `libreOfficePath`, manually edited by user)
+     1. Try LibreOffice path from settings file (new field: `libreoffice_path`, manually edited by user)
      2. Try LibreOffice from system PATH
      3. If neither found, show error dialog
    - Convert Word (.docx, .doc) and ODT to temporary PDF using: `<libreoffice_path> --headless --convert-to pdf <file>`
@@ -234,7 +236,7 @@ The application shall support opening and editing documents in the following for
 
 ### Error Handling
 
-- **Missing LibreOffice** (required for Word and ODT): Show clear message: "LibreOffice is required to open Word and ODT documents. Please either install LibreOffice, configure the LibreOffice path in the settings file (`%APPDATA%\Signer\config.json`, field `libreOfficePath`), or use a PDF or image file instead."
+- **Missing LibreOffice** (required for Word and ODT): Show clear message: "LibreOffice is required to open Word and ODT documents. Please either install LibreOffice, configure the LibreOffice path in the settings file (`%APPDATA%\Signer\config.json`, field `libreoffice_path`), or use a PDF or image file instead."
 - **Unsupported format**: Show error: "File format not supported. Please choose a PDF, Word document, ODT, or image file (JPG, PNG, BMP, WEBP, GIF, TIFF)."
 - **Corrupt image/document**: Show validation error and keep app responsive
 
@@ -305,8 +307,8 @@ Extend document export functionality beyond JPG. Users can save annotated docume
 
 ### Persistence
 
-1. **Recent export format**: Store last-used export format in config.json (field: `lastExportFormat`), default to JPG
-2. **Recent export folder**: Store last used export folder in config.json (field: `lastExportFolder`)
+1. **Recent export format**: Store last-used export format in config.json (field: `last_export_format`), default to JPG
+2. **Recent export folder**: Store last used export folder in config.json (field: `last_export_folder`)
 
 ### Error Handling
 
@@ -725,8 +727,8 @@ Provide users with optional quality/compression control in the Save As dialog. S
 ### Settings Persistence
 
 1. **Configuration Fields** (stored in `config.json`)
-   - `lastJpegQuality` (integer, 1-100, default: 95)
-   - `lastPdfImageQuality` (integer, 1-100, default: 95)
+   - `last_jpeg_quality` (integer, 1-100, default: 95)
+   - `last_pdf_image_quality` (integer, 1-100, default: 95)
    - Note: PNG, TIFF, BMP have no settings (always use optimal automatic values)
 
 2. **Behavior**

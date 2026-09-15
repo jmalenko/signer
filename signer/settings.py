@@ -92,28 +92,12 @@ class SettingsStore:
             if not self._settings_path.exists():
                 return AppSettings()
             data = json.loads(self._settings_path.read_text(encoding="utf-8"))
-            return AppSettings(
-                # Recent color (hex: #rrggbb)
-                recent_color=data.get("recent_color", DEFAULT_COLOR),
-                # Recent line width (points)
-                recent_line_width_pt=data.get("recent_line_width_pt", DEFAULT_LINE_WIDTH_PT),
-                # Recent font (name string)
-                recent_font_family=data.get("recent_font_family", DEFAULT_FONT_FAMILY),
-                # Recent font size (points)
-                recent_font_size_pt=data.get("recent_font_size_pt", DEFAULT_FONT_SIZE_PT),
-                # LibreOffice path
-                libreoffice_path=data.get("libreoffice_path"),
-                last_save_directory=data.get("last_save_directory"),
-                last_export_format=data.get("last_export_format", "jpg"),
-                last_export_folder=data.get("last_export_folder"),
-                # Export quality settings
-                last_jpeg_quality=data.get("last_jpeg_quality", 95),
-                last_pdf_image_quality=data.get("last_pdf_image_quality", 95),
-                # Recent lists (LRU, max 10 items)
-                recent_signature_paths=data.get("recent_signature_paths", []),
-                recent_text_strings=data.get("recent_text_strings", []),
-                recent_document_paths=data.get("recent_document_paths", []),
-            )
+            kwargs = {
+                field_name: data[field_name]
+                for field_name in AppSettings.__dataclass_fields__
+                if field_name in data
+            }
+            return AppSettings(**kwargs)
         except Exception:
             return AppSettings()
 

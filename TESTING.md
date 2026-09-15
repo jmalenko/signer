@@ -37,7 +37,7 @@ Add LibreOffice path to `%APPDATA%\Signer\config.json`:
 
 ```json
 {
-  "libreOffice_path": "C:\\Program Files\\LibreOffice\\program\\soffice.exe"
+  "libreoffice_path": "C:\\Program Files\\LibreOffice\\program\\soffice.exe"
 }
 ```
 
