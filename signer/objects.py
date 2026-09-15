@@ -12,6 +12,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QFontMetricsF,
+    QGuiApplication,
     QImage,
     QPainter,
     QPainterPath,
@@ -165,6 +166,10 @@ class CanvasObject:
         sx = width / max(1.0, self._base_width)
         sy = height / max(1.0, self._base_height)
         self.scale = max(0.05, min(10.0, max(sx, sy)))
+
+    def resize_to_bounds(self, width: float, height: float) -> None:
+        """Apply an interactive boundary resize."""
+        self.set_scaled_size(width, height)
 
     def hit_test_handle(self, vx: float, vy: float, vw: float, vh: float, pt: QPointF) -> int:
         """Return handle index 0-7 if pt is over a handle, else -1."""
@@ -353,6 +358,36 @@ class VectorAnnotation(CanvasObject):
             AnnotationType.ELLIPSE,  # v1.2.22
         }
 
+    def set_scaled_size(self, width: float, height: float) -> None:
+        if self.ann_type != AnnotationType.TEXT:
+            super().set_scaled_size(width, height)
+            return
+
+        target_width = max(8.0, width)
+        target_height = max(8.0, height)
+        width_factor = target_width / max(1.0, self.scaled_width)
+        height_factor = target_height / max(1.0, self.scaled_height)
+        size_factor = min(width_factor, height_factor)
+        old_font_size = self._font_size_px
+        requested_font_size = round(old_font_size * size_factor)
+        self._font_size_px = max(
+            FONT_SIZE_STEPS_PT[0],
+            min(FONT_SIZE_STEPS_PT[-1], requested_font_size),
+        )
+        self.fit_text_box()
+        if (
+            self._font_size_px != old_font_size
+            and self._font_size_px == requested_font_size
+        ):
+            self._base_width = target_width
+            self._base_height = target_height
+            self.scale = 1.0
+
+    def resize_to_bounds(self, width: float, height: float) -> None:
+        self.set_scaled_size(width, height)
+        if self.ann_type == AnnotationType.TEXT:
+            self.fit_text_box()
+
     def supports_endpoint_handles(self) -> bool:
         return self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}
 
@@ -409,25 +444,12 @@ class VectorAnnotation(CanvasObject):
         """Resize the bounding box so it exactly fits the current text at the set font size."""
         if self.ann_type != AnnotationType.TEXT:
             return
-        
-        import sys
-        
-        # On macOS, QFontMetricsF can crash in headless environments
-        # Use a simpler approximation instead
-        if sys.platform == "darwin":
-            lines = (self.text or "").split("\n")
-            avg_char_width = max(8.0, self._font_size_px * 0.6)
-            widest_line = max((line.replace("\t", "    ") for line in lines or [""]), key=len)
-            self._base_width = max(8.0, len(widest_line) * avg_char_width)
-            self._base_height = max(8.0, self._font_size_px * len(lines))
-            self._natural_width = self._base_width
-            self._natural_height = self._base_height
-            self.scale = 1.0
-            return
-        
+
+        lines = (self.text or "").split("\n")
         try:
+            if QGuiApplication.instance() is None:
+                raise RuntimeError("Qt font metrics require a GUI application")
             fm = QFontMetricsF(self._make_font())
-            lines = (self.text or "").split("\n")
             widest = 0.0
             for line in lines:
                 widest = max(widest, fm.horizontalAdvance(line))
@@ -439,11 +461,11 @@ class VectorAnnotation(CanvasObject):
             self.scale = 1.0
         except Exception:
             # Fallback for Qt font metrics failures on other platforms
-            lines = (self.text or "").split("\n")
-            avg_char_width = max(8.0, self._font_size_px * 0.6)
+            font_pixel_size = self._make_font().pixelSize()
+            avg_char_width = max(8.0, float(font_pixel_size))
             widest_line = max((line.replace("\t", "    ") for line in lines or [""]), key=len)
             self._base_width = max(8.0, len(widest_line) * avg_char_width)
-            self._base_height = max(8.0, self._font_size_px * len(lines))
+            self._base_height = max(8.0, font_pixel_size * 1.2 * len(lines))
             self._natural_width = self._base_width
             self._natural_height = self._base_height
             self.scale = 1.0

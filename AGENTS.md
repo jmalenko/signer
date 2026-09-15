@@ -43,13 +43,14 @@ Key docs, keep them consistent with each other and with the code (incl. tests):
     instead of fixing them unprompted.
   - MUST NOT modify existing tests without explicit user approval.
 
-- For every bug fix:
+- Test Driven Development for bugs:
   - Before fixing the bug, write two test cases for it first:
     - First, with the expected behavior. This one should be failing.
     - Second, with the actual (buggy) behavior. This one should be passing.
   - When the fix lands:
     - Ensure the first test (previously failing) is passing now.
     - Ensure the second test (previously passing) is failing now. You may do only minor edits to this test.
+  - Human review.
   - After the review:
     - Delete the second (now failing) test — it only existed to document the bug; the first test remains as the regression test.
 

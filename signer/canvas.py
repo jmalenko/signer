@@ -1141,7 +1141,7 @@ class DocumentCanvas(QWidget):
                     if is_rect_ellipse:
                         new_w, new_h, _ = self._snap_rect_ellipse_size(new_w, new_h, h, modifier_pressed)
 
-                    self._selected.set_scaled_size(new_w, new_h)
+                    self._selected.resize_to_bounds(new_w, new_h)
                     self._selected.x = ax - self._hdrag_anchor_fx * self._selected.scaled_width
                     self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
                 

@@ -147,8 +147,14 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 - Visual default size for symbol annotations is reduced to ~1/3 of previous prototype size.
 - Free text behavior:
   - default text size: 12pt
+  - font point sizes are converted to pixels at the document rendering DPI
+  - the initial boundary is calculated from Qt font metrics to fit every line without cropping
+  - toolbar size changes recalculate the text boundary from font metrics
+  - boundary resizing derives the largest whole-point font size that fits and refreshes the toolbar; non-proportional bounds may contain extra space but do not crop text
+  - live canvas resizing refits the text boundary before each repaint, avoiding transient mouse-sized bounds; resize history uses the same path
   - no wrapping
   - newline entry via Ctrl+Enter in text editor dialog
+- Toolbar property labels omit measurement units; tooltips describe units where relevant.
 
 ### 5.7 Persistence
 Use a lightweight local config file (JSON) in user profile (e.g., `%APPDATA%/Signer/config.json`) storing:

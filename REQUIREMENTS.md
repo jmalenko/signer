@@ -82,6 +82,10 @@ Feedback after implementation, round 2:
 Feedback after implementation, round 3:
 - When saving JPG, the default filename shall have no page number when the document+as one page. If the document has more pages, it should have -p1 suffix when the4ser is on page 1; all the pages shoulde saved; the page-umber should be padded by zeroes.
 - Resizing the text annotation just changes boundary and the text size remains the same. Make the font size adjust according to|he bounding box. Keep aspect ratio of the text.
+- New text annotations shall render at the point size shown in the toolbar, and their boundary shall fit the complete text without cropping.
+- Text size changes shall be synchronized in both directions: changing the toolbar value refits the boundary, while resizing the boundary updates the toolbar value to the largest whole-point font size that fits.
+- During text boundary resizing, only the fitted boundary shall be displayed; an intermediate mouse-sized boundary shall not flash. The toolbar size control shall remain immediately operable after the drag ends.
+- Toolbar property labels shall not display measurement units.
 
 ## Version 1.2.0 - Hamburger menu
 

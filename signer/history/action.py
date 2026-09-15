@@ -323,7 +323,7 @@ class ResizeAnnotationAction(MergeableAction):
             else:
                 obj.set_scaled_size(target["width"], target["height"])
         else:
-            obj.set_scaled_size(target["width"], target["height"])
+            obj.resize_to_bounds(target["width"], target["height"])
         
         canvas.objectChanged.emit()
 
@@ -374,7 +374,7 @@ class ResizeAnnotationAction(MergeableAction):
             else:
                 obj.set_scaled_size(from_w, from_h)
         else:
-            obj.set_scaled_size(from_w, from_h)
+            obj.resize_to_bounds(from_w, from_h)
         
         canvas.objectChanged.emit()
 

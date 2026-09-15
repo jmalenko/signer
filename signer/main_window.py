@@ -514,7 +514,7 @@ class MainWindow(QMainWindow):
         self._width_spinner_action = tb.addWidget(self._width_spinner)
 
         # v1.2.22: Font size spinner (for text annotations)
-        self._font_size_label = QLabel("Font Size (pt):")
+        self._font_size_label = QLabel("Font Size:")
         self._font_size_label_action = tb.addWidget(self._font_size_label)
         self._font_size_spinner = QSpinBox()
         self._font_size_spinner.setMinimum(6)
@@ -1000,8 +1000,8 @@ class MainWindow(QMainWindow):
                 if obj_idx >= 0:
                     action = ChangeFontSizeAction(
                         object_id=obj_idx,
-                        from_size=old_size,
-                        to_size=value,
+                        font_size_px=value,
+                        from_font_size_px=old_size,
                     )
                     self.canvas.history.record_action(action)
                 self._settings.recent_font_size_pt = value
