@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from enum import Enum
 from typing import Any
 
@@ -97,6 +98,7 @@ HANDLE_FX = [0.0, 0.5, 1.0, 0.0, 1.0, 0.0, 0.5, 1.0]
 HANDLE_FY = [0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.0]
 ANCHOR_HANDLE = [7, 6, 5, 4, 3, 2, 1, 0]  # opposite handle for each handle
 HANDLE_SIZE = 10.0
+VISIBLE_ALPHA_RUN = re.compile(rb"[^\x00]+")
 
 
 class CanvasObject:
@@ -209,17 +211,30 @@ class CanvasObject:
         if img.width <= 0 or img.height <= 0:
             return float("inf")
 
-        nearest = float("inf")
-        for y in range(img.height):
-            for x in range(img.width):
-                if img.getpixel((x, y))[3] <= 0:
-                    continue
-                px = vx + (x / max(1, img.width)) * vw
-                py = vy + (y / max(1, img.height)) * vh
-                distance = math.hypot(pt.x() - px, pt.y() - py)
-                if distance < nearest:
-                    nearest = distance
-        return nearest if nearest != float("inf") else float("inf")
+        width, height = img.size
+        alpha = img.getchannel("A").tobytes()
+        query_x = ((pt.x() - vx) / vw) * width
+        query_y = ((pt.y() - vy) / vh) * height
+        scale_x = vw / width
+        scale_y = vh / height
+        nearest_squared = float("inf")
+
+        # Scan nontransparent byte runs in native regex code, then split runs
+        # at row boundaries so Python evaluates horizontal spans, not pixels.
+        for match in VISIBLE_ALPHA_RUN.finditer(alpha):
+            start, end = match.span()
+            while start < end:
+                y = start // width
+                row_end = min(end, (y + 1) * width)
+                left = start - y * width
+                right = row_end - y * width - 1
+                nearest_x = min(max(round(query_x), left), right)
+                dx = (nearest_x - query_x) * scale_x
+                dy = (y - query_y) * scale_y
+                nearest_squared = min(nearest_squared, dx * dx + dy * dy)
+                start = row_end
+
+        return math.sqrt(nearest_squared)
 
     # ------------------------------------------------------------------ serialization
 
