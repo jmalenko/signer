@@ -67,6 +67,7 @@ Feedback after implementation:
 - Bug: Changing the color. When an annotation is selected, then change the color of the annotation. (Maintain current functionality: If none annotation is selected, set the color of the next new annoation.)
 - Window size. Respect the size of the document (like change windows aspect ratio to match the document aspect ratio). But also ensure that the entire toolbar is visible.
 - Clarification: If -signature parameter is used, then add the signature annotation immediately after opening the document. Otherwise, do not add anything (on open).
+- Bug fix: The signature added via -signature must become fully selected (not just visually marked), so it can immediately be moved, deleted, etc. with the keyboard.
 
 Feedback after implementation, round 2:
 - The "Add annotation" button in toolbar does nothing. I must click the down arrow next to it. Make the entire button open the menu.

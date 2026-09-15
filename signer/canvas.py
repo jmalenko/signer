@@ -404,6 +404,7 @@ class DocumentCanvas(QWidget):
                 pw, ph = self.current_page_image.size
                 obj.clamp_to_page(pw, ph)
         self.objectChanged.emit()
+        self.update()
 
     # v1.2.32: Adjust annotation properties (line width, font size) with keyboard,
     # stepping through a fixed list of "usual" sizes instead of a small increment.
@@ -843,6 +844,11 @@ class DocumentCanvas(QWidget):
     def mousePressEvent(self, event) -> None:
         if event.button() != Qt.LeftButton or not self._pages:
             return
+        # Re-assert activation/focus: some launch methods (e.g. an IDE debugger) can leave the window inactive between clicks.
+        window = self.window()
+        if window is not None:
+            window.activateWindow()
+        self.setFocus()
         pt = event.position()
         objects = self.current_page_objects()
 

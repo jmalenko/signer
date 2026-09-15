@@ -23,9 +23,10 @@ Key docs, keep them consistent with each other and with the code (incl. tests):
   - Ensure no tests are failing.
   - Clean up any temporary files you created. If unsure whether a file
     is temporary, ask the user rather than deleting it.
-  - Propose the commit message: one summary sentence; add further detail
-    lines only if needed, and don't use them to narrate the code changes
-    (the diff already shows that). Do not mention test updates in the commit message; they are an expected part of implementation.
+  - Propose the commit message: one summary sentence.
+    - Add further detail lines only if needed. Don't use them to narrate the code changes (the diff already shows that).
+    - If this is a bug fix, add bug report (steps to reproduce, expected, actual).
+    - Do not mention test updates in the commit message; they are an expected part of implementation.
 - You MUST NOT commit without explicit user approval.
 
 ## Implementation

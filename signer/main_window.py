@@ -383,6 +383,10 @@ class MainWindow(QMainWindow):
                 self.open_document(document)
             if signature:
                 self._load_signature_file(signature, at_default_position=True)
+            # Force real window activation before focusing: a freshly-shown window may not yet be key/active.
+            self.raise_()
+            self.activateWindow()
+            self.canvas.setFocus()
         QTimer.singleShot(0, _load)
 
     # ---------------------------------------------------------------- toolbar
