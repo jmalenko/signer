@@ -743,13 +743,19 @@ class DocumentCanvas(QWidget):
 
     def _hit_test_object_at_point(self, pt: QPointF) -> CanvasObject | None:
         """Return the nearest annotation whose bounding box contains the point."""
+        candidates = [
+            obj
+            for obj in reversed(self.current_page_objects())
+            if self._object_view_rect(obj).contains(pt)
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
+
         best_obj: CanvasObject | None = None
         best_distance: float | None = None
 
-        for obj in reversed(self.current_page_objects()):
+        for obj in candidates:
             r = self._object_view_rect(obj)
-            if not r.contains(pt):
-                continue
             distance = obj.distance_to_visible_pixel(r.x(), r.y(), r.width(), r.height(), pt)
             if best_distance is None or distance < best_distance - 1e-9:
                 best_distance = distance
