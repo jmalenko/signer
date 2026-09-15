@@ -59,3 +59,8 @@ Key docs, keep them consistent with each other and with the code (incl. tests):
   action so it doesn't grow unbounded across runs.
 - Put temporary files (logs, scratch scripts, etc.) in the repository root,
   and remove them before committing (see Process above).
+
+- Tests should require no user interaction.
+  - Typical example: closing the app with unsaved changes shows a "Save
+    changes?" dialog. If not handled (e.g. via a test-mode bypass or a
+    mocked dialog), the test would hang waiting for a user to click a button.
