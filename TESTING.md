@@ -97,8 +97,13 @@ xdg-open tests/test-results/report.html
 **Report features:**
 - Color-coded status badges (✓ PASS / ✗ FAIL)
 - Side-by-side Expected vs Actual image comparison
-- Pixel-level diff visualization (red pixels show differences)
+- Pixel-level diff visualization with color-coded classification:
+  - **Red**: Pixel is white in expected and non-white in actual (unexpected/added pixels)
+  - **Violet**: Pixel is non-white in expected and white in actual (missing pixels)
+  - **Orange**: Pixel is non-white in both expected and actual (modified/different pixels)
+  - **White**: Matching pixels
 - Test summary at top with clickable test names
+- Full-size image modal view on click, with mouse wheel zoom and pan support
 
 ## Test Results Directory Structure
 
@@ -107,7 +112,7 @@ tests/test-results/
 ├── {test_name}/
 │   ├── {name}_actual.png          # Generated output
 │   ├── {name}_expected.png        # Reference baseline
-│   ├── {name}_diff.png            # Pixel difference visualization
+│   ├── {name}_diff.png            # Color-coded pixel difference visualization
 │   └── info.json                  # Pass/fail status
 └── report.html                     # Interactive HTML report
 ```

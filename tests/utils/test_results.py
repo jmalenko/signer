@@ -7,7 +7,6 @@ import base64
 import html as html_lib
 import mimetypes
 import re
-from datetime import datetime
 
 # Results directory - persists across test runs for inspection
 RESULTS_DIR = Path(__file__).parent.parent / "test-results"
@@ -43,7 +42,7 @@ def organize_test_output(
             └── {test_name}/
                 ├── {expected_base}_actual.png (actual output, named after expected file)
                 ├── {expected_base}_expected.png (reference)
-                ├── {expected_base}_diff.png (pixel-level diff: white=same, red=different)
+                ├── {expected_base}_diff.png (pixel-level diff: white=same, red=unexpected, violet=missing, orange=modified)
                 └── info.json (metadata including pass/fail status)
     
     Args:
@@ -101,7 +100,7 @@ def create_comparison_report(output_file: Optional[str | Path] = None) -> str:
     
     Displays:
     - All test result directories from test-results/
-    - Diff visualizations (white=same, red=different)
+    - Diff visualizations (white=same, red=unexpected, violet=missing, orange=modified)
     - Side-by-side viewer for comparing actual vs expected
     
     Returns:
@@ -289,7 +288,7 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                             {f'<img src="{actual_rel}" alt="Actual P{page_num}" class="comparison-image clickable-image" data-full-src="{actual_rel}">' if actual_rel else '<p>N/A</p>'}
                         </div>
                         <div class="image-item">
-                            <h4>Diff (Red = Different)</h4>
+                            <h4>Diff</h4>
                             {f'<img src="{diff_rel}" alt="Diff P{page_num}" class="comparison-image clickable-image" data-full-src="{diff_rel}">' if diff_rel else '<p>N/A</p>'}
                         </div>
                     </div>
@@ -341,7 +340,7 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                         {f'<img src="{actual_rel}" alt="Actual" class="comparison-image clickable-image" data-full-src="{actual_rel}">' if actual_rel else '<p>N/A</p>'}
                     </div>
                     <div class="image-item">
-                        <h4>Diff (Red = Different)</h4>
+                        <h4>Diff</h4>
                         {f'<img src="{diff_rel}" alt="Diff" class="comparison-image clickable-image" data-full-src="{diff_rel}">' if diff_rel else '<p>N/A</p>'}
                     </div>
                 </div>
@@ -596,6 +595,8 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                 width: 100%;
                 height: 100%;
                 background-color: rgba(0, 0, 0, 0.9);
+                overflow: hidden;
+                user-select: none;
             }}
             .modal.open {{
                 display: flex;
@@ -606,6 +607,16 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                 max-width: 90%;
                 max-height: 90%;
                 object-fit: contain;
+                cursor: grab;
+                transform-origin: center center;
+                image-rendering: -webkit-optimize-contrast;
+                image-rendering: pixelated;
+                image-rendering: crisp-edges;
+                user-select: none;
+                -webkit-user-drag: none;
+            }}
+            .modal-content.dragging {{
+                cursor: grabbing;
             }}
             .modal-close {{
                 position: absolute;
@@ -615,9 +626,56 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                 font-weight: bold;
                 color: white;
                 cursor: pointer;
+                z-index: 1010;
             }}
             .modal-close:hover {{
                 color: #bbb;
+            }}
+            .modal-hint {{
+                position: absolute;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                color: rgba(255, 255, 255, 0.75);
+                font-size: 0.85em;
+                background: rgba(0, 0, 0, 0.55);
+                padding: 6px 14px;
+                border-radius: 20px;
+                pointer-events: none;
+                z-index: 1010;
+            }}
+            .diff-legend {{
+                background: white;
+                border-radius: 8px;
+                padding: 20px 25px;
+                margin-top: 30px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            }}
+            .diff-legend h3 {{
+                color: #2c3e50;
+                font-size: 1.1em;
+                margin-bottom: 12px;
+            }}
+            .diff-legend ul {{
+                list-style: none;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }}
+            .diff-legend li {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                font-size: 0.9em;
+                color: #444;
+            }}
+            .legend-swatch {{
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 1px solid rgba(0,0,0,0.15);
+                display: inline-block;
+                flex-shrink: 0;
             }}
             @media (max-width: 768px) {{
                 .image-comparison {{
@@ -644,33 +702,70 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
             <div class="results">
                 {test_cards}
             </div>
+
+            <div class="diff-legend">
+                <h3>Diff Color Legend</h3>
+                <ul>
+                    <li><span class="legend-swatch" style="background-color: #ff0000;"></span> <strong>Red:</strong> Pixel is white in expected image and non-white in actual image (unexpected / added)</li>
+                    <li><span class="legend-swatch" style="background-color: #ee82ee;"></span> <strong>Violet:</strong> Pixel is non-white in expected image and white in actual image (missing)</li>
+                    <li><span class="legend-swatch" style="background-color: #ffa500;"></span> <strong>Orange:</strong> Pixel is non-white in both expected and actual images (differing / modified)</li>
+                    <li><span class="legend-swatch" style="background-color: #ffffff; border-color: #bbb;"></span> <strong>White:</strong> Matching pixels</li>
+                </ul>
+            </div>
         </div>
         
         <!-- Image Modal -->
         <div id="imageModal" class="modal">
             <span class="modal-close">&times;</span>
             <img class="modal-content" id="modalImage" src="" alt="Full-size image">
+            <div class="modal-hint">Scroll mouse wheel to zoom • Drag to pan • Double click to reset</div>
         </div>
         
         <script>
             const modal = document.getElementById('imageModal');
+            const modalImage = document.getElementById('modalImage');
             const closeBtn = document.querySelector('.modal-close');
             const clickableImages = document.querySelectorAll('.clickable-image');
             
+            let scale = 1;
+            let translateX = 0;
+            let translateY = 0;
+            let isDragging = false;
+            let startX = 0;
+            let startY = 0;
+            let didMove = false;
+            
+            function updateTransform() {{
+                modalImage.style.transform = `translate(${{translateX}}px, ${{translateY}}px) scale(${{scale}})`;
+            }}
+            
+            function resetZoom() {{
+                scale = 1;
+                translateX = 0;
+                translateY = 0;
+                isDragging = false;
+                didMove = false;
+                modalImage.classList.remove('dragging');
+                updateTransform();
+            }}
+            
             clickableImages.forEach(img => {{
                 img.addEventListener('click', function() {{
+                    resetZoom();
+                    modalImage.src = this.getAttribute('data-full-src');
                     modal.classList.add('open');
-                    document.getElementById('modalImage').src = this.getAttribute('data-full-src');
                 }});
             }});
             
             closeBtn.addEventListener('click', function() {{
                 modal.classList.remove('open');
+                resetZoom();
             }});
             
             modal.addEventListener('click', function(e) {{
-                if (e.target === modal) {{
+                if (e.target === modal && !didMove) {{
                     modal.classList.remove('open');
+                    resetZoom();
                 }}
             }});
             
@@ -678,7 +773,68 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
             document.addEventListener('keydown', function(e) {{
                 if (e.key === 'Escape' && modal.classList.contains('open')) {{
                     modal.classList.remove('open');
+                    resetZoom();
                 }}
+            }});
+            
+            // Zoom with mouse wheel
+            modal.addEventListener('wheel', function(e) {{
+                if (!modal.classList.contains('open')) return;
+                e.preventDefault();
+                
+                const zoomFactor = 1.15;
+                const prevScale = scale;
+                if (e.deltaY < 0) {{
+                    scale = Math.min(scale * zoomFactor, 30);
+                }} else {{
+                    scale = Math.max(scale / zoomFactor, 0.2);
+                }}
+                
+                // Zoom relative to mouse cursor position
+                const rect = modalImage.getBoundingClientRect();
+                const cursorX = e.clientX - (rect.left + rect.width / 2);
+                const cursorY = e.clientY - (rect.top + rect.height / 2);
+                
+                const scaleRatio = scale / prevScale;
+                translateX -= (cursorX * (scaleRatio - 1)) / prevScale;
+                translateY -= (cursorY * (scaleRatio - 1)) / prevScale;
+                
+                updateTransform();
+            }}, {{ passive: false }});
+            
+            // Drag / pan
+            modalImage.addEventListener('mousedown', function(e) {{
+                if (e.button !== 0) return;
+                isDragging = true;
+                didMove = false;
+                startX = e.clientX - translateX;
+                startY = e.clientY - translateY;
+                modalImage.classList.add('dragging');
+                e.preventDefault();
+            }});
+            
+            window.addEventListener('mousemove', function(e) {{
+                if (!isDragging) return;
+                const newX = e.clientX - startX;
+                const newY = e.clientY - startY;
+                if (Math.abs(newX - translateX) > 2 || Math.abs(newY - translateY) > 2) {{
+                    didMove = true;
+                }}
+                translateX = newX;
+                translateY = newY;
+                updateTransform();
+            }});
+            
+            window.addEventListener('mouseup', function() {{
+                if (isDragging) {{
+                    isDragging = false;
+                    modalImage.classList.remove('dragging');
+                }}
+            }});
+            
+            modalImage.addEventListener('dblclick', function(e) {{
+                e.stopPropagation();
+                resetZoom();
             }});
             
             // Show/hide page tabs

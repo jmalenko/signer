@@ -28,10 +28,10 @@ def compare_images(
     
     # Check dimensions
     if actual.size != expected.size:
+        diff_img = _create_diff_image(actual, expected)
         if diff_output_path:
-            diff_img = _create_diff_image(actual, expected)
             diff_img.save(diff_output_path)
-        return False, None
+        return False, diff_img
     
     # Calculate difference
     diff = ImageChops.difference(actual, expected)
@@ -57,11 +57,21 @@ def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Imag
         expected: Expected reference image (RGB)
         
     Returns:
-        Diff image with white pixels for matches, red pixels for differences,
-        and a red border box around the region containing differences
+        Diff image with white pixels for matches, and color-coded differences:
+        - Red (255, 0, 0): expected pixel is white and actual image is non-white
+        - Violet (238, 130, 238): expected pixel is non-white and actual image is white
+        - Orange (255, 165, 0): expected pixel is non-white and actual image is non-white
+        - White (255, 255, 255): matching pixels
     """
-    # Create white background (same size as images)
-    diff_img = Image.new("RGB", actual.size, (255, 255, 255))
+    max_w = max(actual.width, expected.width)
+    max_h = max(actual.height, expected.height)
+    diff_img = Image.new("RGB", (max_w, max_h), (255, 255, 255))
+    
+    # Fast path if identical dimensions and exact match
+    if actual.size == expected.size:
+        diff = ImageChops.difference(actual.convert("RGB"), expected.convert("RGB"))
+        if diff.getbbox() is None:
+            return diff_img
     
     # Ensure images are RGB (they should be, but be defensive)
     actual_rgb = actual if actual.mode == "RGB" else actual.convert("RGB")
@@ -72,26 +82,26 @@ def _create_diff_image(actual: Image.Image, expected: Image.Image) -> Image.Imag
     expected_pixels = expected_rgb.load()
     diff_pixels = diff_img.load()
     
-    # Track bounding box of all differences
-    min_x, max_x = actual.width, -1
-    min_y, max_y = actual.height, -1
-    has_differences = False
+    WHITE = (255, 255, 255)
+    RED = (255, 0, 0)
+    VIOLET = (238, 130, 238)
+    ORANGE = (255, 165, 0)
     
     # Compare pixel by pixel
-    for y in range(actual.height):
-        for x in range(actual.width):
-            actual_pixel = actual_pixels[x, y]
-            expected_pixel = expected_pixels[x, y]
+    for y in range(max_h):
+        for x in range(max_w):
+            actual_pixel = actual_pixels[x, y] if (x < actual.width and y < actual.height) else WHITE
+            expected_pixel = expected_pixels[x, y] if (x < expected.width and y < expected.height) else WHITE
             
-            # Mark RED where pixels differ, WHITE where they match
             if actual_pixel != expected_pixel:
-                diff_pixels[x, y] = (255, 0, 0)  # RED for different pixels
-                # Track bounding box
-                min_x = min(min_x, x)
-                max_x = max(max_x, x)
-                min_y = min(min_y, y)
-                max_y = max(max_y, y)
-                has_differences = True
+                if expected_pixel == WHITE:
+                    diff_pixels[x, y] = RED
+                elif actual_pixel == WHITE:
+                    diff_pixels[x, y] = VIOLET
+                else:
+                    diff_pixels[x, y] = ORANGE
+            else:
+                diff_pixels[x, y] = WHITE
     
     return diff_img
 
