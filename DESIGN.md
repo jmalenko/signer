@@ -1,7 +1,7 @@
 # DESIGN
 
 ## 1. Goal
-Build a small Windows desktop app to place a scanned signature (transparent image) on top of a PDF page and export the result as a JPG, with minimal manual steps.
+Build a small cross-platform desktop app to place a scanned signature (transparent image) on top of a document and export the result with minimal manual steps. Windows, macOS, and Linux are supported targets.
 
 ## 1.1 Example Assets (Current Workspace)
 - `examples/document.odt` (sample OpenDocument Text document; master file, other examples are derived from this)
@@ -157,7 +157,7 @@ Build a small Windows desktop app to place a scanned signature (transparent imag
 - Toolbar property labels omit measurement units; tooltips describe units where relevant.
 
 ### 5.7 Persistence
-Use a lightweight local config file (JSON) in user profile (e.g., `%APPDATA%/Signer/config.json`) storing:
+Use a lightweight local config file (JSON) in the platform user configuration directory storing:
 - `recent_signature_paths` (up to 10, ordered by LRU)
 - `recent_text_strings` (up to 10, ordered by LRU, excludes predefined date/time strings)
 - `recent_document_paths` (up to 10, ordered by LRU)
@@ -193,7 +193,7 @@ After successful export:
 - Color: green
 - Duration: auto-dismiss after 5 seconds or manual close with X button
 - Message format: "Exported {filename} to [directory link]"
-- Directory link is clickable (underlined, colored) and opens Windows Explorer at that location
+- Directory link is clickable (underlined, colored) and opens the platform file manager through Qt
 - Notification does not steal focus; user can continue working
 - Notification text is readable with sufficient contrast against background
 
@@ -784,63 +784,49 @@ See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
 
 ## 9. Distribution Builds
 
-### Building the Executable with PyInstaller
+PyInstaller does not cross-compile. Build each release on the target operating system and CPU architecture. A Linux build is tied to its architecture and to a compatible glibc baseline; build on the oldest Linux distribution the release intends to support.
 
-To create `signer.exe` from the Python source code:
+Create and populate a clean virtual environment on each build machine:
 
 ```bash
-# Build a single-file executable (recommended for portable distribution)
-.venv\Scripts\python -m PyInstaller --noconfirm --log-level INFO --onefile --windowed --name signer --icon signer/resources/signer.ico --add-data "signer/resources:signer/resources" main.py
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m PyInstaller --clean --noconfirm signer.spec
 ```
 
-This creates:
-- `dist/signer.exe` — Single executable file containing all dependencies, resources, and icon
-- `build/` — Temporary build files (can be deleted)
-- `signer.spec` — PyInstaller spec file (for rebuilding)
+On Windows, activate with `.venv\Scripts\activate` and use the same `python -m PyInstaller --clean --noconfirm signer.spec` command.
 
-**Output location**: `dist/signer.exe`
+The checked-in `signer.spec` selects the ICO asset on Windows and a PNG asset on macOS/Linux, embeds `signer/resources`, disables the console window, and creates one file:
 
-**For development/testing**: Run directly from source without building
-```bash
-python main.py
-# or with arguments:
-python main.py -document examples/document.pdf -signature examples/signature.png
-```
+| Target | Output | Run smoke test |
+|--------|--------|----------------|
+| Windows | `dist/signer.exe` | `dist\signer.exe` |
+| macOS | `dist/signer` | `./dist/signer` |
+| Linux | `dist/signer` | `./dist/signer` |
 
-**VS Code tasks**:
-- `Run Signer` — Runs the app from source code
-- `Run Signer (examples)` — Runs with example files
-- `Build signer.exe (onefile)` — Creates the PyInstaller executable in `dist/signer.exe` with icon and resources
+The macOS result is a single command-line-launchable GUI executable, not a Finder `.app` bundle. A normal signed and notarized `.app` is a directory bundle and therefore is a separate distribution format, not a single-file executable. Build separately on Intel and Apple Silicon unless creating and testing a universal binary.
 
-### PyInstaller Configuration
-
-Key flags used:
-- `--onefile` — Creates single executable (not directory with dependencies)
-- `--windowed` — GUI app (no console window)
-- `--name signer` — Output filename (`signer.exe`)
-- `--icon signer/resources/signer.ico` — Embeds the application icon in the executable (displays in taskbar, window title, and file icon)
-- `--add-data "signer/resources:signer/resources"` — Bundles the resources directory (icons, images) into the executable for runtime access via `sys._MEIPASS`
-- `--noconfirm` — Don't ask before overwriting
-- `--log-level INFO` — Show build progress
-- `main.py` — Entry point file
+Before publishing an artifact, run the full automated suite and the smoke test on the same target used for the build. For Linux, also test at least one X11 and one Wayland session when both are supported. LibreOffice remains an external optional dependency for Word/ODT input and is not bundled.
 
 ### Portable Build
 
-After building the executable (see "Building the Executable with PyInstaller" above):
+After building the executable:
 
-1. Copy `dist\signer.exe` to any directory on a portable medium (USB drive, external disk, etc.)
+1. Copy the target's file from `dist/` to any writable directory.
 2. Optionally, copy or create an empty `config.json` file in the same directory to customize settings
 
-When the user runs `signer.exe` on any machine:
+When the user runs Signer:
 - If `config.json` exists in the app directory, it will be used (portable mode)
-- If not, `config.json` will be auto-created in `%APPDATA%/Signer/` on first save (installed mode)
+- If not, configuration is stored in the platform user configuration directory
 
 
 ### Edge Cases
 
 - **Both locations exist**: Portable mode takes precedence (app directory checked first)
-- **No write permissions to app directory**: AppData fallback ensures portability on read-only installations (e.g., network share)
-- **AppData unavailable**: Should not occur on Windows; error handling defers to existing config error handling
+- **No write permissions to app directory**: The platform user configuration directory remains available for installed mode
+- **Missing platform configuration directory**: It is created on first use
 - **Corrupted config**: Handled by existing error handling; mode detection unaffected
 
 ---
@@ -851,7 +837,9 @@ When the user runs `signer.exe` on any machine:
 
 - **Windows**: 7 or later
 - **macOS**: 10.13 or later
-- **Linux**: Ubuntu 18.04+, Fedora 28+, or equivalent
+- **Linux**: A maintained distribution whose glibc version is compatible with
+  the PySide6 and PyInstaller versions in the release build. The oldest
+  supported distribution must be verified in release testing.
 
 For Word (.docx/.doc) and ODT file support, LibreOffice is optional.
 
@@ -923,17 +911,11 @@ See [TESTING.md](TESTING.md) for detailed testing documentation.
 
 ### Building Executables
 
-**Windows:**
 ```bash
-pyinstaller --onefile --windowed --name signer --icon signer/resources/signer.ico --add-data "signer/resources:signer/resources" main.py
+python -m PyInstaller --clean --noconfirm signer.spec
 ```
 
-**macOS/Linux:**
-```bash
-pyinstaller --onefile --windowed --name signer --icon signer/resources/signer.ico --add-data "signer/resources:signer/resources" main.py
-```
-
-Output: `dist/signer.exe` (Windows), `dist/signer.app` (macOS), or `dist/signer` (Linux)
+See [Distribution Builds](#9-distribution-builds) for target-specific outputs and constraints.
 
 ### Architecture
 

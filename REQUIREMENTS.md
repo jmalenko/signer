@@ -1219,3 +1219,15 @@ in Version 1.2.11, so error toasts are visually distinct and require explicit ac
 ### Assumption
 
 1. Signature has a transparent background.
+
+## Version 1.2.35 - Linux and macOS support
+
+1. Signer shall support Windows, macOS, and Linux.
+2. Native desktop actions, including opening an export directory, shall use
+   platform-independent Qt APIs and open the platform's file manager.
+3. A single-file executable shall be buildable for each supported platform.
+4. Release executables shall be built and tested separately on every target
+   operating system and CPU architecture; PyInstaller builds are not
+   cross-platform.
+5. Linux releases shall be tested on the oldest supported distribution and on
+   the applicable X11 and Wayland desktop sessions.

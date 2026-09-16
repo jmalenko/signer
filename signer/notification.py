@@ -1,9 +1,9 @@
 """Notification toast widget for displaying success and error messages."""
 
-import subprocess
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, QUrl, Qt
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -40,7 +40,8 @@ class NotificationToast(QWidget):
             parent: Parent widget (typically the main window)
             message: Message text to display (may contain placeholder for directory)
             directory: Optional directory path that becomes a clickable link
-            exported_files: List of exported file paths to select in Explorer
+            exported_files: Exported file paths associated with the
+                notification
             duration_ms: Auto-dismiss duration in milliseconds (ignored if is_error)
             is_error: If True, style as a red error notification that only
                 dismisses when the user clicks the close button
@@ -156,29 +157,21 @@ class NotificationToast(QWidget):
             self._timer.start(duration_ms)
     
     def _on_link_clicked(self, url: str) -> None:
-        """Handle directory link click - select exported files in Explorer."""
+        """Open a directory link with the platform desktop environment."""
         try:
             path = Path(url)
             if not path.exists():
-                # If path no longer exists, show a red error notification (manual dismiss)
-                NotificationToast(self.parent(), "Unable to open directory", is_error=True)
+                NotificationToast(
+                    self.parent(), "Unable to open directory", is_error=True
+                )
                 return
-            
-            # If we have exported files, select the first one (or all if possible)
-            if self._exported_files:
-                # Select the first exported file
-                first_file = self._exported_files[0]
-                if first_file.exists():
-                    # Use Windows Explorer /select command to highlight the file
-                    subprocess.Popen(f'explorer.exe /select,"{first_file}"')
-                else:
-                    # File doesn't exist, just open the directory
-                    subprocess.Popen(f'explorer.exe "{path}"')
-            else:
-                # No exported files provided, just open the directory
-                subprocess.Popen(f'explorer.exe "{path}"')
+
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
+                raise OSError(f"Desktop environment could not open {path}")
         except Exception:
-            NotificationToast(self.parent(), "Unable to open directory", is_error=True)
+            NotificationToast(
+                self.parent(), "Unable to open directory", is_error=True
+            )
     
     def _on_timeout(self) -> None:
         """Auto-dismiss after timeout."""

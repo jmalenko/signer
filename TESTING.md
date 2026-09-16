@@ -33,7 +33,11 @@ Multi-format tests require LibreOffice to convert Word and ODT documents to PDF 
 
 ### Option 1: Configure in Settings (Persistent)
 
-Add LibreOffice path to `%APPDATA%\Signer\config.json`:
+Add `libreoffice_path` to the platform configuration file:
+
+- Windows: `%APPDATA%\Signer\config.json`
+- macOS: `~/Library/Application Support/Signer/config.json`
+- Linux: `~/.config/Signer/config.json`
 
 ```json
 {
@@ -78,6 +82,21 @@ C:\PortableApps\LibreOfficePortable\App\libreoffice\program\soffice.exe
 ```
 /Applications/LibreOffice.app/Contents/MacOS/soffice
 ```
+
+## Linux Release Validation
+
+Linux support cannot be established by a successful macOS or Windows build. On the Linux distribution and architecture used for release:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+QT_QPA_PLATFORM=offscreen python -m pytest
+python -m PyInstaller --clean --noconfirm signer.spec
+./dist/signer
+```
+
+Manually verify document open, annotation rendering and text fonts, export, and the clickable export-directory link. Verify Word/ODT conversion separately when LibreOffice is installed. Test the executable in both Wayland and X11 sessions where applicable; missing Qt system libraries or platform plugins are distribution-specific packaging issues and should be resolved on the oldest supported build/test image.
 
 ## Test Results
 
