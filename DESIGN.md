@@ -118,6 +118,10 @@ Build a small cross-platform desktop app to place a scanned signature (transpare
 - `x = (page_width - object_width) / 2`
 - `y = (page_height - object_height) / 2`
 - Clamp to page bounds.
+- Exception: signature annotations (added via `-signature` CLI parameter or the Signature
+  submenu) use `default_signature_position_for()` instead, which places them 80% down the
+  page (`y = 0.8 * page_height - object_height / 2`), centered horizontally. This matches the
+  typical placement of a signature near the bottom of a document.
 
 ### 5.5 Object Interaction
 - Hover on draggable object: cursor changes to move arrows.
@@ -146,7 +150,7 @@ Build a small cross-platform desktop app to place a scanned signature (transpare
   - Duplicate (creates a copy preserving size and color)
 - Visual default size for symbol annotations is reduced to ~1/3 of previous prototype size.
 - Free text behavior:
-  - default text size: 12pt
+  - default text size: 11pt
   - font point sizes are converted to pixels at the document rendering DPI
   - the initial boundary is calculated from Qt font metrics to fit every line without cropping
   - toolbar size changes recalculate the text boundary from font metrics

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import re
 from enum import Enum
@@ -20,6 +21,8 @@ from PySide6.QtGui import (
     QPen,
     QPixmap,
 )
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_TEXT_FONT_PT: int = 11
@@ -483,6 +486,7 @@ class VectorAnnotation(CanvasObject):
             self.scale = 1.0
         except Exception:
             # Fallback for Qt font metrics failures on other platforms
+            logger.debug("fit_text_box(): QFontMetricsF unavailable, using approximate sizing", exc_info=True)
             font_pixel_size = self._make_font().pixelSize()
             avg_char_width = max(8.0, float(font_pixel_size))
             widest_line = max((line.replace("\t", "    ") for line in lines or [""]), key=len)

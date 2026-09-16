@@ -203,39 +203,30 @@ class DocumentCanvas(QWidget):
         else:
             return original
     
+    def _rotate_pages(self, pages: "list[int] | range", delta: int) -> None:
+        """Rotate the given page indices by `delta` degrees (90 or 270)."""
+        for i in pages:
+            self._page_rotations[i] = (self._page_rotations.get(i, 0) + delta) % 360
+            self._update_rotated_pixmap(i)
+        self._recompute_fit()
+        self.objectChanged.emit()
+        self.update()
+
     def rotate_current_page_left(self) -> None:
         """Rotate current page 90 degrees counter-clockwise."""
-        self._page_rotations[self._current_page] = (self._page_rotations.get(self._current_page, 0) + 90) % 360
-        self._update_rotated_pixmap(self._current_page)
-        self._recompute_fit()
-        self.objectChanged.emit()
-        self.update()
-    
+        self._rotate_pages([self._current_page], 90)
+
     def rotate_current_page_right(self) -> None:
         """Rotate current page 90 degrees clockwise."""
-        self._page_rotations[self._current_page] = (self._page_rotations.get(self._current_page, 0) + 270) % 360
-        self._update_rotated_pixmap(self._current_page)
-        self._recompute_fit()
-        self.objectChanged.emit()
-        self.update()
-    
+        self._rotate_pages([self._current_page], 270)
+
     def rotate_all_pages_left(self) -> None:
         """Rotate all pages 90 degrees counter-clockwise."""
-        for i in range(len(self._pages)):
-            self._page_rotations[i] = (self._page_rotations.get(i, 0) + 90) % 360
-            self._update_rotated_pixmap(i)
-        self._recompute_fit()
-        self.objectChanged.emit()
-        self.update()
-    
+        self._rotate_pages(range(len(self._pages)), 90)
+
     def rotate_all_pages_right(self) -> None:
         """Rotate all pages 90 degrees clockwise."""
-        for i in range(len(self._pages)):
-            self._page_rotations[i] = (self._page_rotations.get(i, 0) + 270) % 360
-            self._update_rotated_pixmap(i)
-        self._recompute_fit()
-        self.objectChanged.emit()
-        self.update()
+        self._rotate_pages(range(len(self._pages)), 270)
     
     def _update_rotated_pixmap(self, page_index: int) -> None:
         """Update the pixmap cache for a page after rotation."""

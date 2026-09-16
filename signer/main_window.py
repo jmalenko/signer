@@ -1168,6 +1168,11 @@ class MainWindow(QMainWindow):
             return False
         p = Path(chosen)
 
+        if not p.exists():
+            QMessageBox.critical(self, "Open document failed", f"File not found:\n{p}")
+            self._remove_recent_document(str(p))
+            return False
+
         password = ""
         max_attempts = 3
         for attempt in range(max_attempts):
@@ -1363,6 +1368,7 @@ class MainWindow(QMainWindow):
             return False
         if not p.exists():
             QMessageBox.warning(self, "File not found", f"Signature file not found:\n{p}")
+            self._remove_recent_signature(str(p))
             return False
         try:
             with Image.open(p) as img:
@@ -1394,6 +1400,15 @@ class MainWindow(QMainWindow):
         paths.insert(0, path)
         self._settings.recent_signature_paths = paths[:10]
 
+    def _remove_recent_signature(self, path: str) -> None:
+        """Prune a signature path (e.g. no longer found on disk) from the recent list."""
+        paths = self._settings.recent_signature_paths
+        if path in paths:
+            paths.remove(path)
+            self._settings.recent_signature_paths = paths
+            self._save_settings_safe()
+            self._rebuild_sig_ann_menu()
+
     def _update_recent_text_strings(self, text: str) -> None:
         """Add a text string to recent texts (LRU, max 10). Excludes predefined date/time strings."""
         if not text or not text.strip():
@@ -1415,6 +1430,15 @@ class MainWindow(QMainWindow):
             paths.remove(path)
         paths.insert(0, path)
         self._settings.recent_document_paths = paths[:10]
+
+    def _remove_recent_document(self, path: str) -> None:
+        """Prune a document path (e.g. no longer found on disk) from the recent list."""
+        paths = self._settings.recent_document_paths
+        if path in paths:
+            paths.remove(path)
+            self._settings.recent_document_paths = paths
+            self._save_settings_safe()
+            self._rebuild_recent_menus()
 
     def save_signed_document(self) -> bool:
         """Deprecated: delegates to save_document_as() for backward compatibility."""
@@ -1963,6 +1987,7 @@ class MainWindow(QMainWindow):
                                 y = max(0, min(y, ph - 1))
                                 composite_image.alpha_composite(overlay, dest=(x, y))
                             except Exception:
+                                logger.warning("Failed to render %s for printing; skipping", type(obj).__name__, exc_info=True)
                                 continue
                     
                     # Convert back to RGB for printing
@@ -1999,8 +2024,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             if not self._in_test_mode:
                 QMessageBox.critical(self, "Print error", f"Unexpected error during printing:\n{exc}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Unexpected error during printing")
 
     # ---------------------------------------------------------------- helpers
 
