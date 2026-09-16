@@ -970,18 +970,19 @@ class MainWindow(QMainWindow):
             # Only allow width change for vector types that support it
             if selected.ann_type != AnnotationType.TEXT:
                 objs = self.canvas.current_page_objects()
-                obj_idx = objs.index(selected) if selected in objs else -1
+                obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
                 old_width = selected._line_width_pt
                 selected._line_width_pt = value
                 # Record to history
-                if obj_idx >= 0:
+                if obj_id >= 0:
                     action = ChangeLineWidthAction(
-                        object_id=obj_idx,
-                        from_width=old_width,
-                        to_width=value,
+                        object_id=obj_id,
+                        line_width_pt=value,
+                        from_line_width_pt=old_width,
                     )
                     self.canvas.history.record_action(action)
                 self._settings.recent_line_width_pt = value
+                self.canvas.objectChanged.emit()
                 self.canvas.update()
                 self._save_settings_safe()
 
@@ -992,19 +993,20 @@ class MainWindow(QMainWindow):
         if selected is not None and isinstance(selected, VectorAnnotation):
             if selected.ann_type == AnnotationType.TEXT:
                 objs = self.canvas.current_page_objects()
-                obj_idx = objs.index(selected) if selected in objs else -1
+                obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
                 old_size = selected._font_size_px
                 selected._font_size_px = value
                 selected.fit_text_box()
                 # Record to history
-                if obj_idx >= 0:
+                if obj_id >= 0:
                     action = ChangeFontSizeAction(
-                        object_id=obj_idx,
+                        object_id=obj_id,
                         font_size_px=value,
                         from_font_size_px=old_size,
                     )
                     self.canvas.history.record_action(action)
                 self._settings.recent_font_size_pt = value
+                self.canvas.objectChanged.emit()
                 self.canvas.update()
                 self._save_settings_safe()
 
@@ -1015,19 +1017,20 @@ class MainWindow(QMainWindow):
         if selected is not None and isinstance(selected, VectorAnnotation):
             if selected.ann_type == AnnotationType.TEXT:
                 objs = self.canvas.current_page_objects()
-                obj_idx = objs.index(selected) if selected in objs else -1
+                obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
                 old_family = selected._font_family
                 selected._font_family = family
                 selected.fit_text_box()
                 # Record to history
-                if obj_idx >= 0:
+                if obj_id >= 0:
                     action = ChangeFontFamilyAction(
-                        object_id=obj_idx,
-                        from_family=old_family,
-                        to_family=family,
+                        object_id=obj_id,
+                        font_family=family,
+                        from_font_family=old_family,
                     )
                     self.canvas.history.record_action(action)
                 self._settings.recent_font_family = family
+                self.canvas.objectChanged.emit()
                 self.canvas.update()
                 self._save_settings_safe()
 
@@ -1520,6 +1523,11 @@ class MainWindow(QMainWindow):
                 QCoreApplication.processEvents()
             
             output = Path(chosen)
+            # Capture the filename exactly as chosen, before any extension
+            # auto-correction below mutates `output` in place. The auto-correct
+            # check further down must compare against this original name, not
+            # the already-mutated one (otherwise it can never match).
+            original_output_name = output.name
             
             # Save user's choice so we can restore it if they cancel overwrite confirmation
             last_user_chosen_path = output
@@ -1558,7 +1566,7 @@ class MainWindow(QMainWindow):
                 # If the user's input EXACTLY matches the OLD suggested format,
                 # it means they just selected a different format filter without editing the filename.
                 # Auto-correct to the new format's requirements.
-                if output.name == suggested_filename:
+                if original_output_name == suggested_filename:
                     # Auto-correct: update filename to match new format
                     output = output.parent / suggested_for_new_format
                     # Update tracking for next iteration if needed

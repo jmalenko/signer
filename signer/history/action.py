@@ -13,7 +13,10 @@ by updating the target state of the last stack element.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class Action(ABC):
@@ -86,6 +89,34 @@ class Action(ABC):
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.data})"
+
+
+class CompositeAction(Action):
+    """Groups multiple sub-actions into a single undo/redo unit.
+
+    Used for multi-select operations (delete, duplicate) so that a single
+    Ctrl+Z/Ctrl+Y undoes/redoes all affected objects at once, instead of one
+    object at a time. Sub-actions execute in construction order and undo in
+    reverse order (like a transaction log).
+
+    Not serializable via from_data(); it's only ever built live by canvas.py,
+    never recorded in the action-recorder fixture format.
+    """
+
+    def __init__(self, actions: list[Action]) -> None:
+        super().__init__("composite", {})
+        self._actions = actions
+
+    def execute(self, canvas: Any) -> None:
+        for action in self._actions:
+            action.execute(canvas)
+
+    def undo(self, canvas: Any) -> None:
+        for action in reversed(self._actions):
+            action.undo(canvas)
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({len(self._actions)} sub-actions)"
 
 
 class MergeableAction(Action):
@@ -526,7 +557,10 @@ class AddAnnotationAction(Action):
             canvas.objectChanged.emit()
             return
         
-        # Fallback: Try to match by properties
+        # Fallback: Try to match by properties. With every producer now assigning a
+        # stable object_id (see canvas.py's _stable_id_for), this should not normally
+        # trigger; log it so any remaining gaps are visible instead of silently
+        # mutating the wrong object.
         if page in canvas._page_objects and canvas._page_objects[page]:
             # Try to find the object by matching key properties
             objects_on_page = canvas._page_objects[page]
@@ -544,6 +578,10 @@ class AddAnnotationAction(Action):
                     target_x is not None and target_y is not None and
                     abs(obj.x - target_x) < 0.1 and abs(obj.y - target_y) < 0.1):
                     # Found a match, remove it
+                    logger.warning(
+                        "AddAnnotationAction.undo(): object_id %r not found; "
+                        "fell back to property matching (type/position)", obj_id,
+                    )
                     objects_on_page.pop(i)
                     
                     # Also remove from canvas's object map if it exists
@@ -554,6 +592,11 @@ class AddAnnotationAction(Action):
                     return
             
             # Last fallback: just remove the last object (LIFO - Last In First Out)
+            logger.warning(
+                "AddAnnotationAction.undo(): object_id %r not found and no property "
+                "match; falling back to removing the last object on the page (LIFO), "
+                "which may remove the wrong object", obj_id,
+            )
             objects_on_page.pop()
             
             # Also remove from canvas's object map if it exists
@@ -569,36 +612,63 @@ class AddAnnotationAction(Action):
 
 
 class DeleteAnnotationAction(Action):
-    """Action: Delete an annotation."""
+    """Action: Delete an annotation.
+
+    `object_id` is the object's stable id (key in `canvas._object_map`), not
+    a list position — list positions shift whenever other objects are
+    added/removed and would silently target the wrong object otherwise.
+    The producer (canvas.py) also sets `_deleted_object`/`_deleted_index`
+    directly (mirroring `AddAnnotationAction._added_object`) so undo restores
+    the exact same object at its original z-order position.
+    """
 
     def __init__(self, object_id: int, object_data: dict[str, Any] | None = None) -> None:
         """Initialize delete action.
         
         Args:
-            object_id: ID of object to delete (position in current page's objects list)
-            object_data: Serialized object data for undo
+            object_id: Stable id of the object to delete
+            object_data: Serialized object data for undo (fallback if no direct reference)
         """
         data = {"object_id": object_id}
         if object_data:
             data["object_data"] = object_data
         super().__init__("delete_annotation", data)
+        self._deleted_object: Any = None  # Direct reference, set by canvas or execute()
+        self._deleted_index: int | None = None  # Position to restore to on undo
 
     def execute(self, canvas: Any) -> None:
-        """Delete annotation from current page."""
+        """Delete annotation from current page (used to redo a previously-undone delete)."""
+        obj_id = self.data["object_id"]
+        obj = self._deleted_object
+        if obj is None and hasattr(canvas, "_object_map"):
+            obj = canvas._object_map.get(obj_id)
         objects = canvas.current_page_objects()
-        if 0 <= self.data["object_id"] < len(objects):
-            objects.pop(self.data["object_id"])
+        if obj is None and 0 <= obj_id < len(objects):
+            # Legacy fallback: object_id is an array index rather than a stable id.
+            obj = objects[obj_id]
+        if obj is not None and obj in objects:
+            self._deleted_index = objects.index(obj)
+            objects.remove(obj)
+            self._deleted_object = obj
+            if hasattr(canvas, "_object_map"):
+                canvas._object_map.pop(obj_id, None)
             canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
-        """Restore the deleted annotation."""
-        if "object_data" in self.data:
+        """Restore the deleted annotation at its original position."""
+        obj = self._deleted_object
+        if obj is None and "object_data" in self.data:
             from ..objects import canvas_object_from_dict
             obj = canvas_object_from_dict(self.data["object_data"])
-            if obj:
-                objects = canvas.current_page_objects()
-                objects.insert(self.data["object_id"], obj)
-                canvas.objectChanged.emit()
+        if obj is not None:
+            objects = canvas.current_page_objects()
+            index = self._deleted_index if self._deleted_index is not None else len(objects)
+            index = max(0, min(index, len(objects)))
+            objects.insert(index, obj)
+            obj_id = self.data["object_id"]
+            if hasattr(canvas, "_object_map"):
+                canvas._object_map[obj_id] = obj
+            canvas.objectChanged.emit()
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> "DeleteAnnotationAction":
@@ -630,10 +700,19 @@ class ChangeColorAction(Action):
     def execute(self, canvas: Any) -> None:
         """Change color."""
         if "object_id" in self.data:
-            objects = canvas.current_page_objects()
-            if 0 <= self.data["object_id"] < len(objects):
+            obj_id = self.data["object_id"]
+            obj = None
+            if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and
+                    obj_id in canvas._object_map):
+                obj = canvas._object_map[obj_id]
+            else:
+                # Fallback to array index lookup for backward compatibility
+                objects = canvas.current_page_objects()
+                if 0 <= obj_id < len(objects):
+                    obj = objects[obj_id]
+            if obj is not None:
                 from PySide6.QtGui import QColor
-                objects[self.data["object_id"]].color = QColor(self.data["color"])
+                obj.color = QColor(self.data["color"])
         canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
@@ -754,6 +833,7 @@ class DuplicateAnnotationAction(Action):
         if new_object_data:
             data["new_object_data"] = new_object_data
         super().__init__("duplicate_annotation", data)
+        self._duplicated_object: Any = None  # Direct reference to the created duplicate
 
     def execute(self, canvas: Any) -> None:
         """Create duplicate annotation."""
@@ -761,14 +841,19 @@ class DuplicateAnnotationAction(Action):
         if 0 <= self.data["object_id"] < len(objects):
             dup = objects[self.data["object_id"]].duplicate()
             objects.append(dup)
+            self._duplicated_object = dup
             canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
-        """Remove the duplicate."""
+        """Remove exactly the duplicated object, not merely the last object in the list."""
         objects = canvas.current_page_objects()
-        if objects:
+        obj = self._duplicated_object
+        if obj is not None and obj in objects:
+            objects.remove(obj)
+        elif objects:
+            # No tracked reference (e.g. deserialized from data): last resort.
             objects.pop()
-            canvas.objectChanged.emit()
+        canvas.objectChanged.emit()
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> "DuplicateAnnotationAction":
@@ -834,25 +919,34 @@ class PasteAnnotationAction(Action):
         if pasted_objects_data:
             data["pasted_objects_data"] = pasted_objects_data
         super().__init__("paste_annotation", data)
+        self._pasted_objects: list[Any] = []  # Direct references, set by canvas at paste time
 
     def execute(self, canvas: Any) -> None:
-        """Paste annotations."""
-        if "pasted_objects_data" in self.data:
+        """Paste annotations (used to redo a previously-undone paste)."""
+        objects = canvas.current_page_objects()
+        if self._pasted_objects:
+            for obj in self._pasted_objects:
+                if obj not in objects:
+                    objects.append(obj)
+            canvas.objectChanged.emit()
+        elif "pasted_objects_data" in self.data:
             from ..objects import canvas_object_from_dict
-            objects = canvas.current_page_objects()
+            recreated = []
             for obj_data in self.data["pasted_objects_data"]:
                 obj = canvas_object_from_dict(obj_data)
                 if obj:
                     objects.append(obj)
+                    recreated.append(obj)
+            self._pasted_objects = recreated
             canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
-        """Remove pasted annotations."""
-        if "pasted_objects_data" in self.data:
+        """Remove exactly the pasted annotations, not merely the last N objects."""
+        if self._pasted_objects:
             objects = canvas.current_page_objects()
-            for _ in self.data["pasted_objects_data"]:
-                if objects:
-                    objects.pop()
+            for obj in self._pasted_objects:
+                if obj in objects:
+                    objects.remove(obj)
             canvas.objectChanged.emit()
 
     @classmethod

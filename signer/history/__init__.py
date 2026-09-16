@@ -8,6 +8,7 @@ from .action import (
     ChangeFontFamilyAction,
     ChangeFontSizeAction,
     ChangeLineWidthAction,
+    CompositeAction,
     CutAnnotationAction,
     DeleteAnnotationAction,
     DuplicateAnnotationAction,
@@ -39,5 +40,6 @@ __all__ = [
     "PasteAnnotationAction",
     "ChangePageAction",
     "RotatePageAction",
+    "CompositeAction",
     "HistoryStack",
 ]

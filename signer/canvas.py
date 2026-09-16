@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
-from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction, ChangeLineWidthAction, ChangeFontSizeAction, AddAnnotationAction, DeleteAnnotationAction, ChangeColorAction, PasteAnnotationAction
+from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction, ChangeLineWidthAction, ChangeFontSizeAction, AddAnnotationAction, DeleteAnnotationAction, ChangeColorAction, PasteAnnotationAction, CompositeAction
 from .objects import (
     ANCHOR_HANDLE,
     HANDLE_FX,
@@ -284,11 +284,28 @@ class DocumentCanvas(QWidget):
     def selected(self) -> CanvasObject | None:
         return self._selected
 
-    def add_object(self, obj: CanvasObject) -> None:
-        # Assign an auto-incrementing ID and register in _object_map
+    def _register_object(self, obj: CanvasObject) -> int:
+        """Assign a new stable history id to obj and register it in the object map."""
         obj_id = self._next_object_id
         self._next_object_id += 1
         self._object_map[obj_id] = obj
+        return obj_id
+
+    def _stable_id_for(self, obj: CanvasObject) -> int:
+        """Return obj's stable history id used for undo/redo, registering it if needed.
+
+        This must be used instead of a list index (`objs.index(obj)`) anywhere an
+        Action needs an object_id: list indices shift when other objects are added
+        or removed, silently pointing undo/redo at the wrong object.
+        """
+        for existing_id, existing_obj in self._object_map.items():
+            if existing_obj is obj:
+                return existing_id
+        return self._register_object(obj)
+
+    def add_object(self, obj: CanvasObject) -> None:
+        # Assign an auto-incrementing ID and register in _object_map
+        obj_id = self._register_object(obj)
 
         self._page_objects.setdefault(self._current_page, []).append(obj)
         self._selected = obj
@@ -315,10 +332,13 @@ class DocumentCanvas(QWidget):
             objs = self._page_objects.get(self._current_page, [])
             if self._selected in objs:
                 obj_idx = objs.index(self._selected)
+                obj_id = self._stable_id_for(self._selected)
                 obj_data = self._selected.to_dict()
                 objs.remove(self._selected)
-                self._object_map = {k: v for k, v in self._object_map.items() if v is not self._selected}
-                action = DeleteAnnotationAction(object_id=obj_idx, object_data=obj_data)
+                self._object_map.pop(obj_id, None)
+                action = DeleteAnnotationAction(object_id=obj_id, object_data=obj_data)
+                action._deleted_object = self._selected
+                action._deleted_index = obj_idx
                 self.history.record_action(action)
             self._selected = None
             self.objectChanged.emit()
@@ -419,7 +439,7 @@ class DocumentCanvas(QWidget):
         objs = self.current_page_objects()
         for obj in selected:
             if isinstance(obj, VectorAnnotation):
-                obj_idx = objs.index(obj) if obj in objs else -1
+                obj_id = self._stable_id_for(obj) if obj in objs else -1
                 if obj.ann_type == AnnotationType.TEXT:
                     # Adjust font size for text
                     old_size = obj._font_size_px
@@ -427,9 +447,9 @@ class DocumentCanvas(QWidget):
                     obj._font_size_px = new_size
                     obj.fit_text_box()
                     # Record to history
-                    if obj_idx >= 0:
+                    if obj_id >= 0:
                         action = ChangeFontSizeAction(
-                            object_id=obj_idx,
+                            object_id=obj_id,
                             font_size_px=new_size,
                             from_font_size_px=old_size,
                         )
@@ -440,9 +460,9 @@ class DocumentCanvas(QWidget):
                     new_width = step_size(old_width, LINE_WIDTH_STEPS_PT, direction)
                     obj._line_width_pt = new_width
                     # Record to history
-                    if obj_idx >= 0:
+                    if obj_id >= 0:
                         action = ChangeLineWidthAction(
-                            object_id=obj_idx,
+                            object_id=obj_id,
                             line_width_pt=new_width,
                             from_line_width_pt=old_width,
                         )
@@ -452,45 +472,50 @@ class DocumentCanvas(QWidget):
         self.update()
 
     def delete_selected(self) -> None:
-        """Delete all selected annotations. Single undo unit."""
+        """Delete all selected annotations. Single undo unit (one Ctrl+Z restores all)."""
         objs = self.current_page_objects()
         selected = self.get_selected_annotations()
         if not selected:
             return
 
         # Find indices and data for all selected objects before removing
-        delete_actions = []
+        delete_entries = []
         for obj in selected:
             if obj in objs:
                 obj_idx = objs.index(obj)
                 obj_data = obj.to_dict()
-                delete_actions.append((obj_idx, obj_data))
+                delete_entries.append((obj_idx, obj, obj_data))
 
-        # Sort by index ascending for recording (undo restores in correct order)
-        # But pop from highest index first to preserve lower indices
-        delete_actions.sort(key=lambda x: x[0])
+        # Sort by index ascending, but remove from highest index to lowest so
+        # earlier (lower) indices in this batch stay valid during the loop.
+        delete_entries.sort(key=lambda entry: entry[0])
 
-        # Remove from highest index to lowest to preserve indices
-        for obj_idx, obj_data in reversed(delete_actions):
+        sub_actions = []
+        for obj_idx, obj, obj_data in reversed(delete_entries):
+            obj_id = self._stable_id_for(obj)
             if obj_idx < len(objs):
                 objs.pop(obj_idx)
-            # Record delete action (will be undone in reverse order of recording)
-            action = DeleteAnnotationAction(object_id=obj_idx, object_data=obj_data)
-            self.history.record_action(action)
+            self._object_map.pop(obj_id, None)
+            action = DeleteAnnotationAction(object_id=obj_id, object_data=obj_data)
+            action._deleted_object = obj
+            action._deleted_index = obj_idx
+            sub_actions.append(action)
 
-        # Clean up _object_map
-        self._object_map = {k: v for k, v in self._object_map.items() if v not in selected}
+        if sub_actions:
+            self.history.record_action(CompositeAction(sub_actions))
+
         self.clear_selection()
         self.objectChanged.emit()
 
     def duplicate_selected_multi(self) -> None:
-        """Duplicate all selected annotations. Single undo unit."""
+        """Duplicate all selected annotations. Single undo unit (one Ctrl+Z removes all)."""
         objs = self.current_page_objects()
         selected = self.get_selected_annotations()
         if not selected:
             return
         
         new_objs = []
+        sub_actions = []
         for obj in selected:
             dup = obj.duplicate()
             if self.current_page_image:
@@ -498,6 +523,18 @@ class DocumentCanvas(QWidget):
                 dup.clamp_to_page(pw, ph)
             objs.append(dup)
             new_objs.append(dup)
+
+            obj_id = self._register_object(dup)
+            annotation_data = dup.to_dict()
+            annotation_data["object_id"] = obj_id
+            if hasattr(dup, 'ann_type'):
+                annotation_data["ann_type"] = dup.ann_type.value
+            action = AddAnnotationAction(annotation_data)
+            action._added_object = dup
+            sub_actions.append(action)
+
+        if sub_actions:
+            self.history.record_action(CompositeAction(sub_actions))
 
         # Select new duplicates
         self._selected_multiple.clear()
@@ -617,6 +654,7 @@ class DocumentCanvas(QWidget):
         pasted_data = [obj.to_dict() for obj in pasted_objs]
         if pasted_data:
             action = PasteAnnotationAction(pasted_objects_data=pasted_data)
+            action._pasted_objects = pasted_objs
             self.history.record_action(action)
 
         self.update()
@@ -630,11 +668,11 @@ class DocumentCanvas(QWidget):
         # Record color change actions for undo support
         objs = self.current_page_objects()
         for obj in selected:
-            obj_idx = objs.index(obj) if obj in objs else -1
-            if obj_idx >= 0:
+            obj_id = self._stable_id_for(obj) if obj in objs else -1
+            if obj_id >= 0:
                 from_color = obj.color.name()
                 action = ChangeColorAction(
-                    object_id=obj_idx,
+                    object_id=obj_id,
                     color=color.name(),
                     from_color=from_color,
                 )
@@ -1021,12 +1059,7 @@ class DocumentCanvas(QWidget):
                 self._selected.y = doc_pt.y() - self._drag_doc_offset_y
                 
                 # Record move action with coalescing using stable object ID
-                # v1.2.22: Use _object_map for stable ID
-                obj_id = id(self._selected) if hasattr(self, '_stable_id_map') else -1
-                if obj_id == -1:
-                    # Fallback: use array index if object map not available
-                    objects = self.current_page_objects()
-                    obj_id = objects.index(self._selected) if self._selected in objects else -1
+                obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
                 if obj_id >= 0:
                     if not self._action_recorded_this_drag:
                         # First move: create full-format action with initial state
@@ -1155,12 +1188,7 @@ class DocumentCanvas(QWidget):
                     self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
                 
                 # Record resize action with coalescing using stable object ID
-                # v1.2.22: Use object ID for stable reference
-                obj_id = id(self._selected) if hasattr(self, '_stable_id_map') else -1
-                if obj_id == -1:
-                    # Fallback: use array index if object map not available
-                    objects = self.current_page_objects()
-                    obj_id = objects.index(self._selected) if self._selected in objects else -1
+                obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
                 if obj_id >= 0:
                     if not self._action_recorded_this_drag:
                         # First resize: create full-format action with initial state
