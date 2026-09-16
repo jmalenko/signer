@@ -780,6 +780,7 @@ See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
 - LibreOffice configuration for multi-format tests  
 - Test infrastructure overview
 - Action recording system for creating new tests
+- Recorded workflows support `copy_annotation` and `paste_annotations` actions. Clipboard data is retained when `open_document()` replaces the canvas pages, but its source-page identity is cleared so cross-document paste does not apply the same-page offset. Copy/paste feature workflows are exported and included in the pixel-comparison report.
 
 ## 9. Distribution Builds
 

@@ -178,11 +178,14 @@ def patch_main_window_for_recording(main_window) -> None:
         return
     
     # Store original methods
+    canvas = main_window.canvas
     original_open_document = main_window.open_document
     original_load_signature = main_window._load_signature_file
     original_add_vector = main_window._add_vector
     original_add_text = main_window._add_text_annotation
     original_save = main_window.save_signed_document
+    original_copy = main_window.canvas.copy_selected
+    original_paste = main_window.canvas.paste_selected
     
     # Wrap open_document
     def recorded_open_document(path=None):
@@ -229,6 +232,18 @@ def patch_main_window_for_recording(main_window) -> None:
             # We'll record it after the fact if possible
             pass
         return result
+
+    def recorded_copy():
+        selected = canvas.get_selected_annotations()
+        original_copy()
+        if recorder.is_enabled() and len(selected) == 1:
+            recorder.record_copy_annotation(selected[0])
+
+    def recorded_paste():
+        before_count = len(canvas.current_page_objects())
+        original_paste()
+        if recorder.is_enabled() and len(canvas.current_page_objects()) > before_count:
+            recorder.record_paste_annotations()
     
     # Apply patches
     main_window.open_document = recorded_open_document
@@ -236,9 +251,10 @@ def patch_main_window_for_recording(main_window) -> None:
     main_window._add_vector = recorded_add_vector
     main_window._add_text_annotation = recorded_add_text
     main_window.save_signed_document = recorded_save
+    canvas.copy_selected = recorded_copy
+    canvas.paste_selected = recorded_paste
     
     # Also patch canvas for move/resize
-    canvas = main_window.canvas
     original_mouse_move = canvas.mouseMoveEvent
     original_mouse_release = canvas.mouseReleaseEvent
     
@@ -302,6 +318,8 @@ def patch_main_window_for_recording(main_window) -> None:
         'save_signed_document': original_save,
         '_pick_color': original_pick_color,
     }
+    canvas._original_copy_selected = original_copy
+    canvas._original_paste_selected = original_paste
     canvas._original_mouse_move = original_mouse_move
     canvas._original_mouse_release = original_mouse_release
 
@@ -319,6 +337,12 @@ def unpatch_main_window(main_window) -> None:
         canvas.mouseMoveEvent = canvas._original_mouse_move
     if hasattr(canvas, '_original_mouse_release'):
         canvas.mouseReleaseEvent = canvas._original_mouse_release
+    if hasattr(canvas, '_original_copy_selected'):
+        canvas.copy_selected = canvas._original_copy_selected
+        del canvas._original_copy_selected
+    if hasattr(canvas, '_original_paste_selected'):
+        canvas.paste_selected = canvas._original_paste_selected
+        del canvas._original_paste_selected
     
     del main_window._original_methods
     if hasattr(canvas, '_original_mouse_move'):

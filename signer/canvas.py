@@ -153,6 +153,10 @@ class DocumentCanvas(QWidget):
         return transformed
 
     def set_pages(self, pages: list[Image.Image]) -> None:
+        if self._cached_copy_data is not None and self._pages:
+            self._cached_copy_data = [
+                {**item, "page": None} for item in self._cached_copy_data
+            ]
         self._pages = [p.convert("RGB") for p in pages]
         self._page_pixmaps = [QPixmap.fromImage(ImageQt(p)) for p in self._pages]
         self._current_page = 0

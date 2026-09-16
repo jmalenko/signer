@@ -216,6 +216,21 @@ class ActionRecorder:
             "type": "change_page",
             "page": page_index
         })
+
+    def record_copy_annotation(self, obj):
+        if not self._enabled:
+            return
+        self.actions.append({
+            "type": "copy_annotation",
+            "object_id": self._get_object_id(obj),
+        })
+
+    def record_paste_annotations(self):
+        if not self._enabled:
+            return
+        self.actions.append({
+            "type": "paste_annotations",
+        })
     
     def record_save_document(self, path: str):
         if not self._enabled:

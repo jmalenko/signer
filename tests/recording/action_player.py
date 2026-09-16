@@ -68,6 +68,10 @@ class ActionPlayer:
             self._execute_change_color(action)
         elif action_type == "change_page":
             self._execute_change_page(action)
+        elif action_type == "copy_annotation":
+            self._execute_copy_annotation(action)
+        elif action_type == "paste_annotations":
+            self.canvas.paste_selected()
         elif action_type == "set_text":
             self._execute_set_text(action)
         elif action_type == "set_font_size":
@@ -432,6 +436,15 @@ class ActionPlayer:
         """Change the current page."""
         page = action["page"]
         self.canvas.goto_page(page)
+
+    def _execute_copy_annotation(self, action: Dict[str, Any]) -> None:
+        """Select and copy one recorded annotation."""
+        obj = self._get_object(action["object_id"])
+        if obj is None:
+            raise RuntimeError(f"Object with id {action['object_id']} not found")
+        self.canvas._selected_multiple.clear()
+        self.canvas._selected = obj
+        self.canvas.copy_selected()
 
     def _execute_save_document(self, action: Dict[str, Any]) -> None:
         """Save the document.

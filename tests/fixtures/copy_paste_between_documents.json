@@ -1,0 +1,30 @@
+{
+  "actions": [
+    {
+      "type": "open_document",
+      "path": "examples/document.pdf"
+    },
+    {
+      "type": "add_annotation",
+      "annotation_type": "checkmark",
+      "x": 285,
+      "y": 650,
+      "page": 0,
+      "object_id": 0
+    },
+    {
+      "type": "copy_annotation",
+      "object_id": 0
+    },
+    {
+      "type": "open_document",
+      "path": "examples/document1.pdf"
+    },
+    {
+      "type": "paste_annotations"
+    },
+    {
+      "type": "save_document"
+    }
+  ]
+}
