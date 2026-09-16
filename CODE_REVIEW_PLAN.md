@@ -26,8 +26,21 @@ silently **not recorded to history** — i.e. completely non-undoable — and sp
 alongside §2.3 since it's the same code path.
 
 **Not yet done**: §2.1 (`CutAnnotationAction` — confirmed dead code, documented as intentionally
-left alone) and §3.1 (`_font_size_px`/`_font_size_pt` rename — large mechanical diff, no behavior
-change, lowest priority; deferred).
+left alone).
+
+**Done 2026-09-16 (last)**: §3.1 fixed. Renamed `_font_size_px` to `_font_size_pt` across
+`objects.py`/`canvas.py`/`main_window.py`/`action.py` (via `vscode_renameSymbol`, plus a handful of
+`hasattr(obj, '_font_size_px')` string-literal checks and dynamically-typed assignment targets the
+symbol rename couldn't reach, fixed manually). Per user direction, no backward-compat shim was
+kept: the constructor keyword argument, the JSON serialization key, and `ChangeFontSizeAction`'s
+parameters/data keys were **all** renamed too (`font_size_px` → `font_size_pt`, `from_font_size_px`
+→ `from_font_size_pt`), matching the existing `line_width_pt`/`recent_font_size_pt` naming
+convention elsewhere in the codebase. This required updating 15 existing test files plus one
+fixture (`tests/fixtures/text_props.json`) (with explicit user approval, since they directly
+reference `font_size_px`); no test assertions or behavior changed, only names. Full suite green
+(788 passed / 19 skipped).
+
+Every finding from this review is now resolved except §2.1 (dead code, intentionally left).
 
 **Done 2026-09-16 (continued)**: §3.2 (deduplicated the four `rotate_*` methods into a
 `_rotate_pages()` helper, added `tests/unit/test_page_rotation.py` which previously had zero
@@ -47,8 +60,8 @@ edge is no longer pulled back onto the canvas by one pixel — see `tests/unit/t
 now raises a clear `ValueError`; the `CalledProcessError` message also now includes the file path —
 see `tests/unit/test_libreoffice_error_handling.py`).
 
-All findings from this review are now resolved except §2.1 (dead code, intentionally left) and
-§3.1 (deferred, no behavior impact).
+All findings from this review are now resolved except §2.1 (dead code, intentionally left; see the
+final status note at the top of this document for §3.1's resolution).
 
 **New finding, FIXED 2026-09-16**: `SetTextAnnotationAction` and `SelectAnnotationAction` were dead
 code — never constructed in `canvas.py` or `main_window.py` (only referenced by
@@ -271,7 +284,8 @@ Left as-is; revisit only if `CutAnnotationAction` is ever wired into production 
 
 ## 3. Low-severity / code quality
 
-### 3.1 `_font_size_px` actually stores **points**, not pixels
+### 3.1 `_font_size_px` actually stores **points**, not pixels — FIXED (fully renamed, no
+    backward-compat shim, per user direction — see status note above)
 - **File:** [signer/objects.py](signer/objects.py#L295) (and throughout `VectorAnnotation`,
   `duplicate()` at [signer/objects.py](signer/objects.py#L590), and the several `_font_size_px`
   references in `main_window.py`/`canvas.py`/`action.py`)
