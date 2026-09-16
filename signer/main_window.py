@@ -930,10 +930,17 @@ class MainWindow(QMainWindow):
         if isinstance(obj, VectorAnnotation) and obj.ann_type == AnnotationType.TEXT:
             dlg = _TextInputDialog(self, "Edit Text", obj.text)
             if dlg.exec() == QDialog.Accepted:
+                from .history import SetTextAnnotationAction
                 new_text = dlg.text()
+                old_text = obj.text
+                if new_text != old_text:
+                    obj_id = self.canvas._stable_id_for(obj)
+                    action = SetTextAnnotationAction(object_id=obj_id, text=new_text, from_text=old_text)
+                    self.canvas.history.record_action(action)
                 obj.text = new_text
                 if hasattr(obj, "fit_text_box"):
                     obj.fit_text_box()
+                self.canvas.objectChanged.emit()
                 self.canvas.update()
 
     # ---------------------------------------------------------------- color

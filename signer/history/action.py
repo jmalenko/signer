@@ -752,7 +752,7 @@ class SetTextAnnotationAction(Action):
         """Initialize set text action.
         
         Args:
-            object_id: ID of text object
+            object_id: Stable id of the text object (see canvas._stable_id_for)
             text: New text content
             from_text: Previous text (for undo)
         """
@@ -761,19 +761,33 @@ class SetTextAnnotationAction(Action):
             data["from_text"] = from_text
         super().__init__("set_text", data)
 
+    @staticmethod
+    def _find_object(canvas: Any, obj_id: int) -> Any:
+        if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
+            return canvas._object_map[obj_id]
+        # Fallback to array index lookup for backward compatibility
+        objects = canvas.current_page_objects()
+        if 0 <= obj_id < len(objects):
+            return objects[obj_id]
+        return None
+
     def execute(self, canvas: Any) -> None:
         """Set text on annotation."""
-        objects = canvas.current_page_objects()
-        if 0 <= self.data["object_id"] < len(objects):
-            objects[self.data["object_id"]].text = self.data["text"]
+        obj = self._find_object(canvas, self.data["object_id"])
+        if obj is not None:
+            obj.text = self.data["text"]
+            if hasattr(obj, 'fit_text_box'):
+                obj.fit_text_box()
         canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
         """Restore previous text."""
         if "from_text" in self.data:
-            objects = canvas.current_page_objects()
-            if 0 <= self.data["object_id"] < len(objects):
-                objects[self.data["object_id"]].text = self.data["from_text"]
+            obj = self._find_object(canvas, self.data["object_id"])
+            if obj is not None:
+                obj.text = self.data["from_text"]
+                if hasattr(obj, 'fit_text_box'):
+                    obj.fit_text_box()
         canvas.objectChanged.emit()
 
     @classmethod
