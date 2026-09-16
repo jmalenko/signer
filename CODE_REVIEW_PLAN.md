@@ -25,9 +25,9 @@ exception at the Qt event-loop boundary, so it didn't crash the app outright, bu
 silently **not recorded to history** — i.e. completely non-undoable — and spammed stderr). Fixed
 alongside §2.3 since it's the same code path.
 
-**Not yet done**: §2.1 (`CutAnnotationAction` — confirmed dead code, not constructed anywhere in
-production; low priority). §3.1 (font_size_px/pt rename), §3.3 (compositor off-by-one clamp), §3.6
-(LibreOffice timeout) — all still open, lowest priority per the plan.
+**Not yet done**: §2.1 (`CutAnnotationAction` — confirmed dead code, documented as intentionally
+left alone) and §3.1 (`_font_size_px`/`_font_size_pt` rename — large mechanical diff, no behavior
+change, lowest priority; deferred).
 
 **Done 2026-09-16 (continued)**: §3.2 (deduplicated the four `rotate_*` methods into a
 `_rotate_pages()` helper, added `tests/unit/test_page_rotation.py` which previously had zero
@@ -36,6 +36,19 @@ print-render failure, and replaced `traceback.print_exc()` with `logging.excepti
 (recent document/signature entries that no longer exist on disk are now pruned automatically
 instead of erroring forever — see `tests/unit/test_recent_files_pruning.py`), §4.1, §4.2 (both
 DESIGN.md fixes applied).
+
+**Done 2026-09-16 (final round)**: §2.2 fully fixed (`SetTextAnnotationAction` wired into
+`MainWindow._on_edit_requested()`, no longer dead code — editing existing text-annotation content
+is now undoable, per REQUIREMENTS.md's "Set text" entry; see `tests/unit/test_text_edit_undo_bug.py`).
+§3.3 fixed (compositor edge clamp relaxed from `[0, pw-1]` to `[0, pw]`; verified PIL's
+`alpha_composite()` tolerates out-of-bounds destinations, so an object placed fully past the page
+edge is no longer pulled back onto the canvas by one pixel — see `tests/unit/test_compositor_edge_clamp.py`).
+§3.6 fixed (`subprocess.TimeoutExpired` from the LibreOffice conversion was previously uncaught —
+now raises a clear `ValueError`; the `CalledProcessError` message also now includes the file path —
+see `tests/unit/test_libreoffice_error_handling.py`).
+
+All findings from this review are now resolved except §2.1 (dead code, intentionally left) and
+§3.1 (deferred, no behavior impact).
 
 **New finding, FIXED 2026-09-16**: `SetTextAnnotationAction` and `SelectAnnotationAction` were dead
 code — never constructed in `canvas.py` or `main_window.py` (only referenced by
@@ -201,6 +214,11 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
 ## 2. Medium bugs
 
 ### 2.1 `CutAnnotationAction` restores at recorded array index — can reorder objects after undo
+**NOT FIXED — confirmed dead code, no action taken.** `CutAnnotationAction` is never constructed
+anywhere in production; `canvas.cut_selected()` implements cut as `copy_selected()` +
+`delete_selected()`, both of which were already fixed (§1.2, stable ids). Only
+`Action.deserialize()`'s dispatch table and the (unused) `from_data()` path reference this class.
+Left as-is; revisit only if `CutAnnotationAction` is ever wired into production code.
 - **File:** [signer/history/action.py](signer/history/action.py#L785-L819)
 - Same array-index-vs-stable-id issue as §0; `objects.insert(self.data["object_id"], obj)` uses a
   stale position if the list has changed shape since the cut. Fix alongside §0 (store id, use
@@ -208,7 +226,9 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
   keep a recorded neighbor id to reinsert near).
 
 ### 2.2 `ChangeColorAction`/`SetTextAnnotationAction` — `execute()` and `undo()` use different lookup
-    strategies — PARTIALLY FIXED (`ChangeColorAction` only; `SetTextAnnotationAction` is dead code, see status note above)
+    strategies — FIXED (both classes now use the `_object_map`-first pattern;
+    `SetTextAnnotationAction` also got wired up into `MainWindow._on_edit_requested()`, see the
+    text-edit-undo fix noted above — it's no longer dead code)
 - **File:** [signer/history/action.py](signer/history/action.py#L629-L664) (`ChangeColorAction`),
   [signer/history/action.py](signer/history/action.py#L672-L710) (`SetTextAnnotationAction`)
 - **Confirmed:** `ChangeColorAction.execute()` only does array-index lookup; `undo()` tries
@@ -271,7 +291,7 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
   whether they loop over all pages.
 - **Fix:** extract `_rotate(self, pages: list[int], delta: int) -> None` helper.
 
-### 3.3 Compositor clamps annotation position into `[0, w-1]`/`[0, h-1]`, not `[0, w]`/`[0, h]`
+### 3.3 Compositor clamps annotation position into `[0, w-1]`/`[0, h-1]`, not `[0, w]`/`[0, h]` — FIXED
 - **File:** [signer/compositor.py](signer/compositor.py#L424-L426)
   ```python
   x = max(0, min(x, pw - 1))
@@ -299,7 +319,7 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
 - **Fix:** on "file not found" for a recent-item open, remove that path from the relevant settings
   list and refresh the menu.
 
-### 3.6 LibreOffice conversion timeout is a fixed 30s with no user feedback on timeout
+### 3.6 LibreOffice conversion timeout is a fixed 30s with no user feedback on timeout — FIXED
 - **File:** [signer/document_loader.py](signer/document_loader.py#L99)
 - Large Word/ODT documents could exceed this. Low priority — consider raising the default and/or
   surfacing a clearer timeout-specific error message (already raises `ValueError` on
