@@ -23,28 +23,28 @@ from PySide6.QtWidgets import QApplication
 # Parametrization: workflow_type, fixture_name, expected_annotation_prefix, description
 WORKFLOW_TEST_CASES = [
     # New annotation types (v1.2.22)
-    ("annotation", "document1_line", "line", "Line annotation"),
-    ("annotation", "document1_arrows", "arrow", "Arrow annotation"),
-    ("annotation", "document1_rectangle", "rectangle", "Rectangle annotation"),
-    ("annotation", "document1_ellipse", "ellipse", "Ellipse annotation"),
-    ("annotation", "document1_line_props", "line", "Line with properties (width, color)"),
-    ("annotation", "document1_arrow_props", "arrow", "Arrow with properties (width, color)"),
-    ("annotation", "document1_rectangle_props", "rectangle", "Rectangle with properties"),
-    ("annotation", "document1_ellipse_props", "ellipse", "Ellipse with properties"),
-    ("annotation", "document1_checkmark_props", "checkmark", "Checkmark with properties (blue, width)"),
-    ("annotation", "document1_crossmark_props", "crossmark", "Crossmark with properties (blue, width)"),
-    ("annotation", "document1_text_props", "text", "Text with properties (blue, 16pt, Courier)"),
+    ("annotation", "line", "line", "Line annotation"),
+    ("annotation", "arrows", "arrow", "Arrow annotation"),
+    ("annotation", "rectangle", "rectangle", "Rectangle annotation"),
+    ("annotation", "ellipse", "ellipse", "Ellipse annotation"),
+    ("annotation", "line_props", "line", "Line with properties (width, color)"),
+    ("annotation", "arrow_props", "arrow", "Arrow with properties (width, color)"),
+    ("annotation", "rectangle_props", "rectangle", "Rectangle with properties"),
+    ("annotation", "ellipse_props", "ellipse", "Ellipse with properties"),
+    ("annotation", "checkmark_props", "checkmark", "Checkmark with properties (blue, width)"),
+    ("annotation", "crossmark_props", "crossmark", "Crossmark with properties (blue, width)"),
+    ("annotation", "text_props", "text", "Text with properties (blue, 16pt, Courier)"),
     # Original annotation features on document1
-    ("annotation", "document1_arrow", "arrow", "Arrow annotation"),
-    ("annotation", "document1_checkmark", "checkmark", "Checkmark annotation"),
-    ("annotation", "document1_crossmark", "crossmark", "Crossmark annotation"),
-    ("annotation", "document1_text", "text", "Text annotation"),
-    ("annotation", "document1_signature", "add_signature", "Signature annotation"),
+    ("annotation", "arrow", "arrow", "Arrow annotation"),
+    ("annotation", "checkmark", "checkmark", "Checkmark annotation"),
+    ("annotation", "crossmark", "crossmark", "Crossmark annotation"),
+    ("annotation", "text", "text", "Text annotation"),
+    ("annotation", "signature", "add_signature", "Signature annotation"),
     # Undo/redo workflows
-    ("undo", "document1_undo", "undo", "Basic undo workflow"),
-    ("undo", "document1_undo_2", "undo", "Variant undo workflow"),
-    ("undo", "document1_undo_multiple", "undo", "Multiple undo operations"),
-    ("undo", "document1_undo_redo", "undo", "Undo/redo workflow"),
+    ("undo", "undo", "undo", "Basic undo workflow"),
+    ("undo", "undo_2", "undo", "Variant undo workflow"),
+    ("undo", "undo_multiple", "undo", "Multiple undo operations"),
+    ("undo", "undo_redo", "undo", "Undo/redo workflow"),
 ]
 
 
@@ -57,7 +57,7 @@ class TestRecordedWorkflows:
         
         Args:
             workflow_type: Type of workflow (annotation, undo, etc.)
-            fixture_name: Base name of the fixture (e.g., document1_arrow)
+            fixture_name: Base name of the fixture (e.g., arrow)
             annotation_prefix: Expected action type or annotation type prefix
             description: Human-readable description of the workflow
             main_window: Pytest fixture providing isolated MainWindow

@@ -24,7 +24,7 @@ pytest --cov=signer --cov-report=html
 
 ### Specific test file
 ```bash
-pytest tests/feature/test_document1_annotations.py -v
+pytest tests/feature/test_recorded_workflows.py -v
 ```
 
 ## Multi-Format Document Testing (Word, ODT)
