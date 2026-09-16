@@ -25,9 +25,17 @@ exception at the Qt event-loop boundary, so it didn't crash the app outright, bu
 silently **not recorded to history** — i.e. completely non-undoable — and spammed stderr). Fixed
 alongside §2.3 since it's the same code path.
 
-**Not yet done** (still accurate as written below): §2.1 (`CutAnnotationAction` — confirmed dead
-code, not constructed anywhere in production; low priority), all of §3 (code quality) and §4
-(documentation fixes).
+**Not yet done**: §2.1 (`CutAnnotationAction` — confirmed dead code, not constructed anywhere in
+production; low priority). §3.1 (font_size_px/pt rename), §3.3 (compositor off-by-one clamp), §3.6
+(LibreOffice timeout) — all still open, lowest priority per the plan.
+
+**Done 2026-09-16 (continued)**: §3.2 (deduplicated the four `rotate_*` methods into a
+`_rotate_pages()` helper, added `tests/unit/test_page_rotation.py` which previously had zero
+coverage), §3.4 (added logging to the `fit_text_box()` Qt-metrics fallback, the per-annotation
+print-render failure, and replaced `traceback.print_exc()` with `logging.exception()`), §3.5
+(recent document/signature entries that no longer exist on disk are now pruned automatically
+instead of erroring forever — see `tests/unit/test_recent_files_pruning.py`), §4.1, §4.2 (both
+DESIGN.md fixes applied).
 
 **New finding, FIXED 2026-09-16**: `SetTextAnnotationAction` and `SelectAnnotationAction` were dead
 code — never constructed in `canvas.py` or `main_window.py` (only referenced by
@@ -257,7 +265,7 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
   `objects.py`, `canvas.py`, `action.py`, `main_window.py`. Low priority — do this only if there's
   spare time, since it's a large mechanical diff for a naming issue.
 
-### 3.2 Duplicated rotation methods
+### 3.2 Duplicated rotation methods — FIXED
 - **File:** [signer/canvas.py](signer/canvas.py#L206-L241) — `rotate_current_page_left/right`,
   `rotate_all_pages_left/right` are 4 near-identical bodies differing only in the angle delta and
   whether they loop over all pages.
@@ -275,7 +283,7 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
   legitimately be positioned there (verify against `clamp_to_page()` semantics in `objects.py`
   before changing, to avoid introducing an actual off-canvas placement bug).
 
-### 3.4 Bare/broad `except Exception` clauses that swallow errors silently
+### 3.4 Bare/broad `except Exception` clauses that swallow errors silently — FIXED (logging added; not narrowed to specific exception types, since the failure modes are broad by nature — e.g. any Qt/font issue, any per-annotation render issue)
 - [signer/objects.py](signer/objects.py#L355) `fit_text_box()` fallback — silently falls back to a
   crude approximation if `QFontMetricsF` raises; add a debug log line so regressions are visible.
 - [signer/main_window.py](signer/main_window.py#L1949-L1951) print rendering loop — silently skips
@@ -284,7 +292,7 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
   only, invisible to GUI users) instead of `logging.exception(...)`.
 - These are all "add a log line" fixes, not behavior changes — low risk, bundle together.
 
-### 3.5 Recently-used document/signature entries that no longer exist on disk aren't pruned
+### 3.5 Recently-used document/signature entries that no longer exist on disk aren't pruned — FIXED
 - **File:** [signer/main_window.py](signer/main_window.py#L1180-L1189) area — clicking a stale
   recent-file entry re-shows the same "not found" error every time instead of removing it from the
   list.
@@ -302,7 +310,7 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
 
 ## 4. Documentation fixes
 
-### 4.1 DESIGN.md §5.6 vs §7.3.9 disagree on default text font size
+### 4.1 DESIGN.md §5.6 vs §7.3.9 disagree on default text font size — FIXED
 - [DESIGN.md](DESIGN.md) §5.6 says "default text size: 12pt"; §7.3.9 says "Default: 11 points".
   Code (`DEFAULT_TEXT_FONT_PT = 11` in [signer/objects.py](signer/objects.py#L25)) and
   `REQUIREMENTS.md` line 848 ("Default font size for text annotations: **11 points**") agree on 11.
@@ -311,7 +319,7 @@ targeted fixes in §1–§3, since several of them touch the same call sites.
 - **Fix:** update DESIGN.md §5.6 to say "default text size: 11pt" to match §7.3.9/code/the final
   requirement.
 
-### 4.2 DESIGN.md §5.4 doesn't document the signature-specific default placement exception
+### 4.2 DESIGN.md §5.4 doesn't document the signature-specific default placement exception — FIXED
 - §5.4 only documents the generic centered-placement formula. `default_signature_position_for()`
   ([signer/canvas.py](signer/canvas.py#L800-L806)) places signatures at 80% down the page instead,
   per `REQUIREMENTS.md` line 28 ("Default position for the signature is 80% from top, centered
