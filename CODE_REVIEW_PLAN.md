@@ -29,15 +29,18 @@ alongside §2.3 since it's the same code path.
 code, not constructed anywhere in production; low priority), all of §3 (code quality) and §4
 (documentation fixes).
 
-**New finding, not yet fixed** (discovered while investigating §2.2): `SetTextAnnotationAction` and
-`SelectAnnotationAction` are dead code too — never constructed in `canvas.py` or `main_window.py`
-(only referenced by `Action.deserialize()`'s dispatch table and the action-recorder/player test
-harness). The *real* text-edit path, `MainWindow._on_edit_requested()` (double-click to edit text),
-sets `obj.text = new_text` directly and **never records any history action at all** — editing an
-existing text annotation's content is currently not undoable. This is outside the original plan's
-scope; recommend adding it as a follow-up item (needs a `SetTextAnnotationAction` wired up with a
-stable id, mirroring the `ChangeColorAction` pattern) before considering the undo/redo system fully
-correct.
+**New finding, FIXED 2026-09-16**: `SetTextAnnotationAction` and `SelectAnnotationAction` were dead
+code — never constructed in `canvas.py` or `main_window.py` (only referenced by
+`Action.deserialize()`'s dispatch table and the action-recorder/player test harness). The *real*
+text-edit path, `MainWindow._on_edit_requested()` (double-click to edit text), set `obj.text =
+new_text` directly and never recorded any history action — editing an existing text annotation's
+content was not undoable, contradicting REQUIREMENTS.md's explicit "Supported Actions for
+Undo/Redo" list ("Set text (change text annotation content)"). Fixed: `_on_edit_requested()` now
+records a `SetTextAnnotationAction` (only when the text actually changed) using the stable id
+helper; `SetTextAnnotationAction.execute()`/`undo()` now look up the object via `_object_map` first
+(consistent with `ChangeColorAction`) and refit the text box after restoring. `SelectAnnotationAction`
+remains dead code (selection state was intentionally excluded from undo history; no requirement
+calls for it). Test: `tests/unit/test_text_edit_undo_bug.py`.
 
 This document is a **plan**, not yet implemented. Findings are ordered by priority. Each item has
 enough detail to implement directly. Per `AGENTS.md`, bug fixes will follow TDD (failing test for
