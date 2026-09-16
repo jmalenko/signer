@@ -114,53 +114,53 @@ class TestFontSizeProperty:
         """Test default font size is set."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
-        assert hasattr(text, '_font_size_px')
+        assert hasattr(text, '_font_size_pt')
         # Default should be approximately 24px (11pt at 96 DPI)
-        assert isinstance(text._font_size_px, (int, float))
+        assert isinstance(text._font_size_pt, (int, float))
     
     def test_font_size_set_and_get(self):
         """Test setting and getting font size."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
-        text._font_size_px = 32
-        assert text._font_size_px == 32
+        text._font_size_pt = 32
+        assert text._font_size_pt == 32
         
-        text._font_size_px = 48
-        assert text._font_size_px == 48
+        text._font_size_pt = 48
+        assert text._font_size_pt == 48
     
     def test_font_size_bounds_lower(self):
         """Test font size minimum bound (6pt ≈ 8px)."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
-        text._font_size_px = 8
-        assert text._font_size_px == 8
+        text._font_size_pt = 8
+        assert text._font_size_pt == 8
     
     def test_font_size_bounds_upper(self):
         """Test font size maximum bound (72pt ≈ 96px)."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
-        text._font_size_px = 96
-        assert text._font_size_px == 96
+        text._font_size_pt = 96
+        assert text._font_size_pt == 96
     
     def test_font_size_only_on_text(self):
         """Test font size only applies to Text annotation."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
         
-        assert hasattr(text, '_font_size_px')
-        # Line should not have font_size_px in to_dict
+        assert hasattr(text, '_font_size_pt')
+        # Line should not have font_size_pt in to_dict
         line_data = line.to_dict()
-        assert 'font_size_px' not in line_data
+        assert 'font_size_pt' not in line_data
     
     def test_font_size_serialization(self):
         """Test font size serialization."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 36
+        text._font_size_pt = 36
         
         data = text.to_dict()
         
-        assert 'font_size_px' in data
-        assert data['font_size_px'] == 36
+        assert 'font_size_pt' in data
+        assert data['font_size_pt'] == 36
     
     def test_font_size_deserialization(self):
         """Test font size deserialization."""
@@ -173,25 +173,25 @@ class TestFontSizeProperty:
             'base_width': 200,
             'base_height': 50,
             'scale': 1.0,
-            'font_size_px': 40,
+            'font_size_pt': 40,
             'page': 0,
             'color': '#000000',
         }
         
         text = VectorAnnotation.from_dict(data)
         
-        assert text._font_size_px == 40
+        assert text._font_size_pt == 40
     
     def test_font_size_roundtrip(self):
         """Test font size survives roundtrip."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test Text")
-        text._font_size_px = 44
+        text._font_size_pt = 44
         text.color.setNamedColor("#0000ff")
         
         data = text.to_dict()
         restored = VectorAnnotation.from_dict(data)
         
-        assert restored._font_size_px == 44
+        assert restored._font_size_pt == 44
         assert restored.text == "Test Text"
 
 
@@ -367,8 +367,8 @@ class TestPropertyDefaults:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Should have a default
-        assert isinstance(text._font_size_px, (int, float))
-        assert text._font_size_px > 0
+        assert isinstance(text._font_size_pt, (int, float))
+        assert text._font_size_pt > 0
     
     def test_default_font_family(self):
         """Test default font family is set on Text."""

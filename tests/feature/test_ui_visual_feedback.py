@@ -132,10 +132,10 @@ class TestPropertyChangeVisualFeedback:
         """Test font size change updates text visual immediately."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
-        text._font_size_px = 48
+        text._font_size_pt = 48
         
         # Visual should show much larger text
-        assert text._font_size_px == 48
+        assert text._font_size_pt == 48
     
     def test_color_change_visual(self):
         """Test color change updates visual immediately."""
@@ -175,24 +175,24 @@ class TestKeyboardShortcutVisualFeedback:
     def test_bracket_right_increases_font_size(self):
         """Test ] key increases font size visually."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        initial = text._font_size_px
+        initial = text._font_size_pt
         
         # Simulate ] key
-        text._font_size_px = initial + 1
+        text._font_size_pt = initial + 1
         
         # Visual should show larger text
-        assert text._font_size_px == initial + 1
+        assert text._font_size_pt == initial + 1
     
     def test_bracket_left_decreases_font_size(self):
         """Test [ key decreases font size visually."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 36
+        text._font_size_pt = 36
         
         # Simulate [ key
-        text._font_size_px = 36 - 1
+        text._font_size_pt = 36 - 1
         
         # Visual should show smaller text
-        assert text._font_size_px == 35
+        assert text._font_size_pt == 35
 
 
 class TestSelectionHighlighting:
@@ -271,11 +271,11 @@ class TestMultiplePropertyUpdates:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Change both
-        text._font_size_px = 48
+        text._font_size_pt = 48
         text._font_family = "Times New Roman"
         
         # Visual should show larger text in Times New Roman
-        assert text._font_size_px == 48
+        assert text._font_size_pt == 48
         assert text._font_family == "Times New Roman"
     
     def test_rectangle_width_color_together(self):

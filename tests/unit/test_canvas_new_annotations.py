@@ -84,16 +84,16 @@ class TestAnnotationProperties:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Test minimum (6pt ≈ 8px at 96 DPI)
-        text._font_size_px = 8
-        assert text._font_size_px == 8
+        text._font_size_pt = 8
+        assert text._font_size_pt == 8
         
         # Test maximum (72pt ≈ 96px)
-        text._font_size_px = 96
-        assert text._font_size_px == 96
+        text._font_size_pt = 96
+        assert text._font_size_pt == 96
         
         # Test mid-range
-        text._font_size_px = 32
-        assert text._font_size_px == 32
+        text._font_size_pt = 32
+        assert text._font_size_pt == 32
     
     def test_font_family_common_fonts(self):
         """Test setting common font families."""
@@ -294,7 +294,7 @@ class TestAnnotationSerialization:
     def test_text_roundtrip(self):
         """Test Text serialization and deserialization."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Hello World")
-        text._font_size_px = 32
+        text._font_size_pt = 32
         text._font_family = "Courier New"
         
         data = text.to_dict()
@@ -302,5 +302,5 @@ class TestAnnotationSerialization:
         
         assert restored.ann_type == AnnotationType.TEXT
         assert restored.text == "Hello World"
-        assert restored._font_size_px == 32
+        assert restored._font_size_pt == 32
         assert restored._font_family == "Courier New"

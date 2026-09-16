@@ -154,8 +154,8 @@ class TestTextWorkflow:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Hello World")
         
         # Modify font size
-        text._font_size_px = 32
-        assert text._font_size_px == 32
+        text._font_size_pt = 32
+        assert text._font_size_pt == 32
         
         # Modify font family
         text._font_family = "Courier New"
@@ -171,7 +171,7 @@ class TestTextWorkflow:
     def test_text_serialization_roundtrip(self):
         """Test: Text serialization roundtrip preserves all properties."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test Text")
-        text._font_size_px = 24
+        text._font_size_pt = 24
         text._font_family = "Arial"
         text.color.setNamedColor("#ff0000")
         
@@ -179,7 +179,7 @@ class TestTextWorkflow:
         restored = VectorAnnotation.from_dict(data)
         
         assert restored.text == "Test Text"
-        assert restored._font_size_px == 24
+        assert restored._font_size_pt == 24
         assert restored._font_family == "Arial"
 
 

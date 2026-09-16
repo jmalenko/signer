@@ -64,31 +64,31 @@ class TestAdjustAnnotationProperty:
 
     def test_bracket_right_steps_font_size(self, qtbot):
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 11
+        text._font_size_pt = 11
         canvas = self._canvas_with(text, qtbot)
 
         canvas._adjust_annotation_property([text], 'increase')
 
-        assert text._font_size_px == 12
+        assert text._font_size_pt == 12
 
     def test_bracket_left_steps_font_size(self, qtbot):
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 12
+        text._font_size_pt = 12
         canvas = self._canvas_with(text, qtbot)
 
         canvas._adjust_annotation_property([text], 'decrease')
 
-        assert text._font_size_px == 11
+        assert text._font_size_pt == 11
 
     def test_bracket_right_then_left_returns_to_same_font_size(self, qtbot):
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 11
+        text._font_size_pt = 11
         canvas = self._canvas_with(text, qtbot)
 
         canvas._adjust_annotation_property([text], 'increase')
         canvas._adjust_annotation_property([text], 'decrease')
 
-        assert text._font_size_px == 11
+        assert text._font_size_pt == 11
 
     def test_bracket_left_then_right_returns_to_same_line_width(self, qtbot):
         line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)

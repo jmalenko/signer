@@ -433,16 +433,16 @@ class DocumentCanvas(QWidget):
                 obj_id = self._stable_id_for(obj) if obj in objs else -1
                 if obj.ann_type == AnnotationType.TEXT:
                     # Adjust font size for text
-                    old_size = obj._font_size_px
+                    old_size = obj._font_size_pt
                     new_size = step_size(old_size, FONT_SIZE_STEPS_PT, direction)
-                    obj._font_size_px = new_size
+                    obj._font_size_pt = new_size
                     obj.fit_text_box()
                     # Record to history
                     if obj_id >= 0:
                         action = ChangeFontSizeAction(
                             object_id=obj_id,
-                            font_size_px=new_size,
-                            from_font_size_px=old_size,
+                            font_size_pt=new_size,
+                            from_font_size_pt=old_size,
                         )
                         self.history.record_action(action)
                 elif obj.ann_type not in {AnnotationType.TEXT}:

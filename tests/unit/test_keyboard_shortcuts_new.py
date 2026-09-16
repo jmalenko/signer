@@ -38,12 +38,12 @@ class TestBracketRightIncreaseWidth:
     def test_bracket_right_increases_font_size(self):
         """Test ] key increases font size by 1pt."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        initial = text._font_size_px
+        initial = text._font_size_pt
         
         # Simulate ] key for text
-        text._font_size_px = initial + 1
+        text._font_size_pt = initial + 1
         
-        assert text._font_size_px == initial + 1
+        assert text._font_size_pt == initial + 1
     
     def test_bracket_right_respects_width_maximum(self):
         """Test ] key respects maximum width (10pt)."""
@@ -58,12 +58,12 @@ class TestBracketRightIncreaseWidth:
     def test_bracket_right_respects_font_maximum(self):
         """Test ] key respects maximum font size (72pt ≈ 96px)."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 96  # At max (72pt)
+        text._font_size_pt = 96  # At max (72pt)
         
         # Try to increase further
-        text._font_size_px = min(96, text._font_size_px + 1)
+        text._font_size_pt = min(96, text._font_size_pt + 1)
         
-        assert text._font_size_px <= 96
+        assert text._font_size_pt <= 96
 
 
 class TestBracketLeftDecreaseWidth:
@@ -100,12 +100,12 @@ class TestBracketLeftDecreaseWidth:
     def test_bracket_left_decreases_font_size(self):
         """Test [ key decreases font size by 1pt."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 32
+        text._font_size_pt = 32
         
         # Simulate [ key for text
-        text._font_size_px = text._font_size_px - 1
+        text._font_size_pt = text._font_size_pt - 1
         
-        assert text._font_size_px == 31
+        assert text._font_size_pt == 31
     
     def test_bracket_left_respects_width_minimum(self):
         """Test [ key respects minimum width (0.5pt)."""
@@ -120,12 +120,12 @@ class TestBracketLeftDecreaseWidth:
     def test_bracket_left_respects_font_minimum(self):
         """Test [ key respects minimum font size (6pt ≈ 8px)."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 8  # At min (6pt)
+        text._font_size_pt = 8  # At min (6pt)
         
         # Try to decrease further
-        text._font_size_px = max(8, text._font_size_px - 1)
+        text._font_size_pt = max(8, text._font_size_pt - 1)
         
-        assert text._font_size_px >= 8
+        assert text._font_size_pt >= 8
 
 
 class TestShortcutsOnlyWhenSelected:
@@ -158,9 +158,9 @@ class TestShortcutsOnlyWhenSelected:
         selected = text
         
         # Apply shortcut
-        selected._font_size_px += 1
+        selected._font_size_pt += 1
         
-        assert selected._font_size_px == text._font_size_px
+        assert selected._font_size_pt == text._font_size_pt
 
 
 class TestShortcutsOnlyForCompatibleTypes:
@@ -186,10 +186,10 @@ class TestShortcutsOnlyForCompatibleTypes:
         line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
         
         # Font shortcut works on text
-        assert hasattr(text, '_font_size_px')
+        assert hasattr(text, '_font_size_pt')
         
         # Font shortcut doesn't apply to line
-        # (line doesn't have _font_size_px)
+        # (line doesn't have _font_size_pt)
 
 
 class TestShortcutBounds:
@@ -212,12 +212,12 @@ class TestShortcutBounds:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Test minimum (6pt ≈ 8px)
-        text._font_size_px = 8
-        assert text._font_size_px >= 8
+        text._font_size_pt = 8
+        assert text._font_size_pt >= 8
         
         # Test maximum (72pt ≈ 96px)
-        text._font_size_px = 96
-        assert text._font_size_px <= 96
+        text._font_size_pt = 96
+        assert text._font_size_pt <= 96
 
 
 class TestShortcutHistory:
@@ -240,13 +240,13 @@ class TestShortcutHistory:
     def test_font_size_change_recorded(self):
         """Test font size change could be recorded to history."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        initial = text._font_size_px
+        initial = text._font_size_pt
         
         # Simulate change
-        text._font_size_px += 1
+        text._font_size_pt += 1
         
         # Could record: (text, initial, new)
-        final = text._font_size_px
+        final = text._font_size_pt
         
         assert initial != final
 
@@ -271,12 +271,12 @@ class TestShortcutStepSizes:
         """Test font size changes in 1pt steps."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
-        initial = text._font_size_px
+        initial = text._font_size_pt
         
         # ] should step by +1
-        text._font_size_px += 1
-        assert text._font_size_px == initial + 1
+        text._font_size_pt += 1
+        assert text._font_size_pt == initial + 1
         
         # [ should step by -1
-        text._font_size_px -= 1
-        assert text._font_size_px == initial
+        text._font_size_pt -= 1
+        assert text._font_size_pt == initial

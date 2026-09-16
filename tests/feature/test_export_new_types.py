@@ -120,7 +120,7 @@ class TestTextExport:
     def test_text_to_pil(self):
         """Test converting Text to PIL image."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Hello")
-        text._font_size_px = 24
+        text._font_size_pt = 24
         text._font_family = "Arial"
         
         img = text.render_to_pil()
@@ -132,10 +132,10 @@ class TestTextExport:
     def test_text_with_different_font_sizes(self):
         """Test Text export with different font sizes."""
         text_small = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Small")
-        text_small._font_size_px = 8
+        text_small._font_size_pt = 8
         
         text_large = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Large")
-        text_large._font_size_px = 64
+        text_large._font_size_pt = 64
         
         img_small = text_small.render_to_pil()
         img_large = text_large.render_to_pil()
@@ -184,11 +184,11 @@ class TestExportPreservesProperties:
         """Test font size is preserved during export."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         original_size = 32
-        text._font_size_px = original_size
+        text._font_size_pt = original_size
         
         data = text.to_dict()
         
-        assert data['font_size_px'] == original_size
+        assert data['font_size_pt'] == original_size
     
     def test_font_family_preserved_on_export(self):
         """Test font family is preserved during export."""
@@ -243,12 +243,12 @@ class TestExportRoundtrip:
     def test_text_export_reimport(self):
         """Test Text export and reimport."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Hello World")
-        text._font_size_px = 28
+        text._font_size_pt = 28
         text._font_family = "Georgia"
         
         data = text.to_dict()
         restored = VectorAnnotation.from_dict(data)
         
         assert restored.text == "Hello World"
-        assert restored._font_size_px == 28
+        assert restored._font_size_pt == 28
         assert restored._font_family == "Georgia"

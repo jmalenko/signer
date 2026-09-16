@@ -77,7 +77,7 @@
     {
       "type": "set_font_size",
       "object_id": 4,
-      "font_size_px": 32
+      "font_size_pt": 32
     },
     {
       "type": "add_annotation",
@@ -96,7 +96,7 @@
     {
       "type": "set_font_size",
       "object_id": 5,
-      "font_size_px": 32
+      "font_size_pt": 32
     },
     {
       "type": "add_annotation",
@@ -115,7 +115,7 @@
     {
       "type": "set_font_size",
       "object_id": 6,
-      "font_size_px": 32
+      "font_size_pt": 32
     },
     {
       "type": "add_annotation",
@@ -134,7 +134,7 @@
     {
       "type": "set_font_size",
       "object_id": 7,
-      "font_size_px": 32
+      "font_size_pt": 32
     },
     {
       "type": "add_annotation",
@@ -148,7 +148,7 @@
     {
       "type": "set_font_size",
       "object_id": 8,
-      "font_size_px": 8
+      "font_size_pt": 8
     },
     {
       "type": "add_annotation",
@@ -162,7 +162,7 @@
     {
       "type": "set_font_size",
       "object_id": 9,
-      "font_size_px": 16
+      "font_size_pt": 16
     },
     {
       "type": "add_annotation",
@@ -176,7 +176,7 @@
     {
       "type": "set_font_size",
       "object_id": 10,
-      "font_size_px": 32
+      "font_size_pt": 32
     },
     {
       "type": "add_annotation",
@@ -190,7 +190,7 @@
     {
       "type": "set_font_size",
       "object_id": 11,
-      "font_size_px": 48
+      "font_size_pt": 48
     },
     {
       "type": "save_document"

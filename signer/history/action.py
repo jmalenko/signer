@@ -496,8 +496,8 @@ class AddAnnotationAction(Action):
                     data_for_creation["color"] = "#FF0000"  # Red default
                 if "font_family" not in data_for_creation:
                     data_for_creation["font_family"] = "Arial"
-                if "font_size_px" not in data_for_creation:
-                    data_for_creation["font_size_px"] = 12
+                if "font_size_pt" not in data_for_creation:
+                    data_for_creation["font_size_pt"] = 12
                 if "line_width_factor" not in data_for_creation:
                     data_for_creation["line_width_factor"] = DEFAULT_LINE_WIDTH_FACTOR
                     
@@ -1115,17 +1115,17 @@ class ChangeLineWidthAction(Action):
 class ChangeFontSizeAction(Action):
     """Action: Change font size of text annotations."""
 
-    def __init__(self, object_id: int | None = None, font_size_px: int = 11, from_font_size_px: int | None = None) -> None:
+    def __init__(self, object_id: int | None = None, font_size_pt: int = 11, from_font_size_pt: int | None = None) -> None:
         """Initialize font size change action.
         
         Args:
             object_id: ID of object
-            font_size_px: New font size in pixels
-            from_font_size_px: Previous font size (for undo)
+            font_size_pt: New font size in points
+            from_font_size_pt: Previous font size (for undo)
         """
-        data = {"object_id": object_id, "font_size_px": font_size_px}
-        if from_font_size_px is not None:
-            data["from_font_size_px"] = from_font_size_px
+        data = {"object_id": object_id, "font_size_pt": font_size_pt}
+        if from_font_size_pt is not None:
+            data["from_font_size_pt"] = from_font_size_pt
         super().__init__("change_font_size", data)
 
     def execute(self, canvas: Any) -> None:
@@ -1134,16 +1134,16 @@ class ChangeFontSizeAction(Action):
             obj_id = self.data["object_id"]
             if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
                 obj = canvas._object_map[obj_id]
-                if hasattr(obj, '_font_size_px'):
-                    obj._font_size_px = self.data["font_size_px"]
+                if hasattr(obj, '_font_size_pt'):
+                    obj._font_size_pt = self.data["font_size_pt"]
                     if hasattr(obj, 'fit_text_box'):
                         obj.fit_text_box()
             else:
                 objects = canvas.current_page_objects()
                 if 0 <= obj_id < len(objects):
                     obj = objects[obj_id]
-                    if hasattr(obj, '_font_size_px'):
-                        obj._font_size_px = self.data["font_size_px"]
+                    if hasattr(obj, '_font_size_pt'):
+                        obj._font_size_pt = self.data["font_size_pt"]
                         if hasattr(obj, 'fit_text_box'):
                             obj.fit_text_box()
         canvas.update()
@@ -1151,22 +1151,22 @@ class ChangeFontSizeAction(Action):
 
     def undo(self, canvas: Any) -> None:
         """Restore previous font size."""
-        if "from_font_size_px" in self.data and "object_id" in self.data:
+        if "from_font_size_pt" in self.data and "object_id" in self.data:
             obj_id = self.data["object_id"]
-            from_size = self.data["from_font_size_px"]
+            from_size = self.data["from_font_size_pt"]
             
             if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
                 obj = canvas._object_map[obj_id]
-                if hasattr(obj, '_font_size_px'):
-                    obj._font_size_px = from_size
+                if hasattr(obj, '_font_size_pt'):
+                    obj._font_size_pt = from_size
                     if hasattr(obj, 'fit_text_box'):
                         obj.fit_text_box()
             else:
                 objects = canvas.current_page_objects()
                 if 0 <= obj_id < len(objects):
                     obj = objects[obj_id]
-                    if hasattr(obj, '_font_size_px'):
-                        obj._font_size_px = from_size
+                    if hasattr(obj, '_font_size_pt'):
+                        obj._font_size_pt = from_size
                         if hasattr(obj, 'fit_text_box'):
                             obj.fit_text_box()
         canvas.update()
@@ -1177,8 +1177,8 @@ class ChangeFontSizeAction(Action):
         """Create action from serialized data."""
         return cls(
             object_id=data.get("object_id"),
-            font_size_px=data.get("font_size_px", 11),
-            from_font_size_px=data.get("from_font_size_px"),
+            font_size_pt=data.get("font_size_pt", 11),
+            from_font_size_pt=data.get("from_font_size_pt"),
         )
 
 
