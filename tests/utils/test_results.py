@@ -3,10 +3,23 @@
 from pathlib import Path
 from typing import Optional
 import json
+import base64
+import html as html_lib
+import mimetypes
+import re
 from datetime import datetime
 
 # Results directory - persists across test runs for inspection
 RESULTS_DIR = Path(__file__).parent.parent / "test-results"
+
+
+def _image_data_url(image_path: Path) -> str:
+    """Return an image as a self-contained data URL for the HTML report."""
+    if not image_path.exists():
+        return ""
+    mime_type = mimetypes.guess_type(image_path.name)[0] or "application/octet-stream"
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def get_test_results_dir() -> Path:
@@ -101,21 +114,22 @@ def create_comparison_report(output_file: Optional[str | Path] = None) -> str:
     else:
         output_file = Path(output_file)
     
-    # Scan results directory for test result directories (each with info.json)
+    # Scan only image results backed by a JSON feature fixture.
     test_results = []
+    fixtures_dir = results_dir.parent / "fixtures"
     if results_dir.exists():
         for test_dir in sorted(results_dir.glob("*")):
             if test_dir.is_dir() and (test_dir / "info.json").exists():
-                # Only include tests that have actual image files (feature tests with JSON actions)
-                # Skip tests that only have info.json but no images (unit tests, non-image tests)
                 image_files = list(test_dir.glob("*_actual.png")) + list(test_dir.glob("*_expected.png"))
-                if image_files:  # Only include if there are actual images
+                fixture_name = re.sub(r"(?:_preview)?_page\d+$", "", test_dir.name)
+                has_feature_fixture = (fixtures_dir / f"{fixture_name}.json").exists()
+                if image_files and has_feature_fixture:
                     with open(test_dir / "info.json") as f:
                         info = json.load(f)
                     # Add test_name from directory
                     info["test_name"] = test_dir.name
                     test_results.append(info)
-    
+
     # Generate HTML
     html = _generate_html_report(test_results, results_dir)
     
@@ -133,6 +147,12 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
     # First, group results by test name (handling page suffixes)
     grouped_results = {}
     page_pattern = r'(.+)_page(\d+)$'
+
+    def result_status(result):
+        outcome = result.get("outcome")
+        if outcome == "skipped":
+            return "status-skip", "SKIP"
+        return ("status-pass", "✓ PASS") if result.get("match", True) else ("status-fail", "✗ FAIL")
     
     for result in test_results:
         test_name = result["test_name"]
@@ -184,8 +204,7 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
     for test_name_key in sorted(grouped_results.keys()):
         group = grouped_results[test_name_key]
         match = group["match"]
-        status_class = "status-pass" if match else "status-fail"
-        status_text = "✓ PASS" if match else "✗ FAIL"
+        status_class, status_text = result_status(group["result"]) if group["type"] == "singlepage" else ("status-pass" if match else "status-fail", "✓ PASS" if match else "✗ FAIL")
         
         if group["type"] == "multipage":
             # Multi-page: create parent item and nested page items
@@ -233,8 +252,7 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
             continue
         
         match = result.get("match", True)
-        status_class = "status-pass" if match else "status-fail"
-        status_text = "✓ PASS" if match else "✗ FAIL"
+        status_class, status_text = result_status(result)
         
         test_dir = results_dir / test_name
         expected_base = result.get("expected_base", test_name)
@@ -254,9 +272,9 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                 active_class = "active" if page_num == sorted([f.stem.split('-p')[-1] for f in page_files])[0] else ""
                 page_tabs += f'<button class="page-tab {active_class}" onclick="showPage(event, \'{test_name}-page{page_num}\')" data-page="{page_num}">Page {page_num}</button>'
                 
-                actual_rel = f"{test_name}/{page_file.name}" if page_file.exists() else ""
-                expected_rel = f"{test_name}/{expected_file.name}" if expected_file.exists() else ""
-                diff_rel = f"{test_name}/{diff_file.name}" if diff_file.exists() else ""
+                actual_rel = _image_data_url(page_file)
+                expected_rel = _image_data_url(expected_file)
+                diff_rel = _image_data_url(diff_file)
                 
                 display_style = "display: block;" if page_num == sorted([f.stem.split('-p')[-1] for f in page_files])[0] else "display: none;"
                 page_content = f"""
@@ -298,9 +316,9 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
             expected_file = test_dir / f"{expected_base}_expected.png"
             diff_file = test_dir / f"{expected_base}_diff.png"
             
-            actual_rel = f"{test_name}/{actual_file.name}" if actual_file.exists() else ""
-            expected_rel = f"{test_name}/{expected_file.name}" if expected_file.exists() else ""
-            diff_rel = f"{test_name}/{diff_file.name}" if diff_file.exists() else ""
+            actual_rel = _image_data_url(actual_file)
+            expected_rel = _image_data_url(expected_file)
+            diff_rel = _image_data_url(diff_file)
             
             # Check if this is an image-based test or a non-image test
             has_images = actual_rel or expected_rel or diff_rel
@@ -331,7 +349,10 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
             """
             else:
                 # Non-image test card (e.g., feature tests that only report pass/fail)
-                status_detail = "All assertions passed" if match else "Test failed"
+                if result.get("outcome") == "skipped":
+                    status_detail = f"Skipped: {html_lib.escape(result.get('reason', ''))}"
+                else:
+                    status_detail = "All assertions passed" if match else "Test failed"
                 card = f"""
             <div class="test-card" id="{test_name}">
                 <div class="test-header">
@@ -434,6 +455,10 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
             .status-badge.status-fail {{
                 background: #f8d7da;
                 color: #721c24;
+            }}
+            .status-badge.status-skip {{
+                background: #fff3cd;
+                color: #856404;
             }}
             .test-list-parent {{
                 margin-bottom: 8px;

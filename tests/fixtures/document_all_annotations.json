@@ -1,12 +1,12 @@
 {
   "actions": [
     {
-      "type": "change_page",
-      "page": 0
-    },
-    {
       "type": "open_document",
       "path": "examples/document.pdf"
+    },
+    {
+      "type": "change_page",
+      "page": 0
     },
     {
       "type": "add_annotation",
@@ -72,18 +72,6 @@
     {
       "type": "move_annotation",
       "object_id": 4,
-      "x": 1566.9662576687117,
-      "y": 1944.2607361963187
-    },
-    {
-      "type": "move_annotation",
-      "object_id": 4,
-      "x": 1882.7402862985687,
-      "y": 2098.450162353989
-    },
-    {
-      "type": "move_annotation",
-      "object_id": 4,
       "x": 1384.0173824130877,
       "y": 1965.6965836218828
     },
@@ -93,115 +81,62 @@
     },
     {
       "type": "add_annotation",
-      "annotation_type": "arrow",
-      "x": 1157.1666666666667,
-      "y": 1671.1666666666667,
+      "annotation_type": "checkmark",
+      "x": 273.146216768916,
+      "y": 826.6134969325154,
       "page": 1,
       "object_id": 5
     },
     {
-      "type": "move_annotation",
-      "object_id": 5,
-      "x": 1157.17,
-      "y": 1571.17
-    },
-    {
       "type": "add_annotation",
-      "annotation_type": "arrow",
-      "x": 1157.1666666666667,
-      "y": 1671.1666666666667,
+      "annotation_type": "crossmark",
+      "x": 287.4979550102249,
+      "y": 952.1912065439674,
       "page": 1,
       "object_id": 6
     },
     {
-      "type": "move_annotation",
-      "object_id": 6,
-      "x": 1257.17,
-      "y": 1571.17
-    },
-    {
       "type": "add_annotation",
       "annotation_type": "arrow",
-      "x": 1157.1666666666667,
-      "y": 1671.1666666666667,
+      "x": 73.61042944785294,
+      "y": 1080.1912065439674,
       "page": 1,
       "object_id": 7
     },
     {
-      "type": "move_annotation",
-      "object_id": 7,
-      "x": 1257.17,
-      "y": 1671.17
-    },
-    {
       "type": "add_annotation",
-      "annotation_type": "arrow",
-      "x": 1157.1666666666667,
-      "y": 1671.1666666666667,
-      "page": 1,
-      "object_id": 8
-    },
-    {
-      "type": "move_annotation",
-      "object_id": 8,
-      "x": 1257.17,
-      "y": 1771.17
-    },
-    {
-      "type": "add_annotation",
-      "annotation_type": "arrow",
-      "x": 1157.1666666666667,
-      "y": 1671.1666666666667,
+      "annotation_type": "rectangle",
+      "x": 100.0,
+      "y": 3100.0,
       "page": 1,
       "object_id": 9
     },
     {
-      "type": "move_annotation",
-      "object_id": 9,
-      "x": 1157.17,
-      "y": 1771.17
-    },
-    {
       "type": "add_annotation",
-      "annotation_type": "arrow",
-      "x": 1157.1666666666667,
-      "y": 1671.1666666666667,
+      "annotation_type": "ellipse",
+      "x": 500.0,
+      "y": 3100.0,
       "page": 1,
       "object_id": 10
     },
-    {
-      "type": "move_annotation",
-      "object_id": 10,
-      "x": 1057.17,
-      "y": 1771.17
-    },
-    {
-      "type": "add_annotation",
-      "annotation_type": "arrow",
-      "x": 1157.1666666666667,
-      "y": 1671.1666666666667,
-      "page": 1,
-      "object_id": 11
+  {
+    "type": "add_annotation",
+    "annotation_type": "text",
+    "x": 1538,
+    "y": 2870,
+    "page": 1,
+    "object_id": 8,
+    "text": "Joe Smith"
+  },
+  {
+      "type": "open_signature",
+      "path": "examples/signature.png"
     },
     {
       "type": "move_annotation",
       "object_id": 11,
-      "x": 1057.17,
-      "y": 1671.17
-    },
-    {
-      "type": "add_annotation",
-      "annotation_type": "arrow",
-      "x": 1157.1666666666667,
-      "y": 1671.1666666666667,
-      "page": 1,
-      "object_id": 12
-    },
-    {
-      "type": "move_annotation",
-      "object_id": 12,
-      "x": 1057.17,
-      "y": 1571.17
+      "x": 1450,
+      "y": 2100
     },
     {
       "type": "change_page",
@@ -213,9 +148,13 @@
     },
     {
       "type": "move_annotation",
-      "object_id": 13,
+      "object_id": 12,
       "x": 1534.674846625767,
       "y": 1133.3875255623723
+    },
+    {
+      "type": "change_page",
+      "page": 1
     },
     {
       "type": "save_document"

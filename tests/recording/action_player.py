@@ -17,6 +17,11 @@ from signer.history import (
 )
 
 
+def normalize_recorded_path(path: str | Path) -> str:
+    """Normalize fixture paths written with either Windows or POSIX separators."""
+    return str(path).replace("\\", "/")
+
+
 class ActionPlayer:
     """Plays back recorded actions against a MainWindow instance."""
 
@@ -82,14 +87,14 @@ class ActionPlayer:
 
     def _execute_open_document(self, action: Dict[str, Any]) -> None:
         """Open a document."""
-        path = action["path"]
+        path = normalize_recorded_path(action["path"])
         result = self.main_window.open_document(path)
         if not result:
             raise RuntimeError(f"Failed to open document: {path}")
 
     def _execute_open_signature(self, action: Dict[str, Any]) -> None:
         """Load a signature file."""
-        path = action["path"]
+        path = normalize_recorded_path(action["path"])
         result = self.main_window._load_signature_file(path, at_default_position=True)
         if not result:
             raise RuntimeError(f"Failed to load signature: {path}")
@@ -100,7 +105,7 @@ class ActionPlayer:
 
     def _execute_add_signature(self, action: Dict[str, Any]) -> None:
         """Add a signature file (same as open_signature)."""
-        path = action["path"]
+        path = normalize_recorded_path(action["path"])
         result = self.main_window._load_signature_file(path, at_default_position=True)
         if not result:
             raise RuntimeError(f"Failed to load signature: {path}")

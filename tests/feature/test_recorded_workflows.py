@@ -51,7 +51,6 @@ WORKFLOW_TEST_CASES = [
 class TestRecordedWorkflows:
     """Test feature workflows using recorded action playback."""
 
-    @pytest.mark.skipif(sys.platform == "darwin", reason="Pixel-perfect rendering differs on macOS due to font rendering and anti-aliasing differences")
     @pytest.mark.parametrize("workflow_type,fixture_name,annotation_prefix,description", WORKFLOW_TEST_CASES)
     def test_workflow_pixel_perfect(self, workflow_type, fixture_name, annotation_prefix, description, main_window, temp_dir):
         """Test that workflow renders correctly and matches reference image.
@@ -82,12 +81,17 @@ class TestRecordedWorkflows:
             copy2(output_image, expected_image)
             pytest.skip(f"Baseline image created for {fixture_name}. Re-run test to compare.")
         
-        assert_images_equal_with_results(
-            output_image,
-            expected_image,
-            test_name=fixture_name,
-            save_results=True
-        )
+        try:
+            assert_images_equal_with_results(
+                output_image,
+                expected_image,
+                test_name=fixture_name,
+                save_results=True
+            )
+        except AssertionError:
+            if sys.platform == "darwin":
+                pytest.skip("Pixel-perfect rendering differs on macOS; comparison saved to the report")
+            raise
 
     @pytest.mark.parametrize("workflow_type,fixture_name,annotation_prefix,description", WORKFLOW_TEST_CASES)
     def test_actions_file_structure(self, workflow_type, fixture_name, annotation_prefix, description):
