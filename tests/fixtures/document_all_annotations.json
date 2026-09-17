@@ -72,8 +72,8 @@
     {
       "type": "move_annotation",
       "object_id": 4,
-      "x": 1384.0173824130877,
-      "y": 1965.6965836218828
+      "x": 1500,
+      "y": 1950
     },
     {
       "type": "change_page",
@@ -122,8 +122,8 @@
   {
     "type": "add_annotation",
     "annotation_type": "text",
-    "x": 1538,
-    "y": 2870,
+    "x": 1590,
+    "y": 2880,
     "page": 1,
     "object_id": 8,
     "text": "Joe Smith"
@@ -135,8 +135,8 @@
     {
       "type": "move_annotation",
       "object_id": 11,
-      "x": 1450,
-      "y": 2100
+      "x": 1500,
+      "y": 2830
     },
     {
       "type": "change_page",
@@ -149,8 +149,8 @@
     {
       "type": "move_annotation",
       "object_id": 12,
-      "x": 1534.674846625767,
-      "y": 1133.3875255623723
+      "x": 1500,
+      "y": 1150
     },
     {
       "type": "change_page",
