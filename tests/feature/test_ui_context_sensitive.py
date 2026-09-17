@@ -45,7 +45,7 @@ class TestControlVisibilityPerType:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         assert hasattr(text, 'color')
-        assert hasattr(text, '_font_size_px')
+        assert hasattr(text, '_font_size_pt')
         assert hasattr(text, '_font_family')
         # Should NOT have width
         # (width is for vector strokes, not text)
@@ -172,7 +172,7 @@ class TestStateTransitions:
         
         # Select text - should show font controls
         selected = text
-        assert hasattr(selected, '_font_size_px')
+        assert hasattr(selected, '_font_size_pt')
         assert hasattr(selected, '_font_family')
         
         # Select line - should show width, not font
@@ -181,8 +181,8 @@ class TestStateTransitions:
         # Font size should not be used for line
         text_data = text.to_dict()
         line_data = line.to_dict()
-        assert 'font_size_px' in text_data
-        assert 'font_size_px' not in line_data
+        assert 'font_size_pt' in text_data
+        assert 'font_size_pt' not in line_data
     
     def test_select_arrow_then_text(self):
         """Test transitioning from Arrow to Text selection."""
@@ -195,7 +195,7 @@ class TestStateTransitions:
         
         # Select text
         selected = text
-        assert hasattr(selected, '_font_size_px')
+        assert hasattr(selected, '_font_size_pt')
         assert hasattr(selected, '_font_family')
 
 
@@ -218,10 +218,10 @@ class TestControlUpdatesOnPropertyChange:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Set font size
-        text._font_size_px = 32
+        text._font_size_pt = 32
         
         # Spinner should display this value
-        spinner_value = text._font_size_px
+        spinner_value = text._font_size_pt
         assert spinner_value == 32
     
     def test_font_family_combo_reflects_text_font_family(self):
@@ -271,16 +271,16 @@ class TestPropertyBounds:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Set to minimum (6pt ≈ 8px)
-        text._font_size_px = 8
-        assert text._font_size_px == 8
+        text._font_size_pt = 8
+        assert text._font_size_pt == 8
     
     def test_font_size_spinner_maximum(self):
         """Test font size spinner enforces maximum (72pt)."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Set to maximum (72pt ≈ 96px)
-        text._font_size_px = 96
-        assert text._font_size_px == 96
+        text._font_size_pt = 96
+        assert text._font_size_pt == 96
 
 
 class TestSignalBlockingDuringUpdates:
@@ -304,10 +304,10 @@ class TestSignalBlockingDuringUpdates:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Simulate direct property change
-        original_size = text._font_size_px
+        original_size = text._font_size_pt
         
         # Change font size
-        text._font_size_px = 32
+        text._font_size_pt = 32
         
         # Should only update once
-        assert text._font_size_px == 32
+        assert text._font_size_pt == 32

@@ -11,7 +11,7 @@ def test_new_text_bounding_box_contains_rendered_font(qapp):
         0,
         0,
         text="WWW",
-        font_size_px=12,
+        font_size_pt=12,
     )
     metrics = QFontMetricsF(annotation._make_font())
 

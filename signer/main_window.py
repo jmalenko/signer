@@ -893,7 +893,7 @@ class MainWindow(QMainWindow):
         if font_visible:
             # Reflect the selected annotation's actual font size (e.g. after a [ / ] shortcut).
             self._font_size_spinner.blockSignals(True)
-            self._font_size_spinner.setValue(selected._font_size_px)
+            self._font_size_spinner.setValue(selected._font_size_pt)
             self._font_size_spinner.blockSignals(False)
         self._font_family_combo.setVisible(font_visible)
         self._font_label.setVisible(font_visible)
@@ -1001,15 +1001,15 @@ class MainWindow(QMainWindow):
             if selected.ann_type == AnnotationType.TEXT:
                 objs = self.canvas.current_page_objects()
                 obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
-                old_size = selected._font_size_px
-                selected._font_size_px = value
+                old_size = selected._font_size_pt
+                selected._font_size_pt = value
                 selected.fit_text_box()
                 # Record to history
                 if obj_id >= 0:
                     action = ChangeFontSizeAction(
                         object_id=obj_id,
-                        font_size_px=value,
-                        from_font_size_px=old_size,
+                        font_size_pt=value,
+                        from_font_size_pt=old_size,
                     )
                     self.canvas.history.record_action(action)
                 self._settings.recent_font_size_pt = value
@@ -1091,7 +1091,7 @@ class MainWindow(QMainWindow):
         obj = VectorAnnotation(
             ann_type, 0, 0, self.canvas.current_page,
             font_family=self._settings.recent_font_family,
-            font_size_px=self._settings.recent_font_size_pt,
+            font_size_pt=self._settings.recent_font_size_pt,
             line_width_factor=line_width_factor,
             line_width_pt=self._settings.recent_line_width_pt,
         )
@@ -1120,7 +1120,7 @@ class MainWindow(QMainWindow):
         obj = VectorAnnotation(
             AnnotationType.TEXT, 0, 0, self.canvas.current_page, preset_text,
             font_family=self._settings.recent_font_family,
-            font_size_px=self._settings.recent_font_size_pt,
+            font_size_pt=self._settings.recent_font_size_pt,
             line_width_factor=line_width_factor,
             line_width_pt=self._settings.recent_line_width_pt,
         )

@@ -128,7 +128,7 @@ class TestVectorAnnotationSerialization:
         assert data["text"] == ""
         # Font properties are only saved for TEXT annotations
         assert "font_family" not in data
-        assert "font_size_px" not in data
+        assert "font_size_pt" not in data
         assert data["line_width_factor"] == 0.07
         # Natural width/height also scaled
         assert abs(data["natural_width"] - 83.33) < 0.01
@@ -185,7 +185,7 @@ class TestVectorAnnotationSerialization:
         assert data["ann_type"] == "text"
         assert data["text"] == "Hello World"
         assert data["font_family"] == "Arial"
-        assert data["font_size_px"] == 11
+        assert data["font_size_pt"] == 11
         assert "natural_width" in data
         assert "natural_height" in data
     
@@ -207,26 +207,26 @@ class TestVectorAnnotationSerialization:
         assert restored.ann_type == AnnotationType.TEXT
         assert restored.text == "Hello World"
         assert restored._font_family == "Arial"
-        assert restored._font_size_px == 11
+        assert restored._font_size_pt == 11
     
     def test_text_annotation_custom_font(self):
         """Test text annotation with custom font settings."""
         ann = VectorAnnotation(
             AnnotationType.TEXT, 0, 0, 0, text="Custom",
             font_family="Times New Roman",
-            font_size_px=24,
+            font_size_pt=24,
             line_width_factor=0.1
         )
         
         data = ann.to_dict()
         
         assert data["font_family"] == "Times New Roman"
-        assert data["font_size_px"] == 24
+        assert data["font_size_pt"] == 24
         assert data["line_width_factor"] == 0.1
         
         restored = VectorAnnotation.from_dict(data)
         assert restored._font_family == "Times New Roman"
-        assert restored._font_size_px == 24
+        assert restored._font_size_pt == 24
         assert restored._line_width_factor == 0.1
     
     def test_multiline_text_annotation(self):
@@ -237,7 +237,7 @@ class TestVectorAnnotationSerialization:
         restored = VectorAnnotation.from_dict(data)
         
         assert restored.text == "Line 1\nLine 2\nLine 3"
-        assert restored._base_height > restored._font_size_px * 2
+        assert restored._base_height > restored._font_size_pt * 2
     
     def test_vector_annotation_roundtrip(self):
         """Test full roundtrip for all annotation types."""

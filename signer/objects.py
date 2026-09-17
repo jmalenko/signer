@@ -344,12 +344,12 @@ class VectorAnnotation(CanvasObject):
         page: int = 0,
         text: str = "",
         font_family: str = DEFAULT_FONT_FAMILY,
-        font_size_px: int = DEFAULT_TEXT_FONT_PT,
+        font_size_pt: int = DEFAULT_TEXT_FONT_PT,
         line_width_factor: float = DEFAULT_LINE_WIDTH_FACTOR,
         line_width_pt: float = DEFAULT_LINE_WIDTH_PT,  # v1.2.22
     ) -> None:
         self._font_family = font_family
-        self._font_size_px = font_size_px
+        self._font_size_pt = font_size_pt
         self._line_width_factor = line_width_factor
         self._line_width_pt = line_width_pt  # v1.2.22
         self._angle: float | None = None  # Rotation angle in degrees for LINE/ARROW
@@ -393,16 +393,16 @@ class VectorAnnotation(CanvasObject):
         width_factor = target_width / max(1.0, self.scaled_width)
         height_factor = target_height / max(1.0, self.scaled_height)
         size_factor = min(width_factor, height_factor)
-        old_font_size = self._font_size_px
+        old_font_size = self._font_size_pt
         requested_font_size = round(old_font_size * size_factor)
-        self._font_size_px = max(
+        self._font_size_pt = max(
             FONT_SIZE_STEPS_PT[0],
             min(FONT_SIZE_STEPS_PT[-1], requested_font_size),
         )
         self.fit_text_box()
         if (
-            self._font_size_px != old_font_size
-            and self._font_size_px == requested_font_size
+            self._font_size_pt != old_font_size
+            and self._font_size_pt == requested_font_size
         ):
             self._base_width = target_width
             self._base_height = target_height
@@ -462,7 +462,7 @@ class VectorAnnotation(CanvasObject):
     def _make_font(self) -> QFont:
         f = QFont(self._font_family)
         # Font size is stored in PDF points; scale to pixels for 300 DPI rendering
-        f.setPixelSize(int(round(self._font_size_px * DPI_SCALE)))
+        f.setPixelSize(int(round(self._font_size_pt * DPI_SCALE)))
         return f
 
     def fit_text_box(self) -> None:
@@ -644,7 +644,7 @@ class VectorAnnotation(CanvasObject):
             self.page,
             self.text,
             font_family=self._font_family,
-            font_size_px=self._font_size_px,
+            font_size_pt=self._font_size_pt,
             line_width_factor=self._line_width_factor,
             line_width_pt=self._line_width_pt,  # v1.2.22
         )
@@ -667,7 +667,7 @@ class VectorAnnotation(CanvasObject):
         # Only save font properties for TEXT annotations
         if self.ann_type == AnnotationType.TEXT:
             data["font_family"] = self._font_family
-            data["font_size_px"] = self._font_size_px
+            data["font_size_pt"] = self._font_size_pt
         # Save line width for vector annotations (all types)
         data["line_width_factor"] = self._line_width_factor
         data["line_width_pt"] = self._line_width_pt  # v1.2.22: line width in points
@@ -688,7 +688,7 @@ class VectorAnnotation(CanvasObject):
             data["page"],
             data.get("text", ""),
             font_family=data.get("font_family", DEFAULT_FONT_FAMILY),
-            font_size_px=data.get("font_size_px", DEFAULT_TEXT_FONT_PT),
+            font_size_pt=data.get("font_size_pt", DEFAULT_TEXT_FONT_PT),
             line_width_factor=data.get("line_width_factor", DEFAULT_LINE_WIDTH_FACTOR),
             line_width_pt=data.get("line_width_pt", DEFAULT_LINE_WIDTH_PT),  # v1.2.22
         )

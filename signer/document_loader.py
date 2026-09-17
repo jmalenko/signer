@@ -141,7 +141,13 @@ class LibreOfficeLoader(DocumentLoader):
                     timeout=30
                 )
             except subprocess.CalledProcessError as e:
-                raise ValueError(f"Failed to convert document: {e.stderr.decode()}")
+                raise ValueError(f"Failed to convert {file_path}: {e.stderr.decode()}")
+            except subprocess.TimeoutExpired:
+                raise ValueError(
+                    f"Converting {file_path} to PDF via LibreOffice timed out after 30 seconds. "
+                    "The document may be too large or LibreOffice may be unresponsive; "
+                    "try again or convert it to PDF manually first."
+                )
             except FileNotFoundError:
                 raise ValueError(f"LibreOffice executable not found at {lo_exe}")
             

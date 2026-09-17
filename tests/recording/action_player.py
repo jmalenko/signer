@@ -529,7 +529,7 @@ class ActionPlayer:
         This method sets the font size (in points) on a text annotation.
         """
         obj_id = action.get("object_id")
-        font_size_px = action.get("font_size_px", 11)
+        font_size_pt = action.get("font_size_pt", 11)
         
         # If no object_id, use the last selected object
         if obj_id is not None:
@@ -546,8 +546,8 @@ class ActionPlayer:
                 raise RuntimeError("No object selected for set_font_size")
         
         # Set the font size (directly set the private attribute)
-        if hasattr(obj, '_font_size_px'):
-            obj._font_size_px = font_size_px
+        if hasattr(obj, '_font_size_pt'):
+            obj._font_size_pt = font_size_pt
             # Resize annotation to fit the text with new font size if available
             if hasattr(obj, 'fit_text_box'):
                 obj.fit_text_box()

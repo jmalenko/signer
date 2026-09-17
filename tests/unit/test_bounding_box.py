@@ -130,7 +130,7 @@ class TestBoundingBox:
         
         # fit_text_box is called in constructor
         # Should have height for 3 lines
-        assert ann._base_height > ann._font_size_px * 2
+        assert ann._base_height > ann._font_size_pt * 2
         
         # Verify width is based on widest line
         assert ann._base_width > 0

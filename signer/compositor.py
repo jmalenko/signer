@@ -421,9 +421,13 @@ def _composite_objects(
             continue
         x = int(round(obj.x))
         y = int(round(obj.y))
-        # Clamp destination to avoid out-of-bounds
-        x = max(0, min(x, pw - 1))
-        y = max(0, min(y, ph - 1))
+        # Clamp destination to avoid negative coordinates. Upper bound is `pw`/`ph`
+        # (not `pw - 1`/`ph - 1`): an object positioned exactly at the page edge is
+        # valid (its right/bottom edge coincides with the page boundary), and
+        # PIL.Image.alpha_composite() tolerates a destination at or beyond the
+        # image bounds (it simply clips), so there's no need to shift it inward.
+        x = max(0, min(x, pw))
+        y = max(0, min(y, ph))
         base.alpha_composite(overlay, dest=(x, y))
 
 

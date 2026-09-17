@@ -151,8 +151,8 @@ class TestTextAnnotation:
     def test_text_has_font_size(self, qapp):
         """Test Text has font size property."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        assert hasattr(text, '_font_size_px')
-        assert isinstance(text._font_size_px, (int, float))
+        assert hasattr(text, '_font_size_pt')
+        assert isinstance(text._font_size_pt, (int, float))
     
     def test_text_has_font_family(self, qapp):
         """Test Text has font family property."""
@@ -163,8 +163,8 @@ class TestTextAnnotation:
     def test_text_font_size_editable(self, qapp):
         """Test setting text font size."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 32
-        assert text._font_size_px == 32
+        text._font_size_pt = 32
+        assert text._font_size_pt == 32
     
     def test_text_font_family_editable(self, qapp):
         """Test setting text font family."""
@@ -191,10 +191,10 @@ class TestAnnotationTypeProperties:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
         
-        assert hasattr(text, '_font_size_px')
-        # Line should not have font_size_px in to_dict
+        assert hasattr(text, '_font_size_pt')
+        # Line should not have font_size_pt in to_dict
         data = line.to_dict()
-        assert 'font_size_px' not in data
+        assert 'font_size_pt' not in data
     
     def test_font_family_only_on_text(self):
         """Test font family only available on Text."""

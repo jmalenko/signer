@@ -72,26 +72,26 @@ class TestFontSizeSpinnerVisibility:
     def test_font_size_spinner_visible_for_text(self):
         """Test font size spinner visible when Text selected."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        assert hasattr(text, '_font_size_px')
+        assert hasattr(text, '_font_size_pt')
     
     def test_font_size_spinner_hidden_for_line(self):
         """Test font size spinner hidden when Line selected."""
         line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        # Line should not have font_size_px attribute used in to_dict
+        # Line should not have font_size_pt attribute used in to_dict
         data = line.to_dict()
-        assert 'font_size_px' not in data
+        assert 'font_size_pt' not in data
     
     def test_font_size_spinner_hidden_for_rectangle(self):
         """Test font size spinner hidden when Rectangle selected."""
         rect = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, 0)
         data = rect.to_dict()
-        assert 'font_size_px' not in data
+        assert 'font_size_pt' not in data
     
     def test_font_size_spinner_hidden_for_arrow(self):
         """Test font size spinner hidden when Arrow selected."""
         arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
         data = arrow.to_dict()
-        assert 'font_size_px' not in data
+        assert 'font_size_pt' not in data
 
 
 class TestFontFamilyComboVisibility:
@@ -183,22 +183,22 @@ class TestSpinnerRanges:
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
         # Minimum (6pt ≈ 8px)
-        text._font_size_px = 8
-        assert text._font_size_px >= 8
+        text._font_size_pt = 8
+        assert text._font_size_pt >= 8
         
         # Maximum (72pt ≈ 96px)
-        text._font_size_px = 96
-        assert text._font_size_px <= 96
+        text._font_size_pt = 96
+        assert text._font_size_pt <= 96
     
     def test_font_size_spinner_step(self):
         """Test font size spinner steps by 1pt."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
         
-        initial = text._font_size_px
+        initial = text._font_size_pt
         
         # Step by 1
-        text._font_size_px = initial + 1
-        assert text._font_size_px == initial + 1
+        text._font_size_pt = initial + 1
+        assert text._font_size_pt == initial + 1
 
 
 class TestSpinnerStateManagement:
@@ -215,10 +215,10 @@ class TestSpinnerStateManagement:
     def test_font_size_spinner_updates_on_selection(self):
         """Test font size spinner updates when Text selected."""
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        text._font_size_px = 28
+        text._font_size_pt = 28
         
         # Spinner value should match
-        assert text._font_size_px == 28
+        assert text._font_size_pt == 28
 
     def test_width_spinner_reflects_keyboard_shortcut_change(self, main_window):
         """Test width spinner value updates after ] keyboard shortcut changes width (real code path)."""
@@ -236,7 +236,7 @@ class TestSpinnerStateManagement:
 
         main_window.canvas._adjust_annotation_property([text], 'increase')
 
-        assert main_window._font_size_spinner.value() == text._font_size_px
+        assert main_window._font_size_spinner.value() == text._font_size_pt
     
     def test_font_family_combo_updates_on_selection(self):
         """Test font family combo updates when Text selected."""
@@ -286,7 +286,7 @@ class TestContextSwitchingControls:
         
         # Switch to text - font controls visible
         selected = text
-        assert hasattr(selected, '_font_size_px')
+        assert hasattr(selected, '_font_size_pt')
         assert hasattr(selected, '_font_family')
     
     def test_switch_from_text_to_rectangle(self):

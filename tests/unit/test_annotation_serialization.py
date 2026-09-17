@@ -35,7 +35,7 @@ class TestAnnotationSerialization:
         ann = VectorAnnotation(
             AnnotationType.CHECKMARK, 10, 20, 0,
             font_family="Arial",
-            font_size_px=24,
+            font_size_pt=24,
             line_width_factor=0.1
         )
         
@@ -44,7 +44,7 @@ class TestAnnotationSerialization:
         assert ann.y == 20
         assert ann.page == 0
         assert ann._font_family == "Arial"
-        assert ann._font_size_px == 24
+        assert ann._font_size_pt == 24
         assert ann._line_width_factor == 0.1
         assert ann.text == ""
     
@@ -54,13 +54,13 @@ class TestAnnotationSerialization:
             AnnotationType.TEXT, 0, 0, 0,
             text="Hello World",
             font_family="Times New Roman",
-            font_size_px=36
+            font_size_pt=36
         )
         
         assert ann.ann_type == AnnotationType.TEXT
         assert ann.text == "Hello World"
         assert ann._font_family == "Times New Roman"
-        assert ann._font_size_px == 36
+        assert ann._font_size_pt == 36
     
     def test_signature_object_attributes(self):
         """Test SignatureObject attributes."""
@@ -79,7 +79,7 @@ class TestAnnotationSerialization:
         ann = VectorAnnotation(
             AnnotationType.CHECKMARK, 100, 100, 0,
             font_family="Arial",
-            font_size_px=24,
+            font_size_pt=24,
             line_width_factor=0.1
         )
         ann.scale = 2.0
@@ -94,7 +94,7 @@ class TestAnnotationSerialization:
         assert dup.scale == 2.0
         assert dup.color == QColor("#ff0000")
         assert dup._font_family == "Arial"
-        assert dup._font_size_px == 24
+        assert dup._font_size_pt == 24
         assert dup._line_width_factor == 0.1
     
     def test_duplicate_text_annotation(self):
@@ -103,14 +103,14 @@ class TestAnnotationSerialization:
             AnnotationType.TEXT, 50, 50, 0,
             text="Test text",
             font_family="Courier",
-            font_size_px=18
+            font_size_pt=18
         )
         
         dup = ann.duplicate()
         
         assert dup.text == "Test text"
         assert dup._font_family == "Courier"
-        assert dup._font_size_px == 18
+        assert dup._font_size_pt == 18
     
     def test_duplicate_signature_object(self):
         """Test SignatureObject duplication."""
