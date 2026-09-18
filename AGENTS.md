@@ -5,8 +5,9 @@
 This repo contains a desktop app.
 
 Key docs, keep them consistent with each other and with the code (incl. tests):
-- [REQUIREMENTS.md](REQUIREMENTS.md) — features
-- [DESIGN.md](DESIGN.md) — architecture and design decisions, includes instructions on how to run the app
+- [REQUIREMENTS.md](REQUIREMENTS.md) — business-level change log: motivation and key aspects per feature
+- [FUNCTIONAL_SPECIFICATION.md](FUNCTIONAL_SPECIFICATION.md) — detailed, current-state functional specification
+- [DESIGN.md](DESIGN.md) — commands (run/test/build), architecture, and design rationale
 - [TESTING.md](TESTING.md) — how to run and troubleshoot tests
 
 ## Process

@@ -1,5 +1,28 @@
 # Testing Guide
 
+## Overview
+
+Tests are split into two kinds, both under `pytest`:
+
+- **Unit tests** (`tests/unit/`): coordinate transformations, bounding-box calculations,
+  annotation serialization, and other logic-level checks.
+- **Feature tests** (`tests/feature/`): end-to-end workflows driven by replaying a recorded
+  action sequence (JSON) against a real `MainWindow`/`Canvas`, then pixel-comparing the exported
+  image against a reference image.
+
+```
+tests/
+├── unit/                          # Core functionality tests
+├── feature/                       # End-to-end workflow tests
+├── fixtures/                      # Recorded action JSON + reference images
+├── recording/                     # Action recording/playback utilities
+├── test-results/                  # Generated test reports (not committed)
+└── conftest.py                    # Pytest configuration, fixtures
+```
+
+See [DESIGN.md](DESIGN.md) for architecture, and
+[FUNCTIONAL_SPECIFICATION.md](FUNCTIONAL_SPECIFICATION.md) for the behavior these tests verify.
+
 ## Running Tests
 
 ### All tests
@@ -83,21 +106,6 @@ C:\PortableApps\LibreOfficePortable\App\libreoffice\program\soffice.exe
 /Applications/LibreOffice.app/Contents/MacOS/soffice
 ```
 
-## Linux Release Validation
-
-Linux support cannot be established by a successful macOS or Windows build. On the Linux distribution and architecture used for release:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-QT_QPA_PLATFORM=offscreen python -m pytest
-python -m PyInstaller --clean --noconfirm signer.spec
-./dist/signer
-```
-
-Manually verify document open, annotation rendering and text fonts, export, and the clickable export-directory link. Verify Word/ODT conversion separately when LibreOffice is installed. Test the executable in both Wayland and X11 sessions where applicable; missing Qt system libraries or platform plugins are distribution-specific packaging issues and should be resolved on the oldest supported build/test image.
-
 ## Test Results
 
 After running feature tests, view the HTML report:
@@ -150,6 +158,40 @@ If output changes are intentional and verified as correct:
    pytest tests/feature/ -v
    ```
 
+## Recording New Feature Tests
+
+Feature tests replay a recorded JSON action sequence and compare the rendered output to a
+reference image. To create a new one:
+
+1. Run the app from source with recording enabled:
+   ```bash
+   SIGNER_RECORD_ACTIONS=1 python main.py -document examples/document.pdf
+   ```
+2. Perform the workflow you want to capture (add annotations, move/resize them, etc.), then
+   close the application.
+3. The recorder writes the captured actions to
+   `tests/recorded_actions/recorded_actions_<timestamp>.json` (printed to the console on exit).
+4. Move/rename that file into `tests/fixtures/{name}.json`, matching the naming convention of
+   existing fixtures (e.g. `line.json`, `text_props.json`).
+5. Add a case to `WORKFLOW_TEST_CASES` in
+   [tests/feature/test_recorded_workflows.py](tests/feature/test_recorded_workflows.py),
+   pointing at the new fixture name and an expected-output annotation prefix.
+6. Run the new test once; it will fail with no reference image yet. Inspect the generated
+   `*_actual.png` in the HTML report (see below), and once it looks correct, promote it to the
+   expected baseline using the same **Accepting Changes** steps above.
+
+Playback is driven by `tests/recording/action_player.py`; the recorder itself lives in
+`tests/recording/action_recorder.py` and is only active when `SIGNER_RECORD_ACTIONS=1` is set
+(see `signer/app.py`).
+
+## Release Validation
+
+A successful build/test run on one platform does not establish that another platform works —
+each target OS must be built and validated separately before publishing, including a manual
+smoke test of document open, annotation rendering/fonts, export, the clickable export-directory
+link, and Word/ODT conversion (if LibreOffice is installed). See [DESIGN.md](DESIGN.md) for the
+full build/smoke-test matrix and Linux-specific commands.
+
 ## Troubleshooting
 
 | Problem | Solution |
@@ -158,19 +200,3 @@ If output changes are intentional and verified as correct:
 | "LibreOffice executable not found" error | Verify path exists on your system; use backslash on Windows, forward slash on Unix |
 | Word/ODT conversion fails | Verify LibreOffice installation is functional; try running LibreOffice UI first |
 | Tests report high mismatch percentage | Verify expected image is correct; if changes are intentional, copy actual to expected |
-
-## Test Structure
-
-Test files organize unit, feature, and recording tests:
-
-```
-tests/
-├── unit/                          # Core functionality tests
-├── feature/                       # End-to-end workflow tests
-├── fixtures/                      # Test data and reference images
-├── recording/                     # Action recording utilities
-├── test-results/                  # Generated test reports (not committed)
-└── conftest.py                    # Pytest configuration
-```
-
-See [DESIGN.md](DESIGN.md) for architecture and testing concepts.
