@@ -310,3 +310,104 @@ def test_change_document_preserves_annotation_positions_when_orientation_changes
     restored = main_window.canvas.page_objects_at(0)[0]
     assert restored.x == 741
     assert restored.y == 2494
+
+
+EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
+
+
+def _add_checkmarks_on_every_page(main_window, page_count):
+    for page in range(page_count):
+        main_window.canvas.goto_page(page)
+        annotation = VectorAnnotation(AnnotationType.CHECKMARK, 10 + page, 20 + page, page)
+        main_window.canvas.add_object(annotation)
+
+
+def _save_and_reopen_project(main_window, project_path, document_path, page_count):
+    objects = [
+        obj
+        for page in range(main_window.canvas.page_count)
+        for obj in main_window.canvas.page_objects_at(page)
+    ]
+    project = ProjectFile.from_annotations(
+        document_path=document_path, export_path=None, annotations=objects,
+        current_page=0, page_count=page_count,
+    )
+    ProjectFile.write(project_path, project)
+    with patch(
+        "signer.main_window.render_all_pages",
+        return_value=[Image.new("RGB", (600, 800), "white") for _ in range(page_count)],
+    ):
+        assert main_window.open_project(project_path) is True
+
+
+def test_change_document_to_fewer_pages_keeps_only_annotations_on_remaining_pages(
+    main_window, tmp_path
+):
+    """Changing to a document with fewer pages drops annotations whose page no longer exists."""
+    document = EXAMPLES_DIR / "document.pdf"
+    fewer_pages_document = EXAMPLES_DIR / "document1.pdf"
+    project_path = tmp_path / "project.signer"
+
+    with patch(
+        "signer.main_window.render_all_pages",
+        return_value=[Image.new("RGB", (600, 800), "white") for _ in range(3)],
+    ):
+        assert main_window.open_document(str(document)) is True
+
+    _add_checkmarks_on_every_page(main_window, page_count=3)
+    _save_and_reopen_project(main_window, project_path, document, page_count=3)
+
+    with patch(
+        "signer.main_window.render_all_pages",
+        return_value=[Image.new("RGB", (600, 800), "white")],
+    ), patch(
+        "signer.main_window.QFileDialog.getOpenFileName",
+        return_value=(str(fewer_pages_document), ""),
+    ):
+        assert main_window.change_document() is True
+
+    assert main_window.canvas.page_count == 1
+    remaining = [
+        obj
+        for page in range(main_window.canvas.page_count)
+        for obj in main_window.canvas.page_objects_at(page)
+    ]
+    assert len(remaining) == 1
+    assert remaining[0].x == 10
+    assert remaining[0].y == 20
+    assert remaining[0].ann_type == AnnotationType.CHECKMARK
+
+
+def test_change_document_to_landscape_preserves_annotations_on_every_page(
+    main_window, tmp_path
+):
+    """Changing to a same-page-count landscape document keeps every page's annotations."""
+    document = EXAMPLES_DIR / "document.pdf"
+    landscape_document = EXAMPLES_DIR / "doc-landscape.pdf"
+    project_path = tmp_path / "project.signer"
+
+    with patch(
+        "signer.main_window.render_all_pages",
+        return_value=[Image.new("RGB", (600, 800), "white") for _ in range(3)],
+    ):
+        assert main_window.open_document(str(document)) is True
+
+    _add_checkmarks_on_every_page(main_window, page_count=3)
+    _save_and_reopen_project(main_window, project_path, document, page_count=3)
+
+    with patch(
+        "signer.main_window.render_all_pages",
+        return_value=[Image.new("RGB", (800, 600), "white") for _ in range(3)],
+    ), patch(
+        "signer.main_window.QFileDialog.getOpenFileName",
+        return_value=(str(landscape_document), ""),
+    ):
+        assert main_window.change_document() is True
+
+    assert main_window.canvas.page_count == 3
+    for page in range(3):
+        objects = main_window.canvas.page_objects_at(page)
+        assert len(objects) == 1
+        assert objects[0].x == 10 + page
+        assert objects[0].y == 20 + page
+        assert objects[0].ann_type == AnnotationType.CHECKMARK

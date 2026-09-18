@@ -458,6 +458,10 @@ The clipboard uses the same JSON annotation schema as project files and action r
 - Replacing the underlying document (Change Document) preserves every annotation's coordinates,
   size, and orientation as-is; it does not rotate their arrangement just because the new
   document has a different page orientation.
+- If the replacement document has fewer pages than the original, annotations whose page index
+  no longer exists become inaccessible (not shown, not exported, not included in a subsequent
+  Save Project) — only annotations on pages that still exist in the new document remain in
+  effect.
 
 ---
 
