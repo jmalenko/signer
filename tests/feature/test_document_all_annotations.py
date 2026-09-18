@@ -12,6 +12,7 @@ from tests.conftest import FIXTURES_DIR
 from tests.recording.action_player import play_actions_from_file
 from tests.utils.image_comparison import assert_images_equal_with_results
 from PySide6.QtWidgets import QApplication
+from unittest.mock import patch
 
 
 class TestDocumentAllAnnotations:
@@ -42,7 +43,8 @@ class TestDocumentAllAnnotations:
         output_base = temp_dir / "document-signed.png"
 
         # Play actions with output path
-        play_actions_from_file(main_window, actions_file, output_path=output_base)
+        with patch("signer.main_window.ProjectFile.write"):
+            play_actions_from_file(main_window, actions_file, output_path=output_base)
         
         QApplication.processEvents()
 

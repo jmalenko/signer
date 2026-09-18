@@ -45,3 +45,13 @@ def test_object_fully_past_bottom_edge_does_not_bleed_onto_canvas():
     _composite_objects(base, [obj])
 
     assert base.getpixel((0, ph - 1)) == background, "object past the edge must not bleed onto the last visible row"
+
+
+def test_object_partly_past_bottom_edge_is_clipped_and_exported():
+    base = Image.new("RGBA", (20, 20), (255, 255, 255, 255))
+    obj = _FakeObject(x=0, y=18, size=4)
+
+    _composite_objects(base, [obj])
+
+    assert base.getpixel((0, 18)) == (255, 0, 0, 255)
+    assert base.getpixel((0, 19)) == (255, 0, 0, 255)

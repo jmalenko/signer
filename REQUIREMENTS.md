@@ -1216,10 +1216,6 @@ in Version 1.2.11, so error toasts are visually distinct and require explicit ac
 2. Pasting on the same page and duplicating shall apply the same 20-pixel offset.
 3. Pasting on a different page shall not apply a coordinate offset.
 
-### Assumption
-
-1. Signature has a transparent background.
-
 ## Version 1.2.35 - Linux and macOS support
 
 1. Signer shall support Windows, macOS, and Linux.
@@ -1231,3 +1227,67 @@ in Version 1.2.11, so error toasts are visually distinct and require explicit ac
    cross-platform.
 5. Linux releases shall be tested on the oldest supported distribution and on
    the applicable X11 and Wayland desktop sessions.
+
+## Version 1.2.36 - Signer project file
+
+The application shall support reusable signer project files for recurring
+document-signing workflows.
+
+### Project format
+
+1. Project files shall use the `.signer` extension and retain JSON content.
+2. The project root shall contain only `version`, `document_path`, and
+   `annotations`. It shall not contain `schema`, timestamps, `current_page`,
+   `rotations`, or `settings`.
+3. Annotation entries shall use the same action vocabulary as feature-test JSON:
+   `add_annotation` and `open_signature`.
+4. Each annotation shall retain its position, current `width` and `height`,
+   page when nonzero, color when applicable, and only the type-specific fields
+   needed to restore its appearance, such as text and font properties.
+5. Project persistence, action recording, and JSON feature-test fixtures shall
+   share the same canonical annotation entity definitions and serialization
+   behavior.
+6. Default dimensions shall be derived when loading. If `scale` is present,
+   `width` and `height` represent current rendered dimensions and the loader
+   shall derive base dimensions so scaling is applied exactly once.
+
+### Project lifecycle and naming
+
+1. Opening a source document shall not create a project file. A successful
+   export establishes the project path beside the exported image, using the
+   exported basename with any multi-page `-p#` placeholder removed:
+   `abc-signed.jpg` becomes `abc-signed.signer`.
+2. With **Auto-save Project on Save** enabled, the project shall be written only
+   after the document export succeeds. Explicit **Save Project** and **Save
+   Project As…** shall reuse the established export-based project path, or ask
+   for one if no export has occurred.
+3. The auto-save preference shall default to enabled, persist in application
+   settings, and be represented by a checkable hamburger File menu item whose
+   checkmark reflects the loaded setting.
+4. Opening a project shall restore all annotations to their stored pages and
+   always display page 1 initially. It shall add the project to Recent Documents.
+5. Per-page rotations shall be retained when saving and restored with JSON page
+   keys normalized to integer indexes.
+6. Unsupported project versions shall be rejected clearly. A missing schema is
+   acceptable for version 1 because schema is not part of the format.
+
+### Document replacement and rendering
+
+1. The generic Open action shall recognize `.signer` projects and supported
+   document formats. Project actions shall remain in the hamburger File menu;
+   the toolbar labels shall remain Open, Add, and Save.
+2. The File menu shall provide Save Project, Save Project As…, Change
+   Document…, and Auto-save Project on Save. It shall not provide New Project.
+3. Opening a document or project shall perform the unsaved-changes check once,
+   restore canvas keyboard focus after the file-dialog event loop completes,
+   and make page navigation work without a preliminary click.
+4. Changing the source document shall preserve every annotation's coordinates,
+   size, orientation, and relative arrangement. It shall not rotate annotation
+   coordinates solely because the replacement document has a different page
+   orientation.
+5. Export shall clip annotations at the page boundary while retaining any
+   visible portion. Fully off-page annotations shall remain invisible.
+
+### Assumption
+
+1. Signature has a transparent background.

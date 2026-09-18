@@ -49,9 +49,9 @@ Build a small cross-platform desktop app to place a scanned signature (transpare
 ## 4. UX Design
 ### Main Window (Version 1.2.10 Update)
 - Top toolbar (large buttons):
-  - Open Document
-  - Add Annotation (2nd position)
-  - Save As... (3rd position, same workflow group, replaces "Save JPG")
+  - Open
+  - Add
+  - Save
   - Previous Page / Next Page
   - Annotation picker (dropdown):
     - Checkmark
@@ -60,11 +60,12 @@ Build a small cross-platform desktop app to place a scanned signature (transpare
     - Text ▶ Free text / Current date / Current time / Current date & time
     - Signature ▶ From file… / Recent (up to 10 LRU files)
 - **Hamburger menu** (right end, three horizontal lines ☰):
-  - **File:** Open Document, Recent Documents, Save As..., Exit
+  - **File:** Save Project, Save Project As…, Change Document, Open (document/project browser), Recent Documents, Exit
   - **Edit:** Undo, Redo, Cut, Copy, Paste, Duplicate, Select All, Delete
   - **Annotations:** List of all annotation types with submenus
   - **Help:** Homepage (on GitHub)
-- Terminology: primary actions are provided as Toolbar buttons (faster navigation). They are also available in the hamburger menu for accessibility.
+  - **Project settings:** Auto-save Project on Save (toggle)
+- Terminology: primary actions are provided as Toolbar buttons (faster navigation). Project-file management remains in the hamburger menu, while the toolbar keeps concise labels for frequent actions.
 - Central canvas:
   - Background: rendered current PDF page (fit-to-window).
   - Foreground: draggable/scalable objects (signature + annotations).
@@ -73,13 +74,14 @@ Build a small cross-platform desktop app to place a scanned signature (transpare
 
 ### Typical Flow
 1. Start app.
-2. Open document (or auto-load from `-document`).
-3. If `-signature` is provided, add signature annotation immediately after document load.
-4. If `-signature` is not provided, do not auto-add any annotation on open.
+2. Open a document or project via the generic Open action; the file browser includes both supported document formats and `.signer` project files.
+3. If a project file is opened, the app restores the saved annotation layout onto the referenced document automatically.
+4. If `-signature` is provided, add the signature annotation immediately after document load.
 5. Navigate to page (toolbar or keyboard shortcuts).
 6. Drag/scale signature to desired location.
 7. Optionally add and adjust annotation objects.
-8. Save document via "Save As..." dialog, selecting desired format (JPG, PNG, PDF, TIFF, BMP).
+8. Save project from the hamburger menu or save/export the current work via the toolbar Save action.
+9. If the underlying document for an existing project changes, the user may choose Change Document from the project menu/notification, preserving the saved annotation layout while switching source files.
 
 ## 5. Functional Design
 ### 5.1 Input Handling
@@ -162,16 +164,101 @@ Build a small cross-platform desktop app to place a scanned signature (transpare
 
 ### 5.7 Persistence
 Use a lightweight local config file (JSON) in the platform user configuration directory storing:
+- `recent_color` (hex color string; default `#cc0000`)
+- `recent_line_width_pt` (float; default `1.5`)
+- `recent_font_family` (string; default `Arial`)
+- `recent_font_size_pt` (int; default `11`)
+- `libreoffice_path` (optional path string)
+- `last_save_directory` (optional path string)
+- `last_export_format` (string; default `jpg`)
+- `last_export_folder` (optional path string)
+- `last_jpeg_quality` (int; default `95`)
+- `last_pdf_image_quality` (int; default `95`)
 - `recent_signature_paths` (up to 10, ordered by LRU)
 - `recent_text_strings` (up to 10, ordered by LRU, excludes predefined date/time strings)
 - `recent_document_paths` (up to 10, ordered by LRU)
-- `last_save_directory` (optional)
+- `auto_save_project` (boolean; default enabled)
+
+Persistent settings values are initialized from their matching persisted entries whenever
+menu state is refreshed, and any change is written back through `SettingsStore`
+immediately. For toggle actions such as Auto-save Project on Save, the action handler
+also accepts Qt invocations that omit the checked argument and reads the action's
+current check state in that case.
+
+Project files are stored as `.signer` files alongside the signed output using the same base name as the document. Example:
+- `document.pdf`
+- `document-signed.jpg`
+- `document-signed.signer`
 
 Recent items appear in relevant menus:
 - **File menu**: Recent documents at top level after static items, separated by horizontal rule
 - **Annotations → Text submenu**: Recent texts at top level after static items, separated by horizontal rule
 - **Signature submenu**: Recent signatures with separator (existing)
-- **Toolbar "Open Document" dropdown**: Recent documents submenu
+- **Toolbar "Open" dropdown**: Recent documents and project files, with `.signer` project files included in the browser filter
+- **Project settings**: Auto-save Project on Save toggle in the hamburger menu
+
+Project file management is intentionally menu-centric rather than toolbar-first; the toolbar keeps db short labels and the hamburger menu holds the project-specific actions.
+
+### 5.7.1 Project File Specification
+
+The project file is the persistent document workspace for the signer's annotation layout. It is stored as a JSON file with the extension `.signer` and the same base name as the signed output file.
+
+**Naming and location**
+- Project files are saved next to the signed export in the same directory.
+- A plain document open does not create a source-based project path. The export
+  path establishes the project path, and both automatic and later explicit saves
+  reuse that same path.
+- The auto-saved project uses the exported file's basename, with `.signer`
+  appended, so `abc-signed.jpg` is accompanied by `abc-signed.signer`.
+- Example:
+  - `document.pdf`
+  - `document-signed.jpg`
+  - `document.signer`
+- The app shall create and update this file automatically when auto-save is enabled, or when the user explicitly chooses Save Project.
+
+**File format**
+- File format: UTF-8 JSON
+- Root object contains:
+  - `version`: project file format version
+  - `document_path`: source document path
+  - `annotations`: serialized list of page objects and annotation payloads
+
+**Shared serialization model**
+- The project file shall not define a second, separate annotation model.
+- Project persistence, action recording, and JSON feature-test fixtures shall all reuse the same canonical annotation/object schema and serializer/deserializer implementation.
+- In practical terms, the application shall store the same annotation entities that are already used by the action recorder and the test JSON fixtures, rather than converting to a different project-only object model.
+- This avoids duplicate serialization logic and ensures that save/load, undo/redo, and fixture comparison all operate on the same object definitions.
+
+**Document metadata**
+The project root intentionally contains only `version`, `document_path`, and
+`annotations`.
+
+**Annotation payload**
+- Each annotation entry shall use the same action entity shape as recorded feature
+  tests: `type` is `add_annotation` or `open_signature`, with `annotation_type`,
+  `x`, `y`, `width`, `height`, optional `page`, and type-specific properties
+  needed to restore style and text. No project-only annotation type names
+  or nested position/size model shall be introduced.
+- `width` and `height` are current rendered dimensions. When `scale` is present,
+  the loader derives the internal base dimensions by dividing them by `scale`,
+  so scaling is applied exactly once.
+
+**Project lifecycle**
+- When a project file is opened, the app shall reopen the saved document context and restore all annotations to the correct page positions.
+- Project opening shall always display the first page; the saved active page is not used as the initial view.
+- After opening a document or project, keyboard focus shall return to the canvas after the file-dialog event loop completes so page navigation keys work immediately.
+- If the original document is missing or replaced, the app shall prompt the user with a Change Document action instead of silently failing.
+- The project file shall not replace the signed output file; it is a separate reusable workspace that preserves annotation layout and project state.
+- Auto-save project is a per-project setting exposed in the hamburger menu as an on/off toggle.
+
+**Storage and compatibility**
+- The file is designed for direct reuse by the application and for future compatibility checks.
+- On open, the app shall validate the project `version` field; unsupported versions shall show a clear error and refuse to load the project.
+- When saving, the app shall overwrite the existing `.signer` file in place.
+- Auto-save writes the project only after a successful document export; explicit
+  project saves reuse the established export-based path or ask for a path when
+  no export has occurred yet.
+- Project files retain per-page rotations; JSON page keys are normalized back to integer page indexes when loaded.
 
 ### 5.8 Export Formats (Save As)
 Supported export formats for annotated documents:
@@ -332,6 +419,7 @@ Default save name (applies to all export formats):
 - **Center-based transformation**: Calculate annotation center from top-left corner (x, y), transform center coordinates, convert back to top-left corner
 - **Display**: Annotation center is transformed via `_transform_doc_coords_by_rotation()` so centers remain at the same visual location on the page after rotation
 - **Export**: Annotation center is transformed via `page_objects_with_rotation_at()` so centers appear at the correct visual position on the rotated page
+- **Document change**: Annotation coordinates, sizes, and orientations are preserved as-is; a portrait-to-landscape replacement does not rotate their arrangement
 - **Mouse interaction**: Mouse coordinates are converted via `_transform_doc_coords_inverse()` to convert back from rotated to original coordinates
 - **Key property**: Annotations themselves are NOT rotated—only their position changes. Signatures keep their aspect ratio, text stays upright, etc.
 - **Transformation formulas** (mapping W×H original page to H×W rotated page):

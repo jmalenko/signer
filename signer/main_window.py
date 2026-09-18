@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import locale
+import json
 import logging
 import os
 import re
@@ -65,6 +66,7 @@ from .objects import (
     DEFAULT_TEXT_FONT_PT,
     SignatureObject,
     VectorAnnotation,
+    ProjectFile,
 )
 from .pdf_utils import render_all_pages
 from .settings import AppSettings, SettingsStore
@@ -357,7 +359,10 @@ class MainWindow(QMainWindow):
         self._page_nav_label: QLabel | None = None
 
         self.document_path: str | None = None
+        self.project_path: str | None = None
+        self._last_export_path: str | None = None
         self._has_unsaved_changes: bool = False
+        self._saving_project: bool = False
 
         self.canvas = DocumentCanvas(self)
         self.setCentralWidget(self.canvas)
@@ -417,15 +422,15 @@ class MainWindow(QMainWindow):
             tb.addAction(act)
             return act
 
-        # Open Document with recent documents dropdown
+        # Open with recent documents dropdown
         open_doc_btn = QToolButton(self)
-        open_doc_btn.setText("📂 Open Document")
+        open_doc_btn.setText("📂 Open")
         open_doc_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         open_doc_btn.setPopupMode(QToolButton.InstantPopup)
         open_doc_menu = QMenu(open_doc_btn)
         open_doc_btn.setMenu(open_doc_menu)
         
-        open_doc_menu.addAction("Open Document…", lambda: self.open_document())
+        open_doc_menu.addAction("Open…", lambda: self.open_document())
         self._recent_docs_menu = open_doc_menu.addMenu("Recent Documents")
         self._rebuild_recent_documents_menu()
         
@@ -433,7 +438,7 @@ class MainWindow(QMainWindow):
 
         # Annotation picker (2nd)
         ann_btn = QToolButton(self)
-        ann_btn.setText("➕ Add Annotation")
+        ann_btn.setText("➕ Add")
         ann_btn.setPopupMode(QToolButton.InstantPopup)
         ann_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         ann_menu = QMenu(ann_btn)
@@ -470,7 +475,7 @@ class MainWindow(QMainWindow):
         tb.addWidget(ann_btn)
 
         # Save action (3rd, same workflow group)
-        self._save_as_toolbar_action = big_action("💾 Save As…", self.save_document_as)
+        self._save_as_toolbar_action = big_action("💾 Save", self.save_document_as)
 
         self._page_nav_separator_action = tb.addSeparator()
 
@@ -557,6 +562,14 @@ class MainWindow(QMainWindow):
         open_document_action.setShortcut("O")
         self._save_as_file_action = self._hamburger_file_menu.addAction("Save As…\tS", self.save_document_as)
         self._save_as_file_action.setShortcut("S")
+        self._hamburger_file_menu.addSeparator()
+        self._save_project_action = self._hamburger_file_menu.addAction("Save Project", lambda: self.save_project())
+        self._save_project_as_action = self._hamburger_file_menu.addAction("Save Project As…", lambda: self.save_project_as())
+        self._change_document_action = self._hamburger_file_menu.addAction("Change Document…", lambda: self.change_document())
+        self._auto_save_project_action = self._hamburger_file_menu.addAction("Auto-save Project on Save", self._toggle_auto_save_project)
+        self._auto_save_project_action.setCheckable(True)
+        self._auto_save_project_action.setChecked(self._settings.auto_save_project)
+        self._hamburger_file_menu.addSeparator()
         self._print_action = self._hamburger_file_menu.addAction("Print\tP", self.print_document)
         self._print_action.setShortcut("P")
         self._hamburger_file_menu.addSeparator()
@@ -650,6 +663,11 @@ class MainWindow(QMainWindow):
         has_selection = self.canvas.selected is not None
         has_page_objects = has_doc and bool(self.canvas.current_page_objects())
         can_paste = has_doc and self.canvas.has_pasteable_data()
+
+        if self._auto_save_project_action is not None:
+            self._auto_save_project_action.blockSignals(True)
+            self._auto_save_project_action.setChecked(self._settings.auto_save_project)
+            self._auto_save_project_action.blockSignals(False)
 
         if self._print_action is not None:
             self._print_action.setEnabled(has_doc)
@@ -1144,6 +1162,185 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------------- open/save
 
+    @staticmethod
+    def _project_path_for_document(document_path: str | Path) -> Path:
+        return Path(document_path).with_suffix(".signer")
+
+    @staticmethod
+    def _project_path_for_export(export_path: str | Path) -> Path:
+        export = Path(export_path)
+        stem = re.sub(r"-p#$", "", export.stem, flags=re.IGNORECASE)
+        return export.with_name(f"{stem}.signer")
+
+    def _toggle_auto_save_project(self, checked: bool | None = None) -> None:
+        if checked is None:
+            checked = self._auto_save_project_action.isChecked()
+        self._settings.auto_save_project = checked
+        self._save_settings_safe()
+
+    def save_project_as(self) -> bool:
+        if not self.canvas.has_document or not self.document_path:
+            return False
+        suggested = self.project_path or self._project_path_for_export(
+            self._last_export_path or self.document_path
+        )
+        chosen, _ = QFileDialog.getSaveFileName(
+            self, "Save Project As", str(suggested), "Signer Projects (*.signer);;All files (*.*)"
+        )
+        if not chosen:
+            return False
+        path = Path(chosen)
+        if not path.name.lower().endswith(".signer"):
+            path = path.with_name(path.name + ".signer")
+        return self.save_project(path)
+
+    def save_project(
+        self,
+        path: str | Path | None = None,
+        silent: bool = False,
+        mark_clean: bool = True,
+    ) -> bool:
+        if not self.canvas.has_document or not self.document_path:
+            return False
+        if path:
+            target = Path(path)
+        elif self.project_path:
+            target = Path(self.project_path)
+        else:
+            return self.save_project_as()
+        previous = None
+        if target.exists():
+            try:
+                previous = ProjectFile.read(target)
+            except (OSError, json.JSONDecodeError):
+                previous = None
+        project = ProjectFile.from_annotations(
+            document_path=self.document_path,
+            export_path=self._last_export_path,
+            annotations=[obj for page in range(self.canvas.page_count) for obj in self.canvas.page_objects_at(page)],
+            current_page=self.canvas.current_page,
+            page_count=self.canvas.page_count,
+        )
+        project["rotations"] = dict(self.canvas._page_rotations)
+        try:
+            self._saving_project = True
+            ProjectFile.write(target, project)
+        except (OSError, TypeError, ValueError) as exc:
+            if not silent:
+                QMessageBox.critical(self, "Save Project failed", f"Could not save project:\n{exc}")
+            return False
+        finally:
+            self._saving_project = False
+        self.project_path = str(target)
+        if mark_clean:
+            self._has_unsaved_changes = False
+        if not silent and not self._in_test_mode:
+            self.show_notification(f"Saved project {target.name}")
+        return True
+
+    def change_document(self) -> bool:
+        if not self.canvas.has_document:
+            return self.open_document()
+        chosen, _ = QFileDialog.getOpenFileName(
+            self, "Change Document", str(Path(self.document_path).parent) if self.document_path else "",
+            "All Supported Files (*.pdf *.docx *.doc *.odt *.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif)"
+        )
+        if not chosen:
+            return False
+        objects = [obj for page in range(self.canvas.page_count) for obj in self.canvas.page_objects_at(page)]
+        if not self._load_document_pages(Path(chosen)):
+            return False
+        self.canvas.restore_objects(objects, {}, 0)
+        # Keep the current project path only when this document belongs to an
+        # already-opened project. A new document gets its project identity from
+        # the eventual export path.
+        self._has_unsaved_changes = True
+        return True
+
+    def open_project(self, path: str | Path, check_unsaved_changes: bool = True) -> bool:
+        if (
+            check_unsaved_changes
+            and self.document_path
+            and self._has_unsaved_changes
+            and not self._check_unsaved_changes()
+        ):
+            return False
+        try:
+            project = ProjectFile.read(path)
+            ProjectFile.validate(project)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            QMessageBox.critical(self, "Open project failed", str(exc))
+            return False
+        document_path = Path(project.get("document_path", ""))
+        if not document_path.is_absolute():
+            sidecar_path = Path(path).parent / document_path
+            document_path = sidecar_path if sidecar_path.exists() else document_path
+        if not document_path.exists():
+            if self._in_test_mode:
+                return False
+            choice = QMessageBox.warning(
+                self, "Document not found",
+                "The project document is unavailable. Choose Change Document to continue.",
+                QMessageBox.Cancel | QMessageBox.Open,
+                QMessageBox.Open,
+            )
+            if choice != QMessageBox.Open:
+                return False
+            chosen, _ = QFileDialog.getOpenFileName(
+                self, "Change Document", str(Path(path).parent),
+                "All Supported Files (*.pdf *.docx *.doc *.odt *.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif)"
+            )
+            if not chosen:
+                return False
+            document_path = Path(chosen)
+        if not self._load_document_pages(document_path):
+            return False
+        try:
+            objects = ProjectFile.load_annotations(project, Path(path).parent)
+        except (KeyError, TypeError, ValueError) as exc:
+            QMessageBox.critical(self, "Open project failed", f"Invalid annotation data:\n{exc}")
+            return False
+        rotations = project.get("rotations", {})
+        self.canvas.restore_objects(objects, rotations, 0)
+        self.project_path = str(path)
+        self._update_recent_documents(str(path))
+        self._save_settings_safe()
+        self._rebuild_recent_menus()
+        self._has_unsaved_changes = False
+        self._update_title()
+        self._update_document_workflow_state()
+        return True
+
+    def _load_document_pages(self, path: Path) -> bool:
+        if not path.exists():
+            return False
+        try:
+            pages = render_all_pages(path, dpi=300, password="", libreoffice_path=self._settings.libreoffice_path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
+            return False
+        self.canvas.set_pages(pages)
+        self.canvas.clear_history()
+        self.document_path = str(path)
+        self._update_recent_documents(str(path))
+        self._save_settings_safe()
+        if pages:
+            self._adjust_window_to_document(pages[0].size[0], pages[0].size[1])
+        self._focus_canvas_after_open()
+        return True
+
+    def _focus_canvas_after_open(self) -> None:
+        """Restore keyboard focus after a document or project dialog closes."""
+        self.raise_()
+        self.activateWindow()
+        self.canvas.setFocus(Qt.OtherFocusReason)
+        QTimer.singleShot(0, self._focus_canvas_deferred)
+
+    def _focus_canvas_deferred(self) -> None:
+        self.raise_()
+        self.activateWindow()
+        self.canvas.setFocus(Qt.OtherFocusReason)
+
     def open_document(self, path: str | None = None) -> bool:
         # Check for unsaved changes before opening a new document
         if self.document_path and self._has_unsaved_changes:
@@ -1159,14 +1356,18 @@ class MainWindow(QMainWindow):
                 start_dir = str(Path(self._settings.recent_document_paths[0]).parent)
             chosen, _ = QFileDialog.getOpenFileName(
                 self, "Open Document", start_dir,
-                "All Supported Files (*.pdf *.docx *.doc *.odt *.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif);;"
+                "All Supported Files (*.pdf *.docx *.doc *.odt *.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif *.signer);;"
                 "PDF Files (*.pdf);;Word Documents (*.docx *.doc);;OpenDocument Text (*.odt);;"
-                "Image Files (*.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif)"
+                "Image Files (*.jpg *.jpeg *.png *.bmp *.webp *.gif *.ico *.tiff *.tif);;"
+                "Project Files (*.signer)"
             )
 
         if not chosen:
             return False
         p = Path(chosen)
+
+        if p.name.lower().endswith(".signer"):
+            return self.open_project(p, check_unsaved_changes=False)
 
         if not p.exists():
             QMessageBox.critical(self, "Open document failed", f"File not found:\n{p}")
@@ -1205,6 +1406,7 @@ class MainWindow(QMainWindow):
         self.canvas.set_pages(pages)
         self.canvas.clear_history()  # Clear undo/redo history when opening a new document
         self.document_path = str(p)
+        self.project_path = None
         self._has_unsaved_changes = False
         self._update_recent_documents(str(p))
         self._save_settings_safe()
@@ -1910,7 +2112,11 @@ class MainWindow(QMainWindow):
             self._settings.last_export_folder = str(directory)
             self._settings.last_save_directory = str(directory)
             self._save_settings_safe()
+            self._last_export_path = str(output)
             self._has_unsaved_changes = False
+
+            if self._settings.auto_save_project:
+                self.save_project(self._project_path_for_export(self._last_export_path or output), silent=True, mark_clean=False)
             
             # Show auto-dismissing notification with clickable directory link
             if not self._in_test_mode:

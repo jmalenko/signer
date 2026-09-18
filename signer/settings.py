@@ -77,6 +77,9 @@ class AppSettings:
     recent_text_strings: list[str] = field(default_factory=list)
     recent_document_paths: list[str] = field(default_factory=list)
 
+    # Project persistence preference
+    auto_save_project: bool = True
+
 
 class SettingsStore:
     def __init__(self, app_name: str = "Signer") -> None:

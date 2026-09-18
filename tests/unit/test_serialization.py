@@ -5,9 +5,11 @@ import base64
 from io import BytesIO
 from PIL import Image
 
+from PySide6.QtGui import QColor
+
 from signer.objects import (
     CanvasObject, VectorAnnotation, SignatureObject, AnnotationType,
-    HANDLE_FX, HANDLE_FY, ANCHOR_HANDLE
+    HANDLE_FX, HANDLE_FY, ANCHOR_HANDLE, ProjectFile,
 )
 
 
@@ -318,6 +320,52 @@ class TestSerializationEdgeCases:
         assert restored.image.mode == "RGBA"
         pixel = restored.image.getpixel((50, 50))
         assert pixel[3] == 128  # Alpha value
+
+    def test_project_file_uses_same_annotation_schema(self):
+        """Project persistence should reuse the same object serialization contract."""
+        check = VectorAnnotation(AnnotationType.CHECKMARK, 42, 24, 1)
+        sig = SignatureObject(Image.new("RGBA", (20, 10), (0, 0, 0, 255)), "sig.png", 60, 80, 1)
+
+        project = ProjectFile.from_annotations(
+            document_path="/tmp/form.pdf",
+            export_path="/tmp/form-signed.jpg",
+            annotations=[check, sig],
+            current_page=1,
+            page_count=2,
+        )
+
+        assert set(project) == {"version", "document_path", "annotations"}
+        assert project["version"] == 1
+        assert len(project["annotations"]) == 2
+        assert project["annotations"][0]["type"] == "add_annotation"
+        assert project["annotations"][1]["type"] == "open_signature"
+
+        restored = ProjectFile.load_annotations(project)
+        assert len(restored) == 2
+        assert [type(obj).__name__ for obj in restored] == ["VectorAnnotation", "SignatureObject"]
+        assert restored[0].page == 1
+        assert restored[1].path == "sig.png"
+
+    def test_project_file_roundtrip_preserves_object_state(self):
+        """Round-tripping through the project file should keep the stored object data intact."""
+        text = VectorAnnotation(AnnotationType.TEXT, 12, 18, 0, text="Hello")
+        text.color = QColor("#123456")
+        text.scale = 2.0
+
+        project = ProjectFile.from_annotations(
+            document_path="/tmp/example.pdf",
+            export_path="/tmp/example-signed.jpg",
+            annotations=[text],
+            current_page=0,
+            page_count=1,
+        )
+
+        restored = ProjectFile.load_annotations(project)
+        assert len(restored) == 1
+        assert restored[0].ann_type == AnnotationType.TEXT
+        assert restored[0].text == "Hello"
+        assert restored[0].color.name() == "#123456"
+        assert restored[0].scale == 2.0
 
 
 if __name__ == "__main__":

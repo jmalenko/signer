@@ -4,7 +4,9 @@ import json
 import logging
 import math
 import re
+from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from PIL import Image
@@ -323,8 +325,14 @@ class SignatureObject(CanvasObject):
         """Deserialize object from a dictionary."""
         import base64
         from io import BytesIO
-        img_data = base64.b64decode(data["image_data"])
-        img = Image.open(BytesIO(img_data)).convert("RGBA")
+        if "image_data" in data:
+            img_data = base64.b64decode(data["image_data"])
+            img = Image.open(BytesIO(img_data)).convert("RGBA")
+        else:
+            image_path = Path(data["path"])
+            if not image_path.exists():
+                raise ValueError(f"Signature image not found: {image_path}")
+            img = Image.open(image_path).convert("RGBA")
         obj = cls(img, data["path"], data["x"], data["y"], data["page"])
         obj._base_width = data["base_width"]
         obj._base_height = data["base_height"]
@@ -729,3 +737,139 @@ def canvas_object_from_dict(data: dict[str, Any]) -> CanvasObject | None:
     else:
         # Unknown type; return None
         return None
+
+
+class ProjectFile:
+    """Project-workspace persistence using the same canonical serialized objects.
+
+    The project file does not invent a second annotation model; it stores the same
+    dictionary payloads produced by CanvasObject.to_dict() and rehydrates them via
+    canvas_object_from_dict(). This keeps project save/load, action recorder data,
+    and JSON fixtures aligned to one schema.
+    """
+
+    SCHEMA = "signer.project.v1"
+    VERSION = 1
+
+    @classmethod
+    def validate(cls, project: dict[str, Any]) -> None:
+        if project.get("version") != cls.VERSION:
+            raise ValueError("Unsupported signer project file version")
+        if not isinstance(project.get("document_path"), str) or not isinstance(project.get("annotations"), list):
+            raise ValueError("Invalid signer project file")
+
+    @staticmethod
+    def _utc_now() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    @classmethod
+    def from_annotations(
+        cls,
+        *,
+        document_path: str | Path | None,
+        export_path: str | Path | None,
+        annotations: list[CanvasObject],
+        current_page: int,
+        page_count: int,
+    ) -> dict[str, Any]:
+        doc_path = str(document_path) if document_path is not None else ""
+        serialized_annotations = []
+        for obj in annotations:
+            data = {
+                "type": "open_signature" if isinstance(obj, SignatureObject) else "add_annotation",
+                "x": obj.x,
+                "y": obj.y,
+                "width": obj.scaled_width,
+                "height": obj.scaled_height,
+                "color": obj.color.name(),
+            }
+            if obj.page:
+                data["page"] = obj.page
+            if isinstance(obj, SignatureObject):
+                data["path"] = obj.path
+                data["image_data"] = obj.to_dict()["image_data"]
+                if obj.scale != 1.0:
+                    data["scale"] = obj.scale
+            else:
+                data["annotation_type"] = obj.ann_type.value
+                data["line_width_pt"] = obj._line_width_pt
+                if obj.scale != 1.0:
+                    data["scale"] = obj.scale
+                if obj.ann_type == AnnotationType.TEXT:
+                    data["text"] = obj.text
+                    data["font_family"] = obj._font_family
+                    data["font_size_pt"] = obj._font_size_pt
+            serialized_annotations.append(data)
+
+        return {
+            "version": cls.VERSION,
+            "document_path": doc_path,
+            "annotations": serialized_annotations,
+        }
+
+    @staticmethod
+    def load_annotations(
+        project: dict[str, Any], base_path: str | Path | None = None
+    ) -> list[CanvasObject]:
+        """Return the reconstituted objects stored in a project file."""
+        items = project.get("annotations", [])
+        restored: list[CanvasObject] = []
+        for item in items:
+            if item.get("type") == "open_signature":
+                object_data = dict(item)
+                object_data["type"] = "SignatureObject"
+                object_data.setdefault("page", 0)
+                object_data.setdefault("scale", 1.0)
+                object_data.setdefault("color", "#cc0000")
+                if base_path and not Path(object_data["path"]).is_absolute():
+                    object_data["path"] = str(Path(base_path) / object_data["path"])
+                if "image_data" in object_data:
+                    import base64
+                    from io import BytesIO
+                    image = Image.open(BytesIO(base64.b64decode(object_data["image_data"])))
+                else:
+                    image = Image.open(object_data["path"])
+                object_data.setdefault("width", image.width)
+                object_data.setdefault("height", image.height)
+                scale = float(object_data["scale"])
+                object_data.setdefault("base_width", object_data["width"] / scale)
+                object_data.setdefault("base_height", object_data["height"] / scale)
+                if image is not None:
+                    object_data.setdefault("base_width", image.width)
+                    object_data.setdefault("base_height", image.height)
+                    image.close()
+                obj = canvas_object_from_dict(object_data)
+            elif item.get("type") == "add_annotation":
+                object_data = dict(item)
+                object_data["type"] = "VectorAnnotation"
+                object_data["ann_type"] = object_data.pop("annotation_type")
+                object_data.setdefault("page", 0)
+                object_data.setdefault("scale", 1.0)
+                object_data.setdefault("line_width_factor", DEFAULT_LINE_WIDTH_FACTOR)
+                object_data.setdefault("line_width_pt", DEFAULT_LINE_WIDTH_PT)
+                ann_type = AnnotationType(object_data["ann_type"])
+                defaults = VectorAnnotation(ann_type, object_data["x"], object_data["y"], object_data["page"])
+                object_data.setdefault("width", defaults.scaled_width)
+                object_data.setdefault("height", defaults.scaled_height)
+                scale = float(object_data["scale"])
+                object_data.setdefault("base_width", object_data["width"] / scale)
+                object_data.setdefault("base_height", object_data["height"] / scale)
+                obj = canvas_object_from_dict(object_data)
+            else:
+                obj = None
+            if obj is None:
+                raise ValueError("Unknown annotation type in signer project file")
+            restored.append(obj)
+        return restored
+
+    @classmethod
+    def write(cls, path: str | Path, project: dict[str, Any]) -> None:
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as fh:
+            json.dump(project, fh, indent=2)
+
+    @classmethod
+    def read(cls, path: str | Path) -> dict[str, Any]:
+        with Path(path).open("r", encoding="utf-8") as fh:
+            return json.load(fh)

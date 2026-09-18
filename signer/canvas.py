@@ -131,8 +131,8 @@ class DocumentCanvas(QWidget):
         for obj in objects:
             # Calculate the center of the annotation
             # (x, y) is the top-left corner, so add half the dimensions to get center
-            center_x = obj.x + obj._base_width / 2
-            center_y = obj.y + obj._base_height / 2
+            center_x = obj.x + obj.scaled_width / 2
+            center_y = obj.y + obj.scaled_height / 2
             
             # Transform the center coordinates so it stays at the same visual location
             new_center_x, new_center_y = self._transform_doc_coords_by_rotation(
@@ -140,8 +140,8 @@ class DocumentCanvas(QWidget):
             )
             
             # Convert back to top-left corner coordinates
-            new_x = new_center_x - obj._base_width / 2
-            new_y = new_center_y - obj._base_height / 2
+            new_x = new_center_x - obj.scaled_width / 2
+            new_y = new_center_y - obj.scaled_height / 2
             
             # Create a shallow copy of the object with transformed coordinates
             # Annotations keep their original size and are NOT rotated
@@ -167,6 +167,32 @@ class DocumentCanvas(QWidget):
         self._selected_multiple.clear()
         self._recompute_fit()
         self.pageChanged.emit(0, len(self._pages))
+        self.objectChanged.emit()
+        self.update()
+
+    def restore_objects(
+        self,
+        objects: list[CanvasObject],
+        rotations: dict[int, int] | None = None,
+        current_page: int = 0,
+    ) -> None:
+        """Restore serialized project objects without creating undo history."""
+        self._page_objects = {}
+        self._object_map = {}
+        self._next_object_id = 0
+        self._page_rotations = {
+            int(page): int(angle) % 360
+            for page, angle in (rotations or {}).items()
+            if str(page).lstrip("-").isdigit()
+        }
+        for obj in objects:
+            self._register_object(obj)
+            self._page_objects.setdefault(obj.page, []).append(obj)
+        self._current_page = max(0, min(current_page, len(self._pages) - 1)) if self._pages else 0
+        self._selected = None
+        self._selected_multiple.clear()
+        self._recompute_fit()
+        self.pageChanged.emit(self._current_page, len(self._pages))
         self.objectChanged.emit()
         self.update()
 
@@ -740,8 +766,8 @@ class DocumentCanvas(QWidget):
         
         # Calculate the center of the annotation
         # (obj.x, obj.y) is the top-left corner, so add half the dimensions to get center
-        center_x = obj.x + obj._base_width / 2
-        center_y = obj.y + obj._base_height / 2
+        center_x = obj.x + obj.scaled_width / 2
+        center_y = obj.y + obj.scaled_height / 2
         
         # Transform the center coordinates based on page rotation
         # so annotation centers remain at the same visual location on the page

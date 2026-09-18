@@ -13,13 +13,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from signer.canvas import DocumentCanvas
 from signer.main_window import MainWindow
-from signer.objects import AnnotationType, SignatureObject, VectorAnnotation
+from signer.objects import AnnotationType, ProjectFile, SignatureObject, VectorAnnotation
 from signer.settings import AppSettings, SettingsStore
 
 
 # Run Qt in offscreen mode so tests don't pop up visible application windows.
 # Respect an existing QT_QPA_PLATFORM (e.g. set by the user) if already defined.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+@pytest.fixture(autouse=True)
+def prevent_example_project_writes(monkeypatch):
+    """Keep tests from overwriting checked-in example project files."""
+    original_write = ProjectFile.write
+    examples_dir = Path(__file__).parent.parent / "examples"
+
+    def guarded_write(path, project):
+        if Path(path).parent.resolve() == examples_dir.resolve():
+            return
+        return original_write(path, project)
+
+    monkeypatch.setattr(ProjectFile, "write", guarded_write)
 
 
 @pytest.fixture(scope="session")

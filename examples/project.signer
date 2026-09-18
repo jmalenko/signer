@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "document_path": "document.pdf",
+  "annotations": [
+    {"type":"add_annotation","annotation_type":"checkmark","x":273.146216768916,"y":826.6134969325154,"width":83.33333333333334,"height":83.33333333333334,"color":"#cc0000","line_width_pt":1.5},
+    {"type":"add_annotation","annotation_type":"crossmark","x":287.4979550102249,"y":952.1912065439674,"width":83.33333333333334,"height":83.33333333333334,"page":0,"color":"#cc0000","line_width_pt":1.5},
+    {"type":"add_annotation","annotation_type":"arrow","x":73.61042944785294,"y":2080.1912065439674,"width":333.33333333333337,"height":333.33333333333337,"page":0,"color":"#cc0000","line_width_pt":1.5},
+    {"type":"add_annotation","annotation_type":"text","x":1538.848670756646,"y":1936.6002044989773,"width":204.46875,"height":51.375,"page":0,"color":"#cc0000","line_width_pt":1.5,"text":"Joe Smith","font_family":"Arial","font_size_pt":11},
+    {"type":"open_signature","x":1500,"y":1950,"width":854.0,"height":417.0,"page":0,"path":"signature.png"},
+    {"type":"add_annotation","annotation_type":"checkmark","x":273.146216768916,"y":826.6134969325154,"width":83.33333333333334,"height":83.33333333333334,"page":1,"color":"#cc0000","line_width_pt":1.5},
+    {"type":"add_annotation","annotation_type":"crossmark","x":287.4979550102249,"y":952.1912065439674,"width":83.33333333333334,"height":83.33333333333334,"page":1,"color":"#cc0000","line_width_pt":1.5},
+    {"type":"add_annotation","annotation_type":"arrow","x":73.61042944785294,"y":1080.1912065439674,"width":333.33333333333337,"height":333.33333333333337,"page":1,"color":"#cc0000","line_width_pt":1.5},
+    {"type":"add_annotation","annotation_type":"rectangle","x":100.0,"y":3100.0,"width":333.33333333333337,"height":333.33333333333337,"page":1,"color":"#cc0000","line_width_pt":1.5},
+    {"type":"add_annotation","annotation_type":"ellipse","x":500.0,"y":3100.0,"width":333.33333333333337,"height":333.33333333333337,"page":1,"color":"#cc0000","line_width_pt":1.5},
+    {"type":"add_annotation","annotation_type":"text","x":1590,"y":2880,"width":204.46875,"height":51.375,"page":1,"color":"#cc0000","line_width_pt":1.5,"text":"Joe Smith","font_family":"Arial","font_size_pt":11},
+    {"type":"open_signature","x":1500,"y":2830,"width":854.0,"height":417.0,"page":1,"path":"signature.png"},
+    {"type":"open_signature","x":1500,"y":1150,"width":854.0,"height":417.0,"page":2,"path":"signature.png"}
+  ]
+}
