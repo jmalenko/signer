@@ -85,6 +85,17 @@ class TestLineWidthProperty:
         restored = VectorAnnotation.from_dict(data)
         
         assert restored._line_width_pt == 2.5
+
+    def test_checkmark_line_width_is_independent_of_resize(self):
+        """Checkmark stroke width remains fixed when its bounding box changes."""
+        checkmark = VectorAnnotation(AnnotationType.CHECKMARK, 100, 100, 0)
+        checkmark._line_width_pt = 2.5
+
+        small_pen = checkmark._pen(1.0)
+        checkmark.resize_to_bounds(checkmark.scaled_width * 2, checkmark.scaled_height * 2)
+        large_pen = checkmark._pen(1.0)
+
+        assert large_pen.widthF() == small_pen.widthF()
     
     def test_line_width_backward_compatibility(self):
         """Test loading annotation without line_width_pt uses default."""

@@ -9,7 +9,7 @@ from PySide6.QtGui import QColor
 
 from signer.objects import (
     CanvasObject, VectorAnnotation, SignatureObject, AnnotationType,
-    DEFAULT_FONT_FAMILY, DEFAULT_TEXT_FONT_PT, DEFAULT_LINE_WIDTH_FACTOR
+    DEFAULT_FONT_FAMILY, DEFAULT_TEXT_FONT_PT
 )
 from signer.settings import AppSettings, SettingsStore
 from PIL import Image
@@ -36,16 +36,16 @@ class TestAnnotationSerialization:
             AnnotationType.CHECKMARK, 10, 20, 0,
             font_family="Arial",
             font_size_pt=24,
-            line_width_factor=0.1
+            line_width_pt=1.5,
         )
-        
+
         assert ann.ann_type == AnnotationType.CHECKMARK
         assert ann.x == 10
         assert ann.y == 20
         assert ann.page == 0
         assert ann._font_family == "Arial"
         assert ann._font_size_pt == 24
-        assert ann._line_width_factor == 0.1
+        assert ann._line_width_pt == 1.5
         assert ann.text == ""
     
     def test_text_annotation_attributes(self, qapp):
@@ -80,13 +80,13 @@ class TestAnnotationSerialization:
             AnnotationType.CHECKMARK, 100, 100, 0,
             font_family="Arial",
             font_size_pt=24,
-            line_width_factor=0.1
+            line_width_pt=1.5,
         )
         ann.scale = 2.0
         ann.color = QColor("#ff0000")
-        
+
         dup = ann.duplicate()
-        
+
         assert dup.ann_type == AnnotationType.CHECKMARK
         assert dup.x == 120  # offset by 20
         assert dup.y == 120
@@ -95,7 +95,7 @@ class TestAnnotationSerialization:
         assert dup.color == QColor("#ff0000")
         assert dup._font_family == "Arial"
         assert dup._font_size_pt == 24
-        assert dup._line_width_factor == 0.1
+        assert dup._line_width_pt == 1.5
     
     def test_duplicate_text_annotation(self):
         """Test Text annotation duplication preserves text."""

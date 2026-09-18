@@ -454,7 +454,7 @@ class AddAnnotationAction(Action):
 
     def execute(self, canvas: Any) -> None:
         """Add annotation to current page."""
-        from ..objects import canvas_object_from_dict, AnnotationType, VectorAnnotation, ARROW_TYPES, LARGE_DEFAULT_TYPES, DPI_SCALE, DEFAULT_LINE_WIDTH_FACTOR
+        from ..objects import canvas_object_from_dict, AnnotationType, VectorAnnotation, ARROW_TYPES, LARGE_DEFAULT_TYPES, DPI_SCALE
         
         # Convert annotation_type to VectorAnnotation format
         data_for_creation = dict(self.data)  # Copy to avoid modifying original
@@ -498,9 +498,6 @@ class AddAnnotationAction(Action):
                     data_for_creation["font_family"] = "Arial"
                 if "font_size_pt" not in data_for_creation:
                     data_for_creation["font_size_pt"] = 12
-                if "line_width_factor" not in data_for_creation:
-                    data_for_creation["line_width_factor"] = DEFAULT_LINE_WIDTH_FACTOR
-                    
                 obj = VectorAnnotation.from_dict(data_for_creation)
             except (KeyError, ValueError, TypeError) as e:
                 # Fallback: try canvas_object_from_dict

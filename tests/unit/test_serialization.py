@@ -131,7 +131,7 @@ class TestVectorAnnotationSerialization:
         # Font properties are only saved for TEXT annotations
         assert "font_family" not in data
         assert "font_size_pt" not in data
-        assert data["line_width_factor"] == 0.07
+        assert data["line_width_pt"] == 1.5
         # Natural width/height also scaled
         assert abs(data["natural_width"] - 83.33) < 0.01
         assert abs(data["natural_height"] - 83.33) < 0.01
@@ -217,19 +217,19 @@ class TestVectorAnnotationSerialization:
             AnnotationType.TEXT, 0, 0, 0, text="Custom",
             font_family="Times New Roman",
             font_size_pt=24,
-            line_width_factor=0.1
+            line_width_pt=2.5
         )
-        
+
         data = ann.to_dict()
-        
+
         assert data["font_family"] == "Times New Roman"
         assert data["font_size_pt"] == 24
-        assert data["line_width_factor"] == 0.1
-        
+        assert data["line_width_pt"] == 2.5
+
         restored = VectorAnnotation.from_dict(data)
         assert restored._font_family == "Times New Roman"
         assert restored._font_size_pt == 24
-        assert restored._line_width_factor == 0.1
+        assert restored._line_width_pt == 2.5
     
     def test_multiline_text_annotation(self):
         """Test multiline text annotation serialization."""

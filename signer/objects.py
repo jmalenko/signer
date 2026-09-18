@@ -32,7 +32,6 @@ DEFAULT_TEXT_FONT_PT: int = 11
 # DPI_SCALE is used to convert PDF points to 300 DPI pixels for rendering
 DPI_SCALE: float = 300.0 / 72.0  # 4.16667
 DEFAULT_FONT_FAMILY: str = "Arial"
-DEFAULT_LINE_WIDTH_FACTOR: float = 0.07
 DEFAULT_LINE_WIDTH_PT: float = 1.5  # v1.2.22: Default line width in points
 DUPLICATE_OFFSET: float = 20.0
 
@@ -353,12 +352,10 @@ class VectorAnnotation(CanvasObject):
         text: str = "",
         font_family: str = DEFAULT_FONT_FAMILY,
         font_size_pt: int = DEFAULT_TEXT_FONT_PT,
-        line_width_factor: float = DEFAULT_LINE_WIDTH_FACTOR,
         line_width_pt: float = DEFAULT_LINE_WIDTH_PT,  # v1.2.22
     ) -> None:
         self._font_family = font_family
         self._font_size_pt = font_size_pt
-        self._line_width_factor = line_width_factor
         self._line_width_pt = line_width_pt  # v1.2.22
         self._angle: float | None = None  # Rotation angle in degrees for LINE/ARROW
         if ann_type == AnnotationType.TEXT:
@@ -512,9 +509,9 @@ class VectorAnnotation(CanvasObject):
         self._draw_symbol(painter, vx, vy, vw, vh, doc_scale)
         painter.restore()
 
-    def _pen(self, vw: float, vh: float) -> QPen:
+    def _pen(self, doc_scale: float = 1.0) -> QPen:
         pen = QPen(self.color)
-        pen.setWidthF(max(1.5, min(vw, vh) * self._line_width_factor))
+        pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
         return pen
@@ -524,7 +521,7 @@ class VectorAnnotation(CanvasObject):
         t = self.ann_type
 
         if t == AnnotationType.CHECKMARK:
-            painter.setPen(self._pen(vw, vh))
+            painter.setPen(self._pen(doc_scale))
             painter.setBrush(Qt.NoBrush)
             path = QPainterPath()
             path.moveTo(vx + m, vy + vh * 0.55)
@@ -533,7 +530,7 @@ class VectorAnnotation(CanvasObject):
             painter.drawPath(path)
 
         elif t == AnnotationType.CROSSMARK:
-            painter.setPen(self._pen(vw, vh))
+            painter.setPen(self._pen(doc_scale))
             painter.setBrush(Qt.NoBrush)
             painter.drawLine(QPointF(vx + m, vy + m), QPointF(vx + vw - m, vy + vh - m))
             painter.drawLine(QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m))
@@ -653,7 +650,6 @@ class VectorAnnotation(CanvasObject):
             self.text,
             font_family=self._font_family,
             font_size_pt=self._font_size_pt,
-            line_width_factor=self._line_width_factor,
             line_width_pt=self._line_width_pt,  # v1.2.22
         )
         obj.scale = self.scale
@@ -677,7 +673,6 @@ class VectorAnnotation(CanvasObject):
             data["font_family"] = self._font_family
             data["font_size_pt"] = self._font_size_pt
         # Save line width for vector annotations (all types)
-        data["line_width_factor"] = self._line_width_factor
         data["line_width_pt"] = self._line_width_pt  # v1.2.22: line width in points
         data["natural_width"] = self._natural_width
         data["natural_height"] = self._natural_height
@@ -697,7 +692,6 @@ class VectorAnnotation(CanvasObject):
             data.get("text", ""),
             font_family=data.get("font_family", DEFAULT_FONT_FAMILY),
             font_size_pt=data.get("font_size_pt", DEFAULT_TEXT_FONT_PT),
-            line_width_factor=data.get("line_width_factor", DEFAULT_LINE_WIDTH_FACTOR),
             line_width_pt=data.get("line_width_pt", DEFAULT_LINE_WIDTH_PT),  # v1.2.22
         )
         obj._base_width = data["base_width"]
@@ -845,7 +839,6 @@ class ProjectFile:
                 object_data["ann_type"] = object_data.pop("annotation_type")
                 object_data.setdefault("page", 0)
                 object_data.setdefault("scale", 1.0)
-                object_data.setdefault("line_width_factor", DEFAULT_LINE_WIDTH_FACTOR)
                 object_data.setdefault("line_width_pt", DEFAULT_LINE_WIDTH_PT)
                 ann_type = AnnotationType(object_data["ann_type"])
                 defaults = VectorAnnotation(ann_type, object_data["x"], object_data["y"], object_data["page"])

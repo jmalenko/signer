@@ -576,12 +576,7 @@ class ActionPlayer:
         self.canvas.update()
 
     def _execute_set_line_width(self, action: Dict[str, Any]) -> None:
-        """Set line width (in PDF points) on a vector annotation.
-        
-        Updates both _line_width_pt (used by LINE/RECT/ELLIPSE) and
-        _line_width_factor (used by CHECKMARK/CROSSMARK/ARROW) to keep them in sync.
-        """
-        from signer.objects import CanvasObject
+        """Set line width (in PDF points) on a vector annotation."""
         obj_id = action.get("object_id")
         width_pt = float(action.get("width_pt", 1.5))
 
@@ -595,8 +590,6 @@ class ActionPlayer:
 
         if hasattr(obj, '_line_width_pt'):
             obj._line_width_pt = width_pt
-        if hasattr(obj, '_line_width_factor'):
-            obj._line_width_factor = width_pt / CanvasObject.DEFAULT_BASE_SIZE
         self.canvas.objectChanged.emit()
         self.canvas.update()
 

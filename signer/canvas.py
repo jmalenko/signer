@@ -699,20 +699,15 @@ class DocumentCanvas(QWidget):
         self.objectChanged.emit()
         self.update()
 
-    def set_line_width_selected(self, width_factor: float) -> None:
-        """Set line width factor for vector annotations in selection."""
-        
+    def set_line_width_selected(self, width_pt: float) -> None:
+        """Set line width in points for selected vector annotations."""
+
         selected = self.get_selected_annotations()
         if not selected:
             return
         for obj in selected:
-            # Apply only to vector annotations
-            if hasattr(obj, 'annotation_type') and (
-                obj.annotation_type in ARROW_TYPES or 
-                obj.annotation_type in {AnnotationType.CHECKMARK, AnnotationType.CROSS}
-            ):
-                if hasattr(obj, 'line_width_factor'):
-                    obj.line_width_factor = width_factor
+            if hasattr(obj, '_line_width_pt'):
+                obj._line_width_pt = width_pt
         self.objectChanged.emit()
         self.update()
 
