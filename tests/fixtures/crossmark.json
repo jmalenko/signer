@@ -9,7 +9,11 @@
       "annotation_type": "crossmark",
       "page": 0,
       "x": 275,
-      "y": 770
+      "y": 770,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "save_document"

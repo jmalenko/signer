@@ -10,7 +10,11 @@
       "x": 1198.8333333333333,
       "y": 1712.8333333333333,
       "page": 0,
-      "object_id": 0
+      "object_id": 0,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "move_annotation",
@@ -33,7 +37,11 @@
       "x": 1198.8333333333333,
       "y": 1712.8333333333333,
       "page": 0,
-      "object_id": 1
+      "object_id": 1,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#00FF00",
+      "line_width_pt": 1.5
     },
     {
       "type": "move_annotation",

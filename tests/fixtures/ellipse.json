@@ -10,7 +10,11 @@
       "x": 1065,
       "y": 1654,
       "page": 0,
-      "object_id": 0
+      "object_id": 0,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",

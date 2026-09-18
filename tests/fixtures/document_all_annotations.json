@@ -14,7 +14,11 @@
       "x": 1198.8333333333333,
       "y": 1712.8333333333333,
       "page": 0,
-      "object_id": 0
+      "object_id": 0,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "move_annotation",
@@ -28,7 +32,11 @@
       "x": 1198.8333333333333,
       "y": 1712.8333333333333,
       "page": 0,
-      "object_id": 1
+      "object_id": 1,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "move_annotation",
@@ -42,7 +50,11 @@
       "x": 1157.1666666666667,
       "y": 1671.1666666666667,
       "page": 0,
-      "object_id": 2
+      "object_id": 2,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "move_annotation",
@@ -57,7 +69,13 @@
       "y": 1728.5,
       "page": 0,
       "object_id": 3,
-      "text": "Joe Smith"
+      "text": "Joe Smith",
+      "width": 750.0,
+      "height": 150.0,
+      "color": "#cc0000",
+      "line_width_pt": 1.5,
+      "font_family": "Arial",
+      "font_size_pt": 11
     },
     {
       "type": "move_annotation",
@@ -67,7 +85,9 @@
     },
     {
       "type": "open_signature",
-      "path": "examples/signature.png"
+      "path": "examples/signature.png",
+      "width": 0.0,
+      "height": 0.0
     },
     {
       "type": "move_annotation",
@@ -85,7 +105,11 @@
       "x": 273.146216768916,
       "y": 826.6134969325154,
       "page": 1,
-      "object_id": 5
+      "object_id": 5,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "add_annotation",
@@ -93,7 +117,11 @@
       "x": 287.4979550102249,
       "y": 952.1912065439674,
       "page": 1,
-      "object_id": 6
+      "object_id": 6,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "add_annotation",
@@ -101,7 +129,11 @@
       "x": 73.61042944785294,
       "y": 1080.1912065439674,
       "page": 1,
-      "object_id": 7
+      "object_id": 7,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "add_annotation",
@@ -109,7 +141,11 @@
       "x": 100.0,
       "y": 3100.0,
       "page": 1,
-      "object_id": 9
+      "object_id": 9,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "add_annotation",
@@ -117,20 +153,32 @@
       "x": 500.0,
       "y": 3100.0,
       "page": 1,
-      "object_id": 10
+      "object_id": 10,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
-  {
-    "type": "add_annotation",
-    "annotation_type": "text",
-    "x": 1590,
-    "y": 2880,
-    "page": 1,
-    "object_id": 8,
-    "text": "Joe Smith"
-  },
-  {
+    {
+      "type": "add_annotation",
+      "annotation_type": "text",
+      "x": 1590,
+      "y": 2880,
+      "page": 1,
+      "object_id": 8,
+      "text": "Joe Smith",
+      "width": 750.0,
+      "height": 150.0,
+      "color": "#cc0000",
+      "line_width_pt": 1.5,
+      "font_family": "Arial",
+      "font_size_pt": 11
+    },
+    {
       "type": "open_signature",
-      "path": "examples/signature.png"
+      "path": "examples/signature.png",
+      "width": 0.0,
+      "height": 0.0
     },
     {
       "type": "move_annotation",
@@ -144,7 +192,9 @@
     },
     {
       "type": "open_signature",
-      "path": "examples/signature.png"
+      "path": "examples/signature.png",
+      "width": 0.0,
+      "height": 0.0
     },
     {
       "type": "move_annotation",

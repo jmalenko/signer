@@ -9,7 +9,11 @@
       "annotation_type": "arrow",
       "x": 1280.0,
       "y": 1154.0,
-      "object_id": 0
+      "object_id": 0,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -30,7 +34,11 @@
       "annotation_type": "arrow",
       "x": 1248.68,
       "y": 1351.77,
-      "object_id": 1
+      "object_id": 1,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -51,7 +59,11 @@
       "annotation_type": "arrow",
       "x": 1157.77,
       "y": 1530.18,
-      "object_id": 2
+      "object_id": 2,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -72,7 +84,11 @@
       "annotation_type": "arrow",
       "x": 1016.18,
       "y": 1671.77,
-      "object_id": 3
+      "object_id": 3,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -93,7 +109,11 @@
       "annotation_type": "arrow",
       "x": 837.77,
       "y": 1762.68,
-      "object_id": 4
+      "object_id": 4,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -114,7 +134,11 @@
       "annotation_type": "arrow",
       "x": 640.0,
       "y": 1794.0,
-      "object_id": 5
+      "object_id": 5,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -135,7 +159,11 @@
       "annotation_type": "arrow",
       "x": 442.23,
       "y": 1762.68,
-      "object_id": 6
+      "object_id": 6,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -156,7 +184,11 @@
       "annotation_type": "arrow",
       "x": 263.82,
       "y": 1671.77,
-      "object_id": 7
+      "object_id": 7,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -177,7 +209,11 @@
       "annotation_type": "arrow",
       "x": 122.23,
       "y": 1530.18,
-      "object_id": 8
+      "object_id": 8,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -198,7 +234,11 @@
       "annotation_type": "arrow",
       "x": 31.32,
       "y": 1351.77,
-      "object_id": 9
+      "object_id": 9,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -219,7 +259,11 @@
       "annotation_type": "arrow",
       "x": 0.0,
       "y": 1154.0,
-      "object_id": 10
+      "object_id": 10,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -240,7 +284,11 @@
       "annotation_type": "arrow",
       "x": 31.32,
       "y": 956.23,
-      "object_id": 11
+      "object_id": 11,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -261,7 +309,11 @@
       "annotation_type": "arrow",
       "x": 122.23,
       "y": 777.82,
-      "object_id": 12
+      "object_id": 12,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -282,7 +334,11 @@
       "annotation_type": "arrow",
       "x": 263.82,
       "y": 636.23,
-      "object_id": 13
+      "object_id": 13,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -303,7 +359,11 @@
       "annotation_type": "arrow",
       "x": 442.23,
       "y": 545.32,
-      "object_id": 14
+      "object_id": 14,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -324,7 +384,11 @@
       "annotation_type": "arrow",
       "x": 640.0,
       "y": 514.0,
-      "object_id": 15
+      "object_id": 15,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -345,7 +409,11 @@
       "annotation_type": "arrow",
       "x": 837.77,
       "y": 545.32,
-      "object_id": 16
+      "object_id": 16,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -366,7 +434,11 @@
       "annotation_type": "arrow",
       "x": 1016.18,
       "y": 636.23,
-      "object_id": 17
+      "object_id": 17,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -387,7 +459,11 @@
       "annotation_type": "arrow",
       "x": 1157.77,
       "y": 777.82,
-      "object_id": 18
+      "object_id": 18,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -408,7 +484,11 @@
       "annotation_type": "arrow",
       "x": 1248.68,
       "y": 956.23,
-      "object_id": 19
+      "object_id": 19,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",

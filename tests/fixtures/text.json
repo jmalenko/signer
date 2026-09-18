@@ -11,7 +11,13 @@
       "x": 1137.0,
       "y": 1728.5,
       "page": 0,
-      "object_id": 0
+      "object_id": 0,
+      "width": 750.0,
+      "height": 150.0,
+      "color": "#cc0000",
+      "line_width_pt": 1.5,
+      "font_family": "Arial",
+      "font_size_pt": 11
     },
     {
       "type": "move_annotation",

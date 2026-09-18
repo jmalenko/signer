@@ -10,7 +10,11 @@
       "x": 150,
       "y": 2000,
       "page": 0,
-      "object_id": 0
+      "object_id": 0,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -24,7 +28,11 @@
       "x": 300,
       "y": 2000,
       "page": 0,
-      "object_id": 1
+      "object_id": 1,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -38,7 +46,11 @@
       "x": 450,
       "y": 2000,
       "page": 0,
-      "object_id": 2
+      "object_id": 2,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -52,7 +64,11 @@
       "x": 600,
       "y": 2000,
       "page": 0,
-      "object_id": 3
+      "object_id": 3,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "resize_annotation",
@@ -66,7 +82,11 @@
       "x": 150,
       "y": 2200,
       "page": 0,
-      "object_id": 4
+      "object_id": 4,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#ff0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "set_color",
@@ -79,7 +99,11 @@
       "x": 300,
       "y": 2200,
       "page": 0,
-      "object_id": 5
+      "object_id": 5,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#00ff00",
+      "line_width_pt": 1.5
     },
     {
       "type": "set_color",
@@ -92,7 +116,11 @@
       "x": 450,
       "y": 2200,
       "page": 0,
-      "object_id": 6
+      "object_id": 6,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#0000ff",
+      "line_width_pt": 1.5
     },
     {
       "type": "set_color",
@@ -105,7 +133,11 @@
       "x": 600,
       "y": 2200,
       "page": 0,
-      "object_id": 7
+      "object_id": 7,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#ffff00",
+      "line_width_pt": 1.5
     },
     {
       "type": "set_color",
@@ -118,7 +150,11 @@
       "x": 150,
       "y": 2400,
       "page": 0,
-      "object_id": 8
+      "object_id": 8,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "add_annotation",
@@ -126,7 +162,11 @@
       "x": 300,
       "y": 2400,
       "page": 0,
-      "object_id": 9
+      "object_id": 9,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "add_annotation",
@@ -134,7 +174,11 @@
       "x": 450,
       "y": 2400,
       "page": 0,
-      "object_id": 10
+      "object_id": 10,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "add_annotation",
@@ -142,7 +186,11 @@
       "x": 600,
       "y": 2400,
       "page": 0,
-      "object_id": 11
+      "object_id": 11,
+      "width": 83.33333333333334,
+      "height": 83.33333333333334,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "save_document"

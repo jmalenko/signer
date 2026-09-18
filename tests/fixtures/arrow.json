@@ -9,7 +9,11 @@
       "annotation_type": "arrow",
       "page": 0,
       "x": 1157.1666666666667,
-      "y": 1671.1666666666667
+      "y": 1671.1666666666667,
+      "width": 333.33333333333337,
+      "height": 333.33333333333337,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
     },
     {
       "type": "move_annotation",

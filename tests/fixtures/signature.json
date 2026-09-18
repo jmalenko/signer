@@ -6,7 +6,9 @@
     },
     {
       "type": "add_signature",
-      "path": "examples/signature.png"
+      "path": "examples/signature.png",
+      "width": 0.0,
+      "height": 0.0
     },
     {
       "type": "resize_annotation",
