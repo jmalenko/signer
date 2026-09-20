@@ -426,7 +426,7 @@ unit unless noted otherwise. See [§13](#13-keyboard-shortcuts-reference) for ke
 | Operation | Behavior |
 |---|---|
 | Move | 12pt per press; Shift+arrow = 1px |
-| Resize | Drag boundary handles; non-text/non-signature types preserve aspect ratio unless the type supports free resize (Text, Line, Arrow, Rectangle, Ellipse) |
+| Resize | Drag boundary handles; non-text/non-signature types preserve aspect ratio unless the type supports free resize (Text, Line, Arrow, Rectangle, Ellipse). Dragging a handle past the opposite (anchor) handle flips the box across that anchor — the dragged handle becomes the opposite corner/edge and resizing continues. |
 | Duplicate | Copies preserving size/color, offset 20px |
 | Cut | Copies to clipboard (JSON), then deletes |
 | Copy | Copies selection to clipboard as JSON, capturing coordinates at copy time (later moves of the source do not affect the paste) |

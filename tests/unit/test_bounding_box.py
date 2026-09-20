@@ -345,6 +345,78 @@ class TestResizeCalculations:
         assert obj.scaled_height >= 8
 
 
+class _FakeMouseEvent:
+    """Minimal stand-in for QMouseEvent as used by DocumentCanvas.mouseMoveEvent."""
+
+    def __init__(self, pos: QPointF):
+        self._pos = pos
+
+    def position(self) -> QPointF:
+        return self._pos
+
+    def modifiers(self):
+        from PySide6.QtCore import Qt
+        return Qt.NoModifier
+
+
+def _canvas_with_annotation(canvas, ann_type):
+    """Canvas at 1:1 scale with a 100x100 annotation at doc (100, 100)."""
+    canvas._pages = [Image.new("RGB", (1000, 1000), "white")]
+    canvas._current_page = 0
+    canvas._fit_scale = 1.0
+    canvas._doc_offset_x = 0.0
+    canvas._doc_offset_y = 0.0
+
+    obj = VectorAnnotation(ann_type, 100, 100, 0)
+    obj._base_width = 100
+    obj._base_height = 100
+    obj.scale = 1.0
+    canvas._page_objects[0] = [obj]
+    canvas.select_annotation(obj)
+    return obj
+
+
+class TestResizeDragPastAnchor:
+    """Dragging a handle past the opposite (anchor) handle flips the box."""
+
+    def test_drag_br_handle_past_tl_anchor_flips_box(self, canvas):
+        """BR handle dragged above-left of the TL anchor becomes the new TL corner."""
+        obj = _canvas_with_annotation(canvas, AnnotationType.CHECKMARK)
+
+        canvas._start_handle_drag(7, QPointF(200, 200))
+        canvas.mouseMoveEvent(_FakeMouseEvent(QPointF(60, 60)))
+
+        # Box spans from the cursor to the anchor, i.e. (60, 60)-(100, 100).
+        assert obj.scaled_width == pytest.approx(40.0)
+        assert obj.scaled_height == pytest.approx(40.0)
+        assert obj.x == pytest.approx(60.0)
+        assert obj.y == pytest.approx(100.0 - obj.scaled_height)
+
+    def test_drag_tl_handle_past_br_anchor_flips_box(self, canvas):
+        """TL handle dragged below-right of the BR anchor becomes the new BR corner."""
+        obj = _canvas_with_annotation(canvas, AnnotationType.CHECKMARK)
+
+        canvas._start_handle_drag(0, QPointF(100, 100))
+        canvas.mouseMoveEvent(_FakeMouseEvent(QPointF(260, 260)))
+
+        # Anchor is BR at (200, 200); box spans (200, 200)-(260, 260).
+        assert obj.scaled_width == pytest.approx(60.0)
+        assert obj.x == pytest.approx(200.0)
+        assert obj.y == pytest.approx(200.0)
+
+    def test_drag_right_edge_handle_past_left_anchor_flips_box(self, canvas):
+        """MR handle dragged left of the ML anchor mirrors a free-resize box."""
+        obj = _canvas_with_annotation(canvas, AnnotationType.RECTANGLE)
+
+        canvas._start_handle_drag(4, QPointF(200, 150))
+        canvas.mouseMoveEvent(_FakeMouseEvent(QPointF(70, 150)))
+
+        assert obj.scaled_width == pytest.approx(30.0)
+        assert obj.x == pytest.approx(70.0)
+        # Vertical extent is untouched by an edge drag.
+        assert obj.scaled_height == pytest.approx(100.0)
+        assert obj.y == pytest.approx(100.0)
+
 class TestSquareCircleSnapThreshold:
     """Tests for rectangle/ellipse snap-to-square threshold behavior."""
 

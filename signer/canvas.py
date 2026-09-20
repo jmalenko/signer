@@ -1152,29 +1152,29 @@ class DocumentCanvas(QWidget):
                     fx = HANDLE_FX[h]
                     fy = HANDLE_FY[h]
 
+                    # Signed extents from the fixed anchor. A negative extent means
+                    # the handle was dragged past the anchor: the box flips to the
+                    # other side and the drag keeps resizing from there.
+                    if fx != self._hdrag_anchor_fx:
+                        signed_w = (doc_pt.x() - ax) if fx > self._hdrag_anchor_fx else (ax - doc_pt.x())
+                        signed_w /= abs(fx - self._hdrag_anchor_fx)
+                    else:
+                        signed_w = self._hdrag_start_w
+                    if fy != self._hdrag_anchor_fy:
+                        signed_h = (doc_pt.y() - ay) if fy > self._hdrag_anchor_fy else (ay - doc_pt.y())
+                        signed_h /= abs(fy - self._hdrag_anchor_fy)
+                    else:
+                        signed_h = self._hdrag_start_h
+
+                    anchor_fx = 1.0 - self._hdrag_anchor_fx if signed_w < 0 else self._hdrag_anchor_fx
+                    anchor_fy = 1.0 - self._hdrag_anchor_fy if signed_h < 0 else self._hdrag_anchor_fy
+                    new_w = abs(signed_w)
+                    new_h = abs(signed_h)
+
                     if self._selected.supports_free_resize():
-                        # Signed extents from the fixed anchor; clamp to keep the
-                        # box on the correct side (no inversion past the anchor).
-                        if fx != self._hdrag_anchor_fx:
-                            new_w = (doc_pt.x() - ax) if fx > self._hdrag_anchor_fx else (ax - doc_pt.x())
-                        else:
-                            new_w = self._hdrag_start_w
-                        if fy != self._hdrag_anchor_fy:
-                            new_h = (doc_pt.y() - ay) if fy > self._hdrag_anchor_fy else (ay - doc_pt.y())
-                        else:
-                            new_h = self._hdrag_start_h
                         new_w = max(8.0, new_w)
                         new_h = max(8.0, new_h)
                     else:
-                        if fx != self._hdrag_anchor_fx:
-                            new_w = abs(doc_pt.x() - ax) / abs(fx - self._hdrag_anchor_fx)
-                        else:
-                            new_w = self._hdrag_start_w
-                        if fy != self._hdrag_anchor_fy:
-                            new_h = abs(doc_pt.y() - ay) / abs(fy - self._hdrag_anchor_fy)
-                        else:
-                            new_h = self._hdrag_start_h
-
                         sx = new_w / max(1.0, self._hdrag_start_w)
                         sy = new_h / max(1.0, self._hdrag_start_h)
                         if fx == self._hdrag_anchor_fx:
@@ -1196,8 +1196,8 @@ class DocumentCanvas(QWidget):
                         new_w, new_h, _ = self._snap_rect_ellipse_size(new_w, new_h, h, modifier_pressed)
 
                     self._selected.resize_to_bounds(new_w, new_h)
-                    self._selected.x = ax - self._hdrag_anchor_fx * self._selected.scaled_width
-                    self._selected.y = ay - self._hdrag_anchor_fy * self._selected.scaled_height
+                    self._selected.x = ax - anchor_fx * self._selected.scaled_width
+                    self._selected.y = ay - anchor_fy * self._selected.scaled_height
                 
                 # Record resize action with coalescing using stable object ID
                 obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
