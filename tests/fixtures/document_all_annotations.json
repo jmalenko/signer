@@ -86,8 +86,9 @@
     {
       "type": "open_signature",
       "path": "examples/signature.png",
-      "width": 0.0,
-      "height": 0.0
+      "object_id": 4,
+      "width": 854.0,
+      "height": 417.0
     },
     {
       "type": "move_annotation",
@@ -177,8 +178,9 @@
     {
       "type": "open_signature",
       "path": "examples/signature.png",
-      "width": 0.0,
-      "height": 0.0
+      "object_id": 11,
+      "width": 854.0,
+      "height": 417.0
     },
     {
       "type": "move_annotation",
@@ -193,8 +195,9 @@
     {
       "type": "open_signature",
       "path": "examples/signature.png",
-      "width": 0.0,
-      "height": 0.0
+      "object_id": 12,
+      "width": 854.0,
+      "height": 417.0
     },
     {
       "type": "move_annotation",

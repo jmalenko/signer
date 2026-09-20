@@ -103,9 +103,11 @@ class ActionPlayer:
         if not result:
             raise RuntimeError(f"Failed to load signature: {path}")
         
-        # Track the created object - use next available ID
+        # Track the created object - honor an explicit object_id, falling back
+        # to the auto-increment counter for older fixtures without one.
         if self.canvas.selected:
-            self._register_object(self._next_object_id, self.canvas.selected)
+            obj_id = action.get("object_id", self._next_object_id)
+            self._register_object(obj_id, self.canvas.selected)
 
     def _execute_add_signature(self, action: Dict[str, Any]) -> None:
         """Add a signature file (same as open_signature)."""
@@ -114,9 +116,11 @@ class ActionPlayer:
         if not result:
             raise RuntimeError(f"Failed to load signature: {path}")
         
-        # Track the created object - use next available ID
+        # Track the created object - honor an explicit object_id, falling back
+        # to the auto-increment counter for older fixtures without one.
         if self.canvas.selected:
-            self._register_object(self._next_object_id, self.canvas.selected)
+            obj_id = action.get("object_id", self._next_object_id)
+            self._register_object(obj_id, self.canvas.selected)
 
     def _execute_add_annotation(self, action: Dict[str, Any]) -> None:
         """Add a vector annotation and record to history."""

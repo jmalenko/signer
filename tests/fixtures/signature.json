@@ -7,8 +7,9 @@
     {
       "type": "add_signature",
       "path": "examples/signature.png",
-      "width": 0.0,
-      "height": 0.0
+      "object_id": 0,
+      "width": 854.0,
+      "height": 417.0
     },
     {
       "type": "move_annotation",

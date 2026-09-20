@@ -80,12 +80,15 @@ class ApplicationActionRecorder(QObject):
             "path": path
         })
     
-    def record_open_signature(self, path: str) -> None:
+    def record_open_signature(self, path: str, obj=None) -> None:
         """Record opening a signature."""
-        self._recorder.record_open_signature(path)
+        self._recorder.record_open_signature(path, obj)
         self.actionRecorded.emit({
             "type": "open_signature",
-            "path": path
+            "path": path,
+            "object_id": id(obj) if obj else None,
+            "width": obj.scaled_width if obj else 0.0,
+            "height": obj.scaled_height if obj else 0.0
         })
     
     def record_add_annotation(self, annotation_type: str, x: float, y: float, page: int, obj=None) -> None:
@@ -200,7 +203,7 @@ def patch_main_window_for_recording(main_window) -> None:
     def recorded_load_signature(path, at_default_position):
         result = original_load_signature(path, at_default_position)
         if result and recorder.is_enabled():
-            recorder.record_open_signature(path)
+            recorder.record_open_signature(path, main_window.canvas.selected)
         return result
     
     # Wrap _add_vector

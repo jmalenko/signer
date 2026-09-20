@@ -139,12 +139,16 @@ class ActionRecorder:
             "path": path
         })
     
-    def record_open_signature(self, path: str):
+    def record_open_signature(self, path: str, obj=None):
         if not self._enabled:
             return
+        obj_id = self._get_object_id(obj) if obj else None
         self.actions.append({
             "type": "open_signature",
-            "path": path
+            "path": path,
+            "object_id": obj_id,
+            "width": obj.scaled_width if obj else 0.0,
+            "height": obj.scaled_height if obj else 0.0
         })
     
     def record_add_annotation(self, annotation_type: str, x: float, y: float, page: int, obj=None):
