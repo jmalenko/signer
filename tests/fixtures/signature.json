@@ -11,13 +11,6 @@
       "height": 0.0
     },
     {
-      "type": "resize_annotation",
-      "object_id": 0,
-      "width": 640.0906170768903,
-      "height": 312.55010224948865,
-      "handle": 2
-    },
-    {
       "type": "move_annotation",
       "object_id": 0,
       "x": 1550,
