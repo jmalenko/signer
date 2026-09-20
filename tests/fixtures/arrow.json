@@ -18,8 +18,8 @@
     {
       "type": "move_annotation",
       "object_id": 0,
-      "x": 77.19836400818002,
-      "y": 1882.8548057259713
+      "x": 70,
+      "y": 2000
     },
     {
       "type": "save_document"

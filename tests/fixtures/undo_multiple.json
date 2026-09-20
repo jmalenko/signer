@@ -20,7 +20,7 @@
       "type": "move_annotation",
       "object_id": 0,
       "x": 285,
-      "y": 650
+      "y": 820
     },
     {
       "type": "resize_annotation",
@@ -47,7 +47,7 @@
       "type": "move_annotation",
       "object_id": 1,
       "x": 275,
-      "y": 770
+      "y": 945
     },
     {
       "type": "set_color",
@@ -105,8 +105,8 @@
     {
       "type": "move_annotation",
       "object_id": 3,
-      "x": 77.19836400818002,
-      "y": 1882.8548057259713
+      "x": 70,
+      "y": 2000
     },
     {
       "type": "set_color",

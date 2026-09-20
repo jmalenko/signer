@@ -23,8 +23,8 @@
     {
       "type": "move_annotation",
       "object_id": 0,
-      "x": 273.146216768916,
-      "y": 826.6134969325154
+      "x": 285,
+      "y": 820
     },
     {
       "type": "add_annotation",
@@ -41,8 +41,8 @@
     {
       "type": "move_annotation",
       "object_id": 1,
-      "x": 287.4979550102249,
-      "y": 952.1912065439674
+      "x": 275,
+      "y": 945
     },
     {
       "type": "add_annotation",
@@ -59,8 +59,8 @@
     {
       "type": "move_annotation",
       "object_id": 2,
-      "x": 73.61042944785294,
-      "y": 2080.1912065439674
+      "x": 70,
+      "y": 2000
     },
     {
       "type": "add_annotation",
@@ -80,8 +80,8 @@
     {
       "type": "move_annotation",
       "object_id": 3,
-      "x": 1538.848670756646,
-      "y": 1936.6002044989773
+      "x": 1540,
+      "y": 1940
     },
     {
       "type": "open_signature",
@@ -92,8 +92,8 @@
     {
       "type": "move_annotation",
       "object_id": 4,
-      "x": 1500,
-      "y": 1950
+      "x": 1550,
+      "y": 1960
     },
     {
       "type": "change_page",
@@ -102,8 +102,8 @@
     {
       "type": "add_annotation",
       "annotation_type": "checkmark",
-      "x": 273.146216768916,
-      "y": 826.6134969325154,
+      "x": 285,
+      "y": 820,
       "page": 1,
       "object_id": 5,
       "width": 83.33333333333334,
@@ -114,8 +114,8 @@
     {
       "type": "add_annotation",
       "annotation_type": "crossmark",
-      "x": 287.4979550102249,
-      "y": 952.1912065439674,
+      "x": 275,
+      "y": 945,
       "page": 1,
       "object_id": 6,
       "width": 83.33333333333334,
@@ -126,8 +126,8 @@
     {
       "type": "add_annotation",
       "annotation_type": "arrow",
-      "x": 73.61042944785294,
-      "y": 1080.1912065439674,
+      "x": 70,
+      "y": 2000,
       "page": 1,
       "object_id": 7,
       "width": 333.33333333333337,
@@ -139,7 +139,7 @@
       "type": "add_annotation",
       "annotation_type": "rectangle",
       "x": 100.0,
-      "y": 3100.0,
+      "y": 3000.0,
       "page": 1,
       "object_id": 9,
       "width": 333.33333333333337,
@@ -151,7 +151,7 @@
       "type": "add_annotation",
       "annotation_type": "ellipse",
       "x": 500.0,
-      "y": 3100.0,
+      "y": 3000.0,
       "page": 1,
       "object_id": 10,
       "width": 333.33333333333337,

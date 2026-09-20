@@ -22,8 +22,8 @@
     {
       "type": "move_annotation",
       "object_id": 0,
-      "x": 1560.3762781186094,
-      "y": 1732.087934560327
+      "x": 1540,
+      "y": 1940
     },
     {
       "type": "save_document"
