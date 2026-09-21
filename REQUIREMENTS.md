@@ -538,3 +538,26 @@ strokes.
    affect preview centering or saved output.
 
 See [FUNCTIONAL_SPECIFICATION.md §17](FUNCTIONAL_SPECIFICATION.md#17-prepare-signature-tool).
+
+## Version 1.2.39 - Annotation Rotation
+
+Motivation: signatures benefit from quick, subtle variation between uses, and other annotations
+sometimes need to follow content that is not horizontal. Rotation should remain geometrically correct when a page itself is rotated.
+
+1. Every annotation type shall support free rotation around its center. Rotation shall be
+   available directly from the selected annotation through a rotation handle outside its
+   boundary and through a numeric angle control in the toolbar.
+2. Dragging the rotation handle shall snap the angle to 15° increments by default. Holding Shift
+   shall temporarily disable snapping for continuous rotation; the numeric control shall allow
+   precise one-degree changes and resetting to 0°.
+3. Rotating a multi-selection shall rotate the annotations and their positions as one group
+   around the selection's shared center, while preserving each annotation's relative position.
+4. Annotation rotation shall be undoable/redoable, copied when duplicating or copying/pasting,
+   saved in project files, and reproduced in exported and printed output.
+5. Rotating a page shall apply the same rigid 90° transformation to the complete geometry of
+   every annotation on that page, superseding Version 1.2.16's center-only transformation. An
+   annotation shall remain attached to the same page content: for example, both endpoints of an
+   arrow shall still identify the same two points after page rotation.
+
+The rotation is a visual variation only; it does not add cryptographic or legal protection to a
+signature.

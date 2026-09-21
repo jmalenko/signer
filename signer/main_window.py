@@ -54,6 +54,7 @@ from .compositor import (
     composite_objects_to_jpg,
     composite_pages_to_pdf,
     composite_pages_to_tiff,
+    _composite_objects,
 )
 from .export_quality_dialog import ExportQualityOptionsPanel
 from .notification import NotificationToast
@@ -542,6 +543,23 @@ class MainWindow(QMainWindow):
         self._font_family_combo.currentTextChanged.connect(self._on_font_family_changed)
         self._font_family_combo_action = tb.addWidget(self._font_family_combo)
 
+        self._angle_label = QLabel("Angle:")
+        self._angle_label_action = tb.addWidget(self._angle_label)
+        self._angle_spinner = QSpinBox()
+        self._angle_spinner.setRange(0, 359)
+        self._angle_spinner.setSingleStep(1)
+        self._angle_spinner.setSuffix("°")
+        self._angle_spinner.setMaximumWidth(70)
+        self._angle_spinner.setToolTip("Clockwise annotation rotation in degrees")
+        self._angle_spinner.valueChanged.connect(self._on_angle_changed)
+        self._angle_spinner_action = tb.addWidget(self._angle_spinner)
+
+        self._reset_angle_btn = QToolButton(self)
+        self._reset_angle_btn.setText("↺")
+        self._reset_angle_btn.setToolTip("Reset rotation to 0°")
+        self._reset_angle_btn.clicked.connect(lambda: self._angle_spinner.setValue(0))
+        self._reset_angle_action = tb.addWidget(self._reset_angle_btn)
+
         # Add stretch to push hamburger menu to the right
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -924,8 +942,22 @@ class MainWindow(QMainWindow):
         self._font_family_combo_action.setVisible(font_visible)
         self._font_label_action.setVisible(font_visible)
 
+        angle_visible = has_selection
+        self._angle_label.setVisible(angle_visible)
+        self._angle_spinner.setVisible(angle_visible)
+        self._reset_angle_btn.setVisible(angle_visible)
+        self._angle_label_action.setVisible(angle_visible)
+        self._angle_spinner_action.setVisible(angle_visible)
+        self._reset_angle_action.setVisible(angle_visible)
+        if angle_visible:
+            self._angle_spinner.blockSignals(True)
+            self._angle_spinner.setValue(round(selected.rotation) % 360)
+            self._angle_spinner.blockSignals(False)
+
         # Single separator before the whole property group; shown only if something in it is visible.
-        self._properties_separator_action.setVisible(color_visible or width_visible or font_visible)
+        self._properties_separator_action.setVisible(
+            color_visible or width_visible or font_visible or angle_visible
+        )
 
         self._update_page_nav_separator_visibility()
 
@@ -988,6 +1020,10 @@ class MainWindow(QMainWindow):
         color = selected.color if selected is not None else self._current_color
         c = color.name()
         self._color_btn.setStyleSheet(f"background-color: {c}; color: {'#fff' if color.lightness() < 128 else '#000'};")
+
+    def _on_angle_changed(self, value: int) -> None:
+        """Rotate the current selection around its shared center."""
+        self.canvas.rotate_selected_to(value)
 
     # v1.2.22: Line width, font size, and font family handlers
     def _on_width_changed(self, value: float) -> None:
@@ -2172,31 +2208,13 @@ class MainWindow(QMainWindow):
             
             try:
                 for page_idx in range(total):
-                    # Get page image
-                    page_image = self.canvas.page_image_at(page_idx)
+                    page_image = self.canvas.get_page_image_with_rotation(page_idx)
                     if page_image is None:
                         continue
-                    
-                    # Get page objects
-                    objects = self.canvas.page_objects_at(page_idx)
-                    
-                    # Composite objects onto page image (in memory, no file I/O)
+
+                    objects = self.canvas.page_objects_with_rotation_at(page_idx)
                     composite_image = page_image.convert("RGBA")
-                    if objects:
-                        from PIL import Image as PILImage
-                        pw, ph = composite_image.size
-                        for obj in objects:
-                            try:
-                                overlay = obj.render_to_pil().convert("RGBA")
-                                x = int(round(obj.x))
-                                y = int(round(obj.y))
-                                # Clamp to avoid out-of-bounds
-                                x = max(0, min(x, pw - 1))
-                                y = max(0, min(y, ph - 1))
-                                composite_image.alpha_composite(overlay, dest=(x, y))
-                            except Exception:
-                                logger.warning("Failed to render %s for printing; skipping", type(obj).__name__, exc_info=True)
-                                continue
+                    _composite_objects(composite_image, objects)
                     
                     # Convert back to RGB for printing
                     composite_image = composite_image.convert("RGB")

@@ -102,6 +102,8 @@ HANDLE_FX = [0.0, 0.5, 1.0, 0.0, 1.0, 0.0, 0.5, 1.0]
 HANDLE_FY = [0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.0]
 ANCHOR_HANDLE = [7, 6, 5, 4, 3, 2, 1, 0]  # opposite handle for each handle
 HANDLE_SIZE = 10.0
+ROTATION_HANDLE_SIZE = 12.0
+ROTATION_HANDLE_OFFSET = 24.0
 VISIBLE_ALPHA_RUN = re.compile(rb"[^\x00]+")
 
 
@@ -116,6 +118,7 @@ class CanvasObject:
         self._base_width = float(width)
         self._base_height = float(height)
         self.scale: float = 1.0
+        self._rotation: float = 0.0
         self.page: int = page
         self.color: QColor = QColor("#cc0000")
 
@@ -126,6 +129,14 @@ class CanvasObject:
     @property
     def scaled_height(self) -> float:
         return self._base_height * self.scale
+
+    @property
+    def rotation(self) -> float:
+        return self._rotation
+
+    @rotation.setter
+    def rotation(self, angle: float) -> None:
+        self._rotation = float(angle) % 360.0
 
     def clamp_to_page(self, pw: float, ph: float) -> None:
         self.x = max(0.0, min(self.x, max(0.0, pw - self.scaled_width)))
@@ -141,12 +152,50 @@ class CanvasObject:
     def duplicate(self) -> "CanvasObject":
         raise NotImplementedError
 
-    def handle_rects_viewport(self, vx: float, vy: float, vw: float, vh: float) -> list[QRectF]:
+    def handle_rects_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> list[QRectF]:
         hs = HANDLE_SIZE
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
         return [
-            QRectF(vx + fx * vw - hs / 2, vy + fy * vh - hs / 2, hs, hs)
-            for fx, fy in zip(HANDLE_FX, HANDLE_FY)
+            QRectF(point.x() - hs / 2, point.y() - hs / 2, hs, hs)
+            for point in (
+                self._rotate_point(QPointF(vx + fx * vw, vy + fy * vh), center, angle)
+                for fx, fy in zip(HANDLE_FX, HANDLE_FY)
+            )
         ]
+
+    def rotation_handle_center_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> QPointF:
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        return self._rotate_point(
+            QPointF(center.x(), vy - ROTATION_HANDLE_OFFSET), center, angle
+        )
+
+    def rotation_handle_rect_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> QRectF:
+        center = self.rotation_handle_center_viewport(vx, vy, vw, vh, rotation)
+        half = ROTATION_HANDLE_SIZE / 2.0
+        return QRectF(center.x() - half, center.y() - half, ROTATION_HANDLE_SIZE, ROTATION_HANDLE_SIZE)
 
     def supports_free_resize(self) -> bool:
         return False
@@ -159,6 +208,51 @@ class CanvasObject:
 
     def endpoint_points_doc(self) -> list[QPointF]:
         return self.endpoint_points_viewport(self.x, self.y, self.scaled_width, self.scaled_height)
+
+    @staticmethod
+    def _rotate_point(point: QPointF, center: QPointF, angle_deg: float) -> QPointF:
+        """Rotate a point clockwise in screen/document coordinates."""
+        radians = math.radians(angle_deg)
+        cos_a = math.cos(radians)
+        sin_a = math.sin(radians)
+        dx = point.x() - center.x()
+        dy = point.y() - center.y()
+        return QPointF(
+            center.x() + cos_a * dx - sin_a * dy,
+            center.y() + sin_a * dx + cos_a * dy,
+        )
+
+    def boundary_points_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> list[QPointF]:
+        """Return the four corners of the rotated viewport boundary."""
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        return [
+            self._rotate_point(point, center, angle)
+            for point in (
+                QPointF(vx, vy),
+                QPointF(vx + vw, vy),
+                QPointF(vx + vw, vy + vh),
+                QPointF(vx, vy + vh),
+            )
+        ]
+
+    def render_for_compositing(self) -> tuple[Image.Image, float, float]:
+        """Render at the stored angle and return image plus center-preserving position."""
+        unrotated = self.render_to_pil().convert("RGBA")
+        angle = self.rotation % 360.0
+        if abs(angle) < 1e-9:
+            return unrotated, self.x, self.y
+        rotated = unrotated.rotate(-angle, expand=True, resample=Image.Resampling.BICUBIC)
+        center_x = self.x + self.scaled_width / 2.0
+        center_y = self.y + self.scaled_height / 2.0
+        return rotated, center_x - rotated.width / 2.0, center_y - rotated.height / 2.0
 
     def set_scaled_size(self, width: float, height: float) -> None:
         """Resize object in document-space units."""
@@ -178,26 +272,59 @@ class CanvasObject:
         """Apply an interactive boundary resize."""
         self.set_scaled_size(width, height)
 
-    def hit_test_handle(self, vx: float, vy: float, vw: float, vh: float, pt: QPointF) -> int:
+    def hit_test_handle(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        pt: QPointF,
+        rotation: float | None = None,
+    ) -> int:
         """Return handle index 0-7 if pt is over a handle, else -1."""
-        for i, r in enumerate(self.handle_rects_viewport(vx, vy, vw, vh)):
+        for i, r in enumerate(self.handle_rects_viewport(vx, vy, vw, vh, rotation)):
             if r.contains(pt):
                 return i
         return -1
 
-    def hit_test_point(self, vx: float, vy: float, vw: float, vh: float, pt: QPointF) -> bool:
+    def contains_viewport_point(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        pt: QPointF,
+        rotation: float | None = None,
+    ) -> bool:
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        local_pt = self._rotate_point(pt, center, -angle)
+        return QRectF(vx, vy, vw, vh).contains(local_pt)
+
+    def hit_test_point(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        pt: QPointF,
+        rotation: float | None = None,
+    ) -> bool:
         """Return True only when the point lands on a visible alpha pixel."""
         if vw <= 0 or vh <= 0:
             return False
-        if not QRectF(vx, vy, vw, vh).contains(pt):
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        local_pt = self._rotate_point(pt, center, -angle)
+        if not QRectF(vx, vy, vw, vh).contains(local_pt):
             return False
 
         img = self.render_to_pil().convert("RGBA")
         if img.width <= 0 or img.height <= 0:
             return False
 
-        rel_x = ((pt.x() - vx) / vw) * img.width
-        rel_y = ((pt.y() - vy) / vh) * img.height
+        rel_x = ((local_pt.x() - vx) / vw) * img.width
+        rel_y = ((local_pt.y() - vy) / vh) * img.height
         x = int(round(rel_x))
         y = int(round(rel_y))
         if x < 0 or x >= img.width or y < 0 or y >= img.height:
@@ -206,7 +333,15 @@ class CanvasObject:
         alpha = img.getpixel((x, y))[3]
         return alpha > 0
 
-    def distance_to_visible_pixel(self, vx: float, vy: float, vw: float, vh: float, pt: QPointF) -> float:
+    def distance_to_visible_pixel(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        pt: QPointF,
+        rotation: float | None = None,
+    ) -> float:
         """Distance from pt to the nearest visible rendered pixel in this object."""
         if vw <= 0 or vh <= 0:
             return float("inf")
@@ -217,8 +352,11 @@ class CanvasObject:
 
         width, height = img.size
         alpha = img.getchannel("A").tobytes()
-        query_x = ((pt.x() - vx) / vw) * width
-        query_y = ((pt.y() - vy) / vh) * height
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        local_pt = self._rotate_point(pt, center, -angle)
+        query_x = ((local_pt.x() - vx) / vw) * width
+        query_y = ((local_pt.y() - vy) / vh) * height
         scale_x = vw / width
         scale_y = vh / height
         nearest_squared = float("inf")
@@ -251,6 +389,7 @@ class CanvasObject:
             "base_width": self._base_width,
             "base_height": self._base_height,
             "scale": self.scale,
+            "rotation": self.rotation % 360.0,
             "page": self.page,
             "color": self.color.name(),
         }
@@ -304,6 +443,7 @@ class SignatureObject(CanvasObject):
             self.page,
         )
         obj.scale = self.scale
+        obj.rotation = self.rotation
         obj.color = QColor(self.color)
         return obj
 
@@ -336,6 +476,7 @@ class SignatureObject(CanvasObject):
         obj._base_width = data["base_width"]
         obj._base_height = data["base_height"]
         obj.scale = data["scale"]
+        obj.rotation = float(data.get("rotation", 0.0)) % 360.0
         obj.color = QColor(data["color"])
         return obj
 
@@ -421,24 +562,33 @@ class VectorAnnotation(CanvasObject):
     def supports_endpoint_handles(self) -> bool:
         return self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}
 
-    def endpoint_points_viewport(self, vx: float, vy: float, vw: float, vh: float) -> list[QPointF]:
+    def endpoint_points_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> list[QPointF]:
         if not self.supports_endpoint_handles():
             return []
 
         if self.ann_type == AnnotationType.LINE:
             angle = getattr(self, '_angle', None)
             if angle is None:
-                return [QPointF(vx, vy + vh), QPointF(vx + vw, vy)]
+                points = [QPointF(vx, vy + vh), QPointF(vx + vw, vy)]
+                return self._rotate_endpoint_points(points, vx, vy, vw, vh, rotation)
 
             cx, cy = vx + vw / 2.0, vy + vh / 2.0
             half_len = min(vw, vh) / 2.0
             a_rad = math.radians(angle)
             cos_a = math.cos(a_rad)
             sin_a = math.sin(a_rad)
-            return [
+            points = [
                 QPointF(cx - cos_a * half_len, cy - sin_a * half_len),
                 QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
             ]
+            return self._rotate_endpoint_points(points, vx, vy, vw, vh, rotation)
 
         # ARROW: use actual drawn tail/tip so endpoint anchors match visuals.
         angle_deg = getattr(self, '_angle', None)
@@ -451,15 +601,35 @@ class VectorAnnotation(CanvasObject):
         sin_a = math.sin(angle_rad)
         tail = QPointF(cx - cos_a * shaft, cy + sin_a * shaft)
         tip = QPointF(cx + cos_a * shaft, cy - sin_a * shaft)
-        return [tail, tip]
+        return self._rotate_endpoint_points([tail, tip], vx, vy, vw, vh, rotation)
 
-    def handle_rects_viewport(self, vx: float, vy: float, vw: float, vh: float) -> list[QRectF]:
+    def _rotate_endpoint_points(
+        self,
+        points: list[QPointF],
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None,
+    ) -> list[QPointF]:
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        return [self._rotate_point(point, center, angle) for point in points]
+
+    def handle_rects_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> list[QRectF]:
         if not self.supports_endpoint_handles():
-            return super().handle_rects_viewport(vx, vy, vw, vh)
+            return super().handle_rects_viewport(vx, vy, vw, vh, rotation)
         hs = HANDLE_SIZE
         return [
             QRectF(pt.x() - hs / 2.0, pt.y() - hs / 2.0, hs, hs)
-            for pt in self.endpoint_points_viewport(vx, vy, vw, vh)
+            for pt in self.endpoint_points_viewport(vx, vy, vw, vh, rotation)
         ]
 
     # ------------------------------------------------------------------ text fitting
@@ -653,6 +823,7 @@ class VectorAnnotation(CanvasObject):
             line_width_pt=self._line_width_pt,  # v1.2.22
         )
         obj.scale = self.scale
+        obj.rotation = self.rotation
         obj.color = QColor(self.color)
         # v1.2.22: Copy bounding box for free-resize types (TEXT, LINE, RECTANGLE, ELLIPSE)
         if self.supports_free_resize():
@@ -697,6 +868,7 @@ class VectorAnnotation(CanvasObject):
         obj._base_width = data["base_width"]
         obj._base_height = data["base_height"]
         obj.scale = data["scale"]
+        obj.rotation = float(data.get("rotation", 0.0)) % 360.0
         # Handle color: can be either a string like "#FF0000" or already a QColor
         color_val = data["color"]
         if isinstance(color_val, QColor):

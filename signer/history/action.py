@@ -76,6 +76,8 @@ class Action(ABC):
             return ChangePageAction.from_data(data)
         elif action_type == "rotate_page":
             return RotatePageAction.from_data(data)
+        elif action_type == "rotate_annotation":
+            return RotateAnnotationAction.from_data(data)
         elif action_type == "set_text":
             return SetTextAnnotationAction.from_data(data)
         elif action_type == "change_line_width":  # v1.2.22
@@ -1042,6 +1044,65 @@ class RotatePageAction(Action):
             page=data["page"],
             to_rotation=data["to_rotation"],
             from_rotation=data.get("from_rotation"),
+        )
+
+
+class RotateAnnotationAction(Action):
+    """Rotate and reposition one annotation as part of an object/group rotation."""
+
+    def __init__(
+        self,
+        object_id: int,
+        from_x: float,
+        from_y: float,
+        from_rotation: float,
+        to_x: float,
+        to_y: float,
+        to_rotation: float,
+    ) -> None:
+        super().__init__(
+            "rotate_annotation",
+            {
+                "object_id": object_id,
+                "from_x": from_x,
+                "from_y": from_y,
+                "from_rotation": from_rotation,
+                "to_x": to_x,
+                "to_y": to_y,
+                "to_rotation": to_rotation,
+            },
+        )
+
+    def _apply(self, canvas: Any, prefix: str) -> None:
+        object_id = self.data["object_id"]
+        obj = getattr(canvas, "_object_map", {}).get(object_id)
+        if obj is None:
+            objects = canvas.current_page_objects()
+            if not 0 <= object_id < len(objects):
+                return
+            obj = objects[object_id]
+        obj.x = self.data[f"{prefix}_x"]
+        obj.y = self.data[f"{prefix}_y"]
+        obj.rotation = self.data[f"{prefix}_rotation"] % 360.0
+        canvas.objectChanged.emit()
+        canvas.update()
+
+    def execute(self, canvas: Any) -> None:
+        self._apply(canvas, "to")
+
+    def undo(self, canvas: Any) -> None:
+        self._apply(canvas, "from")
+
+    @classmethod
+    def from_data(cls, data: dict[str, Any]) -> "RotateAnnotationAction":
+        return cls(
+            object_id=data["object_id"],
+            from_x=data["from_x"],
+            from_y=data["from_y"],
+            from_rotation=data["from_rotation"],
+            to_x=data["to_x"],
+            to_y=data["to_y"],
+            to_rotation=data["to_rotation"],
         )
 
 

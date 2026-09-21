@@ -117,7 +117,8 @@ flowchart TD
   source format.
 - Each page owns an independent list of `CanvasObject` annotations (`page_index -> objects[]`).
 - Every annotation stores its geometry in **PDF points** (`x`, `y`, base width/height, `scale`),
-  converted to 300-DPI pixels for rendering via `DPI_SCALE = 300/72`.
+  plus a normalized clockwise `rotation` angle, converted to 300-DPI pixels for rendering via
+  `DPI_SCALE = 300/72`.
 - Undo/redo, project-file persistence (`.signer`), and action-recording test fixtures all share
   the same annotation entity shape and serializer (see §4 for why).
 
@@ -129,6 +130,13 @@ flowchart TD
 - **Coordinates stored in PDF points, rendered at 300 DPI internally**: keeps annotation
   geometry resolution-independent (matches how PDF/print measurements are normally expressed)
   while giving crisp rendering; a single `DPI_SCALE` constant converts between the two.
+- **Rotation composed around annotation centers**: each annotation retains an unrotated local
+  bounding box and an intrinsic clockwise angle. Canvas painting, hit-testing, handles, and
+  export apply the angle around the center; page rotation is a separate session-only transform
+  composed on top, so saving a project never bakes page orientation into annotation geometry.
+- **Group rotation as one history operation**: multi-selection rotation uses the center of the
+  complete selection boundary, applying one angular delta to positions and intrinsic angles.
+  Its per-object state changes are grouped in a `CompositeAction`, preserving exact undo/redo.
 - **One shared action/entity model for undo/redo, action recording, and project files**: avoids
   three parallel serialization formats. The same `Action` classes and the same annotation JSON
   shape are used by `HistoryStack` (undo/redo), `tests/recording/` (feature-test fixtures), and

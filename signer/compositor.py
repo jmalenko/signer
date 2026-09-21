@@ -416,11 +416,15 @@ def _composite_objects(
     pw, ph = base.size
     for obj in objects:
         try:
-            overlay = obj.render_to_pil().convert("RGBA")
+            if hasattr(obj, "render_for_compositing"):
+                overlay, overlay_x, overlay_y = obj.render_for_compositing()
+            else:
+                overlay = obj.render_to_pil().convert("RGBA")
+                overlay_x, overlay_y = obj.x, obj.y
         except Exception:
             continue
-        x = int(round(obj.x))
-        y = int(round(obj.y))
+        x = int(round(overlay_x))
+        y = int(round(overlay_y))
         right = x + overlay.width
         bottom = y + overlay.height
         clip_left = max(0, x)

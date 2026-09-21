@@ -122,6 +122,17 @@ class ApplicationActionRecorder(QObject):
             "height": height,
             "handle": handle
         })
+
+    def record_rotate_annotation(self, obj) -> None:
+        """Record an annotation's final position and intrinsic angle."""
+        self._recorder.record_rotate_annotation(obj, obj.x, obj.y, obj.rotation)
+        self.actionRecorded.emit({
+            "type": "rotate_annotation",
+            "object_id": id(obj),
+            "x": obj.x,
+            "y": obj.y,
+            "rotation": obj.rotation,
+        })
     
     def record_change_color(self, obj, color: QColor) -> None:
         """Record changing color."""
@@ -268,31 +279,37 @@ def patch_main_window_for_recording(main_window) -> None:
             canvas._was_dragging = True
     
     def recorded_mouse_release(event):
+        was_rotating = canvas._rotating
+        rotated_objects = [state[0] for state in canvas._rotation_drag_states]
+        drag_handle = canvas._drag_handle
         original_mouse_release(event)
         # Record the final position only when mouse is released
         if recorder.is_enabled() and canvas._selected:
             obj = canvas._selected
             # Check if this was a drag operation that just ended
             if hasattr(canvas, '_was_dragging') and canvas._was_dragging:
-                if canvas._drag_handle == -1:
+                if was_rotating:
+                    for rotated_obj in rotated_objects:
+                        recorder.record_rotate_annotation(rotated_obj)
+                elif drag_handle == -1:
                     # Move operation - record final position
                     recorder.record_move_annotation(obj, obj.x, obj.y)
                 else:
                     # Resize operation
-                    if hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles() and canvas._drag_handle in (0, 1):
+                    if hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles() and drag_handle in (0, 1):
                         pts = obj.endpoint_points_doc()
                         if len(pts) == 2:
-                            pt = pts[canvas._drag_handle]
+                            pt = pts[drag_handle]
                             recorder.record_resize_annotation_endpoint(
                                 obj,
-                                canvas._drag_handle,
+                                drag_handle,
                                 float(pt.x()),
                                 float(pt.y()),
                             )
                     else:
                         # Legacy width/height resize record
                         recorder.record_resize_annotation(
-                            obj, obj.scaled_width, obj.scaled_height, canvas._drag_handle
+                            obj, obj.scaled_width, obj.scaled_height, drag_handle
                         )
                 canvas._was_dragging = False
     

@@ -7,11 +7,11 @@ import math
 from PIL import Image
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPixmap, QPolygonF
 from PySide6.QtWidgets import QApplication, QWidget
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
-from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction, ChangeLineWidthAction, ChangeFontSizeAction, AddAnnotationAction, DeleteAnnotationAction, ChangeColorAction, PasteAnnotationAction, CompositeAction
+from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction, RotateAnnotationAction, ChangeLineWidthAction, ChangeFontSizeAction, AddAnnotationAction, DeleteAnnotationAction, ChangeColorAction, PasteAnnotationAction, CompositeAction
 from .objects import (
     ANCHOR_HANDLE,
     HANDLE_FX,
@@ -67,12 +67,20 @@ class DocumentCanvas(QWidget):
         self._drag_start_h: float = 0.0
         self._action_recorded_this_drag: bool = False  # Track if action was recorded yet
         self._drag_endpoint_handles: bool = False
+        self._rotating: bool = False
+        self._rotation_drag_states: list[tuple[CanvasObject, float, float, float]] = []
+        self._rotation_pivot_doc = QPointF()
+        self._rotation_pivot_view = QPointF()
+        self._rotation_start_pointer_angle: float = 0.0
+        self._rotation_start_primary_angle: float = 0.0
 
         self._hdrag_anchor_doc: QPointF = QPointF()
         self._hdrag_anchor_fx: float = 0.0
         self._hdrag_anchor_fy: float = 0.0
         self._hdrag_start_w: float = 1.0
         self._hdrag_start_h: float = 1.0
+        self._hdrag_rotation: float = 0.0
+        self._hdrag_start_center_doc = QPointF()
 
         self._fit_scale: float = 1.0
         self._doc_offset_x: float = 0.0
@@ -110,9 +118,8 @@ class DocumentCanvas(QWidget):
     def page_objects_with_rotation_at(self, index: int) -> list[CanvasObject]:
         """Get objects for a page with coordinates transformed for rotation.
         
-        For export: returns objects with coordinates already adjusted for the
-        rotated page orientation, so their centers stay at the same visual location.
-        Annotations themselves are NOT rotated - only their position changes.
+        For export: returns objects with centers and display angles adjusted for
+        the rotated page orientation without mutating their persisted geometry.
         """
         objects = self._page_objects.get(index, [])
         rotation = self._page_rotations.get(index, 0)
@@ -144,10 +151,10 @@ class DocumentCanvas(QWidget):
             new_y = new_center_y - obj.scaled_height / 2
             
             # Create a shallow copy of the object with transformed coordinates
-            # Annotations keep their original size and are NOT rotated
             obj_copy = copy.copy(obj)
             obj_copy.x = new_x
             obj_copy.y = new_y
+            obj_copy.rotation = (obj.rotation - rotation) % 360.0
             transformed.append(obj_copy)
         
         return transformed
@@ -389,9 +396,13 @@ class DocumentCanvas(QWidget):
             self._selected_multiple.clear()
         else:
             # Multi-selection mode (Shift+click)
+            if self._selected is not None:
+                self._selected_multiple.add(self._selected)
             if obj in self._selected_multiple:
                 # Remove from selection
                 self._selected_multiple.discard(obj)
+                if obj is self._selected:
+                    self._selected = next(iter(self._selected_multiple), None)
             else:
                 # Add to selection
                 self._selected_multiple.add(obj)
@@ -445,6 +456,61 @@ class DocumentCanvas(QWidget):
             if self.current_page_image:
                 pw, ph = self.current_page_image.size
                 obj.clamp_to_page(pw, ph)
+        self.objectChanged.emit()
+        self.update()
+
+    @staticmethod
+    def _snap_rotation_angle(angle_deg: float, shift_pressed: bool) -> float:
+        """Normalize an angle, snapping to 15-degree increments unless Shift is held."""
+        normalized = angle_deg % 360.0
+        if shift_pressed:
+            return float(round(normalized)) % 360.0
+        return (round(normalized / 15.0) * 15.0) % 360.0
+
+    def rotate_selected_to(self, angle_deg: float) -> None:
+        """Rotate the selection as a group, using the primary object's angle as reference."""
+        selected = self.get_selected_annotations()
+        primary = self._selected
+        if not selected or primary is None:
+            return
+
+        target = angle_deg % 360.0
+        delta = (target - primary.rotation + 180.0) % 360.0 - 180.0
+        if abs(delta) < 1e-9:
+            return
+
+        bounds = self._selection_doc_bounds(selected)
+        pivot_x = bounds.center().x()
+        pivot_y = bounds.center().y()
+        radians = math.radians(delta)
+        cos_a = math.cos(radians)
+        sin_a = math.sin(radians)
+        actions = []
+
+        for obj in selected:
+            center_x = obj.x + obj.scaled_width / 2.0
+            center_y = obj.y + obj.scaled_height / 2.0
+            old_x, old_y, old_rotation = obj.x, obj.y, obj.rotation
+            offset_x = center_x - pivot_x
+            offset_y = center_y - pivot_y
+            new_center_x = pivot_x + cos_a * offset_x - sin_a * offset_y
+            new_center_y = pivot_y + sin_a * offset_x + cos_a * offset_y
+            obj.x = new_center_x - obj.scaled_width / 2.0
+            obj.y = new_center_y - obj.scaled_height / 2.0
+            obj.rotation = (obj.rotation + delta) % 360.0
+            actions.append(
+                RotateAnnotationAction(
+                    object_id=self._stable_id_for(obj),
+                    from_x=old_x,
+                    from_y=old_y,
+                    from_rotation=old_rotation,
+                    to_x=obj.x,
+                    to_y=obj.y,
+                    to_rotation=obj.rotation,
+                )
+            )
+
+        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
         self.objectChanged.emit()
         self.update()
 
@@ -781,6 +847,58 @@ class DocumentCanvas(QWidget):
             obj.scaled_height * self._fit_scale,
         )
 
+    def _display_rotation(self, obj: CanvasObject) -> float:
+        return (obj.rotation - self._page_rotations.get(self._current_page, 0)) % 360.0
+
+    def _doc_point_to_view(self, point: QPointF) -> QPointF:
+        orig_width, orig_height = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        x, y = self._transform_doc_coords_by_rotation(
+            point.x(), point.y(), rotation, orig_width, orig_height
+        )
+        return QPointF(
+            self._doc_offset_x + x * self._fit_scale,
+            self._doc_offset_y + y * self._fit_scale,
+        )
+
+    def _object_contains_view_point(self, obj: CanvasObject, pt: QPointF) -> bool:
+        rect = self._object_view_rect(obj)
+        return obj.contains_viewport_point(
+            rect.x(), rect.y(), rect.width(), rect.height(), pt, self._display_rotation(obj)
+        )
+
+    def _selection_view_bounds(self) -> QRectF | None:
+        points = []
+        for obj in self.get_selected_annotations():
+            rect = self._object_view_rect(obj)
+            points.extend(obj.boundary_points_viewport(
+                rect.x(), rect.y(), rect.width(), rect.height(), self._display_rotation(obj)
+            ))
+        if not points:
+            return None
+        left = min(point.x() for point in points)
+        right = max(point.x() for point in points)
+        top = min(point.y() for point in points)
+        bottom = max(point.y() for point in points)
+        return QRectF(left, top, right - left, bottom - top)
+
+    @staticmethod
+    def _selection_doc_bounds(selected: list[CanvasObject]) -> QRectF:
+        points = []
+        for obj in selected:
+            points.extend(obj.boundary_points_viewport(
+                obj.x,
+                obj.y,
+                obj.scaled_width,
+                obj.scaled_height,
+                obj.rotation,
+            ))
+        left = min(point.x() for point in points)
+        right = max(point.x() for point in points)
+        top = min(point.y() for point in points)
+        bottom = max(point.y() for point in points)
+        return QRectF(left, top, right - left, bottom - top)
+
     def _view_to_doc(self, pt: QPointF) -> QPointF:
         # Convert view coordinates to document coordinates
         doc_x = (pt.x() - self._doc_offset_x) / self._fit_scale
@@ -800,7 +918,7 @@ class DocumentCanvas(QWidget):
         candidates = [
             obj
             for obj in reversed(self.current_page_objects())
-            if self._object_view_rect(obj).contains(pt)
+            if self._object_contains_view_point(obj, pt)
         ]
         if len(candidates) == 1:
             return candidates[0]
@@ -810,7 +928,9 @@ class DocumentCanvas(QWidget):
 
         for obj in candidates:
             r = self._object_view_rect(obj)
-            distance = obj.distance_to_visible_pixel(r.x(), r.y(), r.width(), r.height(), pt)
+            distance = obj.distance_to_visible_pixel(
+                r.x(), r.y(), r.width(), r.height(), pt, self._display_rotation(obj)
+            )
             if best_distance is None or distance < best_distance - 1e-9:
                 best_distance = distance
                 best_obj = obj
@@ -877,7 +997,14 @@ class DocumentCanvas(QWidget):
 
         for obj in self.current_page_objects():
             r = self._object_view_rect(obj)
+            display_rotation = self._display_rotation(obj)
+            center = r.center()
+            painter.save()
+            painter.translate(center)
+            painter.rotate(display_rotation)
+            painter.translate(-center)
             obj.draw_in_viewport(painter, r.x(), r.y(), r.width(), r.height(), self._fit_scale)
+            painter.restore()
 
             # Draw selection boundary for single or multi-selected objects
             is_selected = obj is self._selected or obj in self._selected_multiple
@@ -886,16 +1013,46 @@ class DocumentCanvas(QWidget):
                 painter.setPen(QColor("#00a2ff"))
                 painter.setBrush(Qt.NoBrush)
                 if obj is self._selected and obj.supports_endpoint_handles():
-                    pts = obj.endpoint_points_viewport(r.x(), r.y(), r.width(), r.height())
+                    pts = obj.endpoint_points_viewport(
+                        r.x(), r.y(), r.width(), r.height(), display_rotation
+                    )
                     if len(pts) == 2:
                         painter.drawLine(pts[0], pts[1])
                 else:
-                    painter.drawRect(r)
+                    painter.drawPolygon(QPolygonF(obj.boundary_points_viewport(
+                        r.x(), r.y(), r.width(), r.height(), display_rotation
+                    )))
                 # Only draw resize handles for primary selected object
-                if obj is self._selected:
-                    for hr in obj.handle_rects_viewport(r.x(), r.y(), r.width(), r.height()):
+                if obj is self._selected and not self.is_multi_selected():
+                    for hr in obj.handle_rects_viewport(
+                        r.x(), r.y(), r.width(), r.height(), display_rotation
+                    ):
                         painter.fillRect(hr, QColor("#00a2ff"))
                         painter.drawRect(hr)
+                    handle_center = obj.rotation_handle_center_viewport(
+                        r.x(), r.y(), r.width(), r.height(), display_rotation
+                    )
+                    top_center = obj._rotate_point(
+                        QPointF(r.center().x(), r.top()), r.center(), display_rotation
+                    )
+                    painter.drawLine(top_center, handle_center)
+                    painter.drawEllipse(obj.rotation_handle_rect_viewport(
+                        r.x(), r.y(), r.width(), r.height(), display_rotation
+                    ))
+                painter.restore()
+
+        if self.is_multi_selected():
+            bounds = self._selection_view_bounds()
+            if bounds is not None:
+                painter.save()
+                painter.setPen(QColor("#00a2ff"))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawRect(bounds)
+                handle_center = QPointF(bounds.center().x(), bounds.top() - 24.0)
+                painter.drawLine(QPointF(bounds.center().x(), bounds.top()), handle_center)
+                painter.drawEllipse(QRectF(
+                    handle_center.x() - 6.0, handle_center.y() - 6.0, 12.0, 12.0
+                ))
                 painter.restore()
 
     # ---------------------------------------------------------------- mouse
@@ -912,8 +1069,14 @@ class DocumentCanvas(QWidget):
         objects = self.current_page_objects()
 
         if self._selected is not None:
+            rotation_handle = self._rotation_handle_rect_for_selection()
+            if rotation_handle is not None and rotation_handle.contains(pt):
+                self._start_rotation_drag(pt)
+                return
             r = self._object_view_rect(self._selected)
-            h_idx = self._selected.hit_test_handle(r.x(), r.y(), r.width(), r.height(), pt)
+            h_idx = self._selected.hit_test_handle(
+                r.x(), r.y(), r.width(), r.height(), pt, self._display_rotation(self._selected)
+            )
             if h_idx >= 0:
                 self._start_handle_drag(h_idx, pt)
                 return
@@ -948,6 +1111,64 @@ class DocumentCanvas(QWidget):
             # Regular click on empty clears selection
             self.clear_selection()
 
+    def _rotation_handle_rect_for_selection(self) -> QRectF | None:
+        if self._selected is None:
+            return None
+        if self.is_multi_selected():
+            bounds = self._selection_view_bounds()
+            if bounds is None:
+                return None
+            center = QPointF(bounds.center().x(), bounds.top() - 24.0)
+            return QRectF(center.x() - 6.0, center.y() - 6.0, 12.0, 12.0)
+        rect = self._object_view_rect(self._selected)
+        return self._selected.rotation_handle_rect_viewport(
+            rect.x(), rect.y(), rect.width(), rect.height(), self._display_rotation(self._selected)
+        )
+
+    def _start_rotation_drag(self, pt: QPointF) -> None:
+        selected = self.get_selected_annotations()
+        if not selected or self._selected is None:
+            return
+        self._rotation_pivot_doc = self._selection_doc_bounds(selected).center()
+        self._rotation_pivot_view = self._doc_point_to_view(self._rotation_pivot_doc)
+        self._rotation_start_pointer_angle = math.degrees(math.atan2(
+            pt.y() - self._rotation_pivot_view.y(),
+            pt.x() - self._rotation_pivot_view.x(),
+        ))
+        self._rotation_start_primary_angle = self._selected.rotation
+        self._rotation_drag_states = [
+            (obj, obj.x, obj.y, obj.rotation) for obj in selected
+        ]
+        self._dragging = True
+        self._rotating = True
+        self._drag_handle = -1
+
+    def _apply_rotation_drag(self, pt: QPointF, shift_pressed: bool) -> None:
+        pointer_angle = math.degrees(math.atan2(
+            pt.y() - self._rotation_pivot_view.y(),
+            pt.x() - self._rotation_pivot_view.x(),
+        ))
+        raw_target = (
+            self._rotation_start_primary_angle
+            + pointer_angle
+            - self._rotation_start_pointer_angle
+        )
+        target = self._snap_rotation_angle(raw_target, shift_pressed)
+        delta = (target - self._rotation_start_primary_angle + 180.0) % 360.0 - 180.0
+        radians = math.radians(delta)
+        cos_a = math.cos(radians)
+        sin_a = math.sin(radians)
+        for obj, start_x, start_y, start_rotation in self._rotation_drag_states:
+            center_x = start_x + obj.scaled_width / 2.0
+            center_y = start_y + obj.scaled_height / 2.0
+            offset_x = center_x - self._rotation_pivot_doc.x()
+            offset_y = center_y - self._rotation_pivot_doc.y()
+            new_center_x = self._rotation_pivot_doc.x() + cos_a * offset_x - sin_a * offset_y
+            new_center_y = self._rotation_pivot_doc.y() + sin_a * offset_x + cos_a * offset_y
+            obj.x = new_center_x - obj.scaled_width / 2.0
+            obj.y = new_center_y - obj.scaled_height / 2.0
+            obj.rotation = (start_rotation + delta) % 360.0
+
     def _start_handle_drag(self, h_idx: int, pt: QPointF) -> None:
         obj = self._selected
         assert obj is not None
@@ -969,9 +1190,18 @@ class DocumentCanvas(QWidget):
                 return
 
         anchor_h = ANCHOR_HANDLE[h_idx]
-        ax = obj.x + HANDLE_FX[anchor_h] * obj.scaled_width
-        ay = obj.y + HANDLE_FY[anchor_h] * obj.scaled_height
-        self._hdrag_anchor_doc = QPointF(ax, ay)
+        self._hdrag_start_center_doc = QPointF(
+            obj.x + obj.scaled_width / 2.0,
+            obj.y + obj.scaled_height / 2.0,
+        )
+        local_anchor = QPointF(
+            obj.x + HANDLE_FX[anchor_h] * obj.scaled_width,
+            obj.y + HANDLE_FY[anchor_h] * obj.scaled_height,
+        )
+        self._hdrag_rotation = obj.rotation
+        self._hdrag_anchor_doc = obj._rotate_point(
+            local_anchor, self._hdrag_start_center_doc, self._hdrag_rotation
+        )
         self._hdrag_anchor_fx = HANDLE_FX[anchor_h]
         self._hdrag_anchor_fy = HANDLE_FY[anchor_h]
         self._hdrag_start_w = obj.scaled_width
@@ -1064,7 +1294,9 @@ class DocumentCanvas(QWidget):
         pt = event.position()
 
         if self._dragging and self._selected is not None:
-            if self._drag_handle == -1:
+            if self._rotating:
+                self._apply_rotation_drag(pt, bool(event.modifiers() & Qt.ShiftModifier))
+            elif self._drag_handle == -1:
                 # MOVE operation
                 doc_pt = self._view_to_doc(pt)
                 self._selected.x = doc_pt.x() - self._drag_doc_offset_x
@@ -1127,12 +1359,14 @@ class DocumentCanvas(QWidget):
                             raw_angle = math.degrees(math.atan2(dy, dx))
                             # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
                             modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
-                            self._selected._angle = self._snap_line_angle(raw_angle, modifier_pressed)
+                            effective_angle = self._snap_line_angle(raw_angle, modifier_pressed)
+                            self._selected._angle = effective_angle - self._selected.rotation
                         elif ann_type_val == 'arrow':
                             raw_angle = math.degrees(math.atan2(-dy, dx))
                             # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
                             modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
-                            self._selected._angle = self._snap_line_angle(raw_angle, modifier_pressed)
+                            effective_angle = self._snap_line_angle(raw_angle, modifier_pressed)
+                            self._selected._angle = effective_angle + self._selected.rotation
                         else:
                             self._selected._angle = math.degrees(math.atan2(-dy, dx))
 
@@ -1151,17 +1385,28 @@ class DocumentCanvas(QWidget):
                     h = self._drag_handle
                     fx = HANDLE_FX[h]
                     fy = HANDLE_FY[h]
+                    local_doc_pt = self._selected._rotate_point(
+                        doc_pt, self._hdrag_anchor_doc, -self._hdrag_rotation
+                    )
 
                     # Signed extents from the fixed anchor. A negative extent means
                     # the handle was dragged past the anchor: the box flips to the
                     # other side and the drag keeps resizing from there.
                     if fx != self._hdrag_anchor_fx:
-                        signed_w = (doc_pt.x() - ax) if fx > self._hdrag_anchor_fx else (ax - doc_pt.x())
+                        signed_w = (
+                            local_doc_pt.x() - ax
+                            if fx > self._hdrag_anchor_fx
+                            else ax - local_doc_pt.x()
+                        )
                         signed_w /= abs(fx - self._hdrag_anchor_fx)
                     else:
                         signed_w = self._hdrag_start_w
                     if fy != self._hdrag_anchor_fy:
-                        signed_h = (doc_pt.y() - ay) if fy > self._hdrag_anchor_fy else (ay - doc_pt.y())
+                        signed_h = (
+                            local_doc_pt.y() - ay
+                            if fy > self._hdrag_anchor_fy
+                            else ay - local_doc_pt.y()
+                        )
                         signed_h /= abs(fy - self._hdrag_anchor_fy)
                     else:
                         signed_h = self._hdrag_start_h
@@ -1196,8 +1441,17 @@ class DocumentCanvas(QWidget):
                         new_w, new_h, _ = self._snap_rect_ellipse_size(new_w, new_h, h, modifier_pressed)
 
                     self._selected.resize_to_bounds(new_w, new_h)
-                    self._selected.x = ax - anchor_fx * self._selected.scaled_width
-                    self._selected.y = ay - anchor_fy * self._selected.scaled_height
+                    local_anchor_offset = QPointF(
+                        (anchor_fx - 0.5) * self._selected.scaled_width,
+                        (anchor_fy - 0.5) * self._selected.scaled_height,
+                    )
+                    rotated_offset = self._selected._rotate_point(
+                        local_anchor_offset, QPointF(), self._hdrag_rotation
+                    )
+                    center_x = ax - rotated_offset.x()
+                    center_y = ay - rotated_offset.y()
+                    self._selected.x = center_x - self._selected.scaled_width / 2.0
+                    self._selected.y = center_y - self._selected.scaled_height / 2.0
                 
                 # Record resize action with coalescing using stable object ID
                 obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
@@ -1222,7 +1476,12 @@ class DocumentCanvas(QWidget):
                     self.history.record_action(action)
 
             is_endpoint_drag = self._drag_endpoint_handles and self._selected.supports_endpoint_handles()
-            if self.current_page_image and not self._selected.supports_free_resize() and not is_endpoint_drag:
+            if (
+                not self._rotating
+                and self.current_page_image
+                and not self._selected.supports_free_resize()
+                and not is_endpoint_drag
+            ):
                 pw, ph = self.current_page_image.size
                 self._selected.clamp_to_page(pw, ph)
             self.objectChanged.emit()
@@ -1232,8 +1491,14 @@ class DocumentCanvas(QWidget):
         # Cursor hover
         objects = self.current_page_objects()
         if self._selected is not None:
+            rotation_handle = self._rotation_handle_rect_for_selection()
+            if rotation_handle is not None and rotation_handle.contains(pt):
+                self.setCursor(Qt.CrossCursor)
+                return
             r = self._object_view_rect(self._selected)
-            h = self._selected.hit_test_handle(r.x(), r.y(), r.width(), r.height(), pt)
+            h = self._selected.hit_test_handle(
+                r.x(), r.y(), r.width(), r.height(), pt, self._display_rotation(self._selected)
+            )
             if h >= 0:
                 if self._selected.supports_endpoint_handles():
                     self.setCursor(Qt.CrossCursor)
@@ -1255,7 +1520,30 @@ class DocumentCanvas(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
+            if self._rotating:
+                actions = []
+                for obj, old_x, old_y, old_rotation in self._rotation_drag_states:
+                    if (
+                        abs(obj.x - old_x) > 1e-9
+                        or abs(obj.y - old_y) > 1e-9
+                        or abs(obj.rotation - old_rotation) > 1e-9
+                    ):
+                        actions.append(RotateAnnotationAction(
+                            object_id=self._stable_id_for(obj),
+                            from_x=old_x,
+                            from_y=old_y,
+                            from_rotation=old_rotation,
+                            to_x=obj.x,
+                            to_y=obj.y,
+                            to_rotation=obj.rotation,
+                        ))
+                if actions:
+                    self.history.record_action(
+                        actions[0] if len(actions) == 1 else CompositeAction(actions)
+                    )
             self._dragging = False
+            self._rotating = False
+            self._rotation_drag_states = []
             self._drag_handle = -1
             self._drag_endpoint_handles = False
             # Reset drag action tracking

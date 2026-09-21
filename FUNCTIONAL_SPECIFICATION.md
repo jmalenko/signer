@@ -64,6 +64,7 @@ from it), `document.pdf`, `document.doc` / `document.docx`, `document1.pdf` (mul
 | Width spinner | Line width in points (vector types only) |
 | Font Size spinner | Text annotations only |
 | Font combo | Text annotations only |
+| Angle spinner | Rotation in degrees; all annotation types |
 | Hamburger menu (☰, far right) | See §2.2 |
 
 The **Add** menu (and the hamburger **Annotations** menu) list: Checkmark, Crossmark, Line,
@@ -141,6 +142,7 @@ selected annotations that support that property):
 | Width spinner | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | hidden | hidden |
 | Font size spinner | hidden | hidden | hidden | hidden | hidden | hidden | ✓ | hidden |
 | Font family combo | hidden | hidden | hidden | hidden | hidden | hidden | ✓ | hidden |
+| Angle spinner | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 When nothing is selected, all annotation-specific property controls are hidden. Duplicate and
 Delete toolbar buttons are visible only when an annotation is selected. The page-navigation
@@ -408,6 +410,28 @@ selected (§2.3); there is no toolbar control for either when nothing is selecte
 control updates the selected annotation(s) directly, and as a side effect also becomes the
 default applied to the next newly-added annotation.
 
+### 7.9 Rotation
+
+- Every annotation has a `rotation` angle in whole degrees, clockwise from its natural
+  orientation, normalized to `0`–`359`; new annotations start at `0`.
+- A selected annotation has a rotation handle centered above its boundary and connected to it by
+  a short stem. Dragging the handle around the annotation's center snaps to 15° increments by
+  default. Holding Shift during the drag temporarily disables snapping for continuous rotation,
+  consistent with the existing Line/Arrow snapping behavior in §7.5.
+- The selection boundary and its resize handles rotate with the annotation. Hit-testing,
+  moving, and resizing use the rotated geometry; resizing preserves the current angle.
+- The toolbar Angle spinner is visible for every annotation type, accepts one-degree steps, and
+  provides a reset-to-0 action. With a single selection it displays that annotation's angle.
+- With a multi-selection, the primary annotation supplies the displayed reference angle.
+  Changing that angle or dragging the shared rotation handle applies the same angular delta to
+  every selected annotation and rotates every annotation center around the selection's shared
+  center. Relative positions and relative angles are preserved.
+- Line and Arrow endpoint dragging retains the 45° snapping rules in §7.5. Their `rotation`
+  value describes the direction of the resulting endpoints; rotating either type moves both
+  endpoints rigidly around its center.
+- Rotation changes are undoable and redoable. Duplicate, cut, copy, and paste preserve the
+  angle. Export and print render the same orientation shown on the canvas.
+
 ---
 
 ## 8. Selection & Multi-Selection
@@ -419,8 +443,10 @@ default applied to the next newly-added annotation.
   distance to its nearest rendered (non-transparent) pixel; transparent pixels inside a bounding
   box still count as selectable space for that purpose. A cursor outside all bounding boxes
   selects nothing.
-- All selected annotations show the same blue boundary as a single selection; resize handles are
-  shown only on the primary selected object when multiple are selected.
+- A single selected annotation shows a blue boundary aligned with its rotated local axes, resize
+  handles, and a rotation handle. A multi-selection shows each selected annotation's blue
+  boundary plus one shared axis-aligned group boundary and rotation handle; resize handles are
+  shown only on the primary selected object.
 
 ---
 
@@ -433,7 +459,8 @@ unit unless noted otherwise. See [§13](#13-keyboard-shortcuts-reference) for ke
 |---|---|
 | Move | 12pt per press; Shift+arrow = 1px |
 | Resize | Drag boundary handles; non-text/non-signature types preserve aspect ratio unless the type supports free resize (Text, Line, Arrow, Rectangle, Ellipse). Dragging a handle past the opposite (anchor) handle flips the box across that anchor — the dragged handle becomes the opposite corner/edge and resizing continues. |
-| Duplicate | Copies preserving size/color, offset 20px |
+| Rotate | Drag the rotation handle around the object/group center (15° snapping by default; Shift disables snapping), or set a whole-degree angle in the toolbar |
+| Duplicate | Copies preserving size, color, and rotation, offset 20px |
 | Cut | Copies to clipboard (JSON), then deletes |
 | Copy | Copies selection to clipboard as JSON, capturing coordinates at copy time (later moves of the source do not affect the paste) |
 | Paste | Same page: applies the same 20px offset as Duplicate. Different page: no offset. |
@@ -451,12 +478,20 @@ The clipboard uses the same JSON annotation schema as project files and action r
   Page Left/Right, Rotate All Pages Left/Right (90° increments; cumulative — 4× in one direction
   returns to 0°).
 - **Session-only**: rotation is not persisted to disk or to project files.
-- Annotations do not visually rotate; their *position* is transformed so each annotation's
-  center stays at the same visual location on the page:
+- Page rotation applies the same rigid transform to the complete geometry of every annotation,
+  including its center, local axes, boundary, and Line/Arrow endpoints. An annotation therefore
+  remains attached to the same page content and rotates visually with that content.
+- This page transform is composed with the annotation geometry for display, interaction, export,
+  and print; it does not overwrite the annotation's stored coordinates or intrinsic `rotation`.
+  Consequently, saving a project while a page is rotated does not bake that session-only page
+  rotation into its annotations.
+- For a point `(x, y)` on an original `W×H` page, the transforms into the rotated frame are:
   - 90° CCW: `(x, y) → (y, W - x)`
   - 180°: `(x, y) → (W - x, H - y)`
   - 270° CCW: `(x, y) → (H - y, x)`
-  (mapping a `W×H` original page to its rotated frame)
+- Annotation angles use the clockwise convention from §7.9. For display, a page rotation left
+  subtracts 90° from each annotation's intrinsic angle; a page rotation right adds 90°,
+  normalized to `0`–`359`.
 - Mouse interaction coordinates are converted back through the inverse transform.
 - The window auto-resizes to keep the correct aspect ratio across portrait/landscape rotation.
 - Export renders each page with its own current rotation (mixed rotations per page are
@@ -475,15 +510,17 @@ The clipboard uses the same JSON annotation schema as project files and action r
 
 - Unlimited history for the current session; **not persisted** — cleared when a new document is
   opened or the app closes.
-- **Coalescing**: consecutive move/resize operations on the same annotation(s), with no other
-  action in between, merge into a single undo entry (only the initial and final states are kept).
+- **Coalescing**: consecutive move/resize/rotation updates from one drag on the same
+  annotation(s), with no other action in between, merge into a single undo entry (only the
+  initial and final states are kept).
 - **Action model**: a partial format (used by action recording / test fixtures, e.g. `{type:
   "move_annotation", object_id: 0, x: 300, y: 400}`) is promoted to a full format at undo-stack
   finalization time (adds `from_x`/`from_y` etc.) — both formats use the same action classes and
   serialization, so no separate conversion step exists.
 - **Undoable actions**: add, delete, move, resize, color change (annotation or default),
-  set text, duplicate, cut/copy/paste (incl. multi-selection), select, rotate page (current or
-  all), and multi-selection variants of delete/duplicate/color/width change as single units.
+  set text, duplicate, cut/copy/paste (incl. multi-selection), select, rotate annotation or page
+  (current or all), and multi-selection variants of delete/duplicate/color/width/rotation change
+  as single units.
 - Performing a new action while in an undone state clears the redo stack.
 
 ---
@@ -624,7 +661,9 @@ UTF-8 JSON. Root object contains exactly:
 - Each annotation entry reuses the **same action entity shape** used by action recording and
   feature-test JSON fixtures: `type` is `add_annotation` or `open_signature`, with
   `annotation_type`, `x`, `y`, `width`, `height`, optional `page`, and only the type-specific
-  fields needed to restore appearance (text/font properties, color, etc.). There is no separate
+  fields needed to restore appearance (text/font properties, color, etc.). The optional
+  `rotation` field stores the normalized clockwise annotation angle in degrees and defaults to
+  `0` when absent, preserving compatibility with existing files. There is no separate
   project-only annotation schema.
 - `width`/`height` are current rendered dimensions; when a `scale` field is present, base
   (unscaled) dimensions are derived by dividing by it, so scaling applies exactly once on load.

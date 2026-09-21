@@ -14,6 +14,7 @@ from signer.objects import AnnotationType, CanvasObject
 from signer.history import (
     AddAnnotationAction,
     MoveAnnotationAction,
+    RotateAnnotationAction,
 )
 
 
@@ -60,6 +61,8 @@ class ActionPlayer:
             self._execute_move_annotation(action)
         elif action_type == "resize_annotation":
             self._execute_resize_annotation(action)
+        elif action_type == "rotate_annotation":
+            self._execute_rotate_annotation(action)
         elif action_type == "select_annotation":
             self._execute_select_annotation(action)
         elif action_type == "change_color":
@@ -233,6 +236,30 @@ class ActionPlayer:
             to_y=y
         )
         self.canvas.history.record_action(move_action)
+
+    def _execute_rotate_annotation(self, action: Dict[str, Any]) -> None:
+        """Rotate and reposition an annotation from a recorded workflow."""
+        object_id = action["object_id"]
+        obj = self._object_map.get(object_id)
+        if obj is None:
+            page_objects = self.canvas.current_page_objects()
+            if object_id < len(page_objects):
+                obj = page_objects[object_id]
+        if obj is None:
+            raise RuntimeError(f"Object with id {object_id} not found")
+
+        history_id = self.canvas._stable_id_for(obj)
+        rotate_action = RotateAnnotationAction(
+            object_id=history_id,
+            from_x=obj.x,
+            from_y=obj.y,
+            from_rotation=obj.rotation,
+            to_x=float(action["x"]),
+            to_y=float(action["y"]),
+            to_rotation=float(action["rotation"]),
+        )
+        rotate_action.execute(self.canvas)
+        self.canvas.history.record_action(rotate_action)
 
     def _execute_resize_annotation(self, action: Dict[str, Any]) -> None:
         """Resize an annotation and record to history."""

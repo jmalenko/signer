@@ -72,6 +72,22 @@ def create_test_resize_data(object_id: int, width: float, height: float, handle:
     }
 
 
+def create_test_rotation_data(
+    object_id: int,
+    x: float,
+    y: float,
+    rotation: float,
+) -> Dict[str, Any]:
+    """Create a dictionary representing an annotation rotation action."""
+    return {
+        "type": "rotate_annotation",
+        "object_id": object_id,
+        "x": x,
+        "y": y,
+        "rotation": rotation,
+    }
+
+
 def create_test_endpoint_resize_data(object_id: int, handle: int, x: float, y: float) -> Dict[str, Any]:
     """Create a dictionary representing an endpoint-handle resize action."""
     return {
@@ -185,6 +201,17 @@ class ActionRecorder:
             "width": width,
             "height": height,
             "handle": handle
+        })
+
+    def record_rotate_annotation(self, obj, x: float, y: float, rotation: float):
+        if not self._enabled:
+            return
+        self.actions.append({
+            "type": "rotate_annotation",
+            "object_id": self._get_object_id(obj),
+            "x": x,
+            "y": y,
+            "rotation": rotation,
         })
 
     def record_resize_annotation_endpoint(self, obj, handle: int, x: float, y: float):
