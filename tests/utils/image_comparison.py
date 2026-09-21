@@ -129,7 +129,7 @@ def assert_images_equal(
 def create_reference_image(
     source_path: str | Path,
     output_path: str | Path,
-    annotations: list = None,
+    annotations: list | None = None,
 ) -> None:
     """
     Helper to create a reference image by manually composing annotations.

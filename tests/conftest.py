@@ -1,5 +1,6 @@
 """Pytest configuration and fixtures for Signer tests."""
 
+import logging
 import os
 import sys
 import tempfile
@@ -7,6 +8,8 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import QApplication
+
+logger = logging.getLogger(__name__)
 
 # Add the project root to the path so we can import signer modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -64,8 +67,8 @@ class QtBot:
         for widget in self.widgets:
             try:
                 widget.deleteLater()
-            except Exception:
-                pass
+            except RuntimeError as exc:
+                logger.warning("Could not schedule widget cleanup: %s", exc)
 
 
 @pytest.fixture
@@ -218,12 +221,8 @@ def pytest_sessionstart(session):
     import shutil
     test_results_dir = Path(__file__).parent / "test-results"
     if test_results_dir.exists():
-        try:
-            shutil.rmtree(test_results_dir, ignore_errors=True)
-            print(">> Cleared test-results directory for fresh results")
-        except Exception as e:
-            # If cleanup fails, continue anyway - don't block tests
-            print(f"WARNING: Could not clear test-results directory: {e}")
+        shutil.rmtree(test_results_dir, ignore_errors=True)
+        print(">> Cleared test-results directory for fresh results")
 
 
 def pytest_sessionfinish(session, exitstatus):
@@ -233,8 +232,8 @@ def pytest_sessionfinish(session, exitstatus):
         report_path = create_comparison_report()
         if (Path(__file__).parent / "test-results").exists():
             print(f"\n📊 Test comparison report: {report_path}")
-    except Exception:
-        pass  # Silently skip if report generation fails
+    except (ImportError, KeyError, OSError, TypeError, ValueError) as exc:
+        logger.warning("Could not generate the test comparison report: %s", exc)
 
 
 def pytest_addoption(parser):

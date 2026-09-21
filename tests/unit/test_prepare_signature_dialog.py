@@ -1,5 +1,6 @@
 """Unit tests for the Prepare Signature tool dialog."""
 
+import itertools
 from unittest.mock import patch
 
 import pytest
@@ -432,7 +433,7 @@ def test_expansion_bars_start_at_sixty_percent_and_are_nested(qapp):
     bands = dialog._last_expansion_bands
     assert bands is not None
     assert len(bands) == 9
-    for previous, current in zip(bands, bands[1:]):
+    for previous, current in itertools.pairwise(bands):
         assert current[0] <= previous[0]
         assert current[1] >= previous[1]
 

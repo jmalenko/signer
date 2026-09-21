@@ -280,7 +280,7 @@ class TestLibreOfficePath:
         assert pages is not None
 
 
-class TestDocumentLoaderRegistry:
+class TestDocumentLoaderRegistryDelegation:
     """Test DocumentLoaderRegistry factory and delegate pattern."""
 
     def test_registry_load_with_password_for_pdf(self):

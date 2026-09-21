@@ -38,11 +38,14 @@ class HistoryStack:
         - redo_stack is always cleared when new action is recorded
         """
         # Check if this action can coalesce with the last action
-        if isinstance(action, (MoveAnnotationAction, ResizeAnnotationAction)):
-            if self.undo_stack and self.can_coalesce(self.undo_stack[-1], action):
-                # Merge with last action by updating only its target state
-                self.undo_stack[-1].merge(action)
-                return  # Update in-place; don't push new action
+        if (
+            isinstance(action, (MoveAnnotationAction, ResizeAnnotationAction))
+            and self.undo_stack
+            and self.can_coalesce(self.undo_stack[-1], action)
+        ):
+            # Merge with last action by updating only its target state
+            self.undo_stack[-1].merge(action)
+            return  # Update in-place; don't push new action
         
         # Non-mergeable action or first in sequence: push to stack
         self.undo_stack.append(action)

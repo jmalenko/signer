@@ -16,14 +16,12 @@ def _loader_with_fake_executable():
 
 def test_libreoffice_timeout_raises_clear_value_error():
     loader = _loader_with_fake_executable()
-    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="soffice", timeout=30)):
-        with pytest.raises(ValueError, match="timed out"):
-            loader.load("document.docx")
+    with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="soffice", timeout=30)), pytest.raises(ValueError, match="timed out"):
+        loader.load("document.docx")
 
 
 def test_libreoffice_conversion_failure_includes_file_path():
     loader = _loader_with_fake_executable()
     error = subprocess.CalledProcessError(1, "soffice", stderr=b"boom")
-    with patch("subprocess.run", side_effect=error):
-        with pytest.raises(ValueError, match="document.docx"):
-            loader.load("document.docx")
+    with patch("subprocess.run", side_effect=error), pytest.raises(ValueError, match="document.docx"):
+        loader.load("document.docx")

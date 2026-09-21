@@ -5,6 +5,7 @@ Normalizes various document formats (PDF, Word, ODT, Images) to PIL Image lists.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import ClassVar
 
 import fitz
 from PIL import Image
@@ -29,7 +30,7 @@ class DocumentLoader(ABC):
 class PDFLoader(DocumentLoader):
     """Load PDF documents via PyMuPDF."""
     
-    SUPPORTED_EXTENSIONS = {'.pdf'}
+    SUPPORTED_EXTENSIONS: ClassVar[set[str]] = {'.pdf'}
     
     def supports(self, file_path: str | Path) -> bool:
         return Path(file_path).suffix.lower() in self.SUPPORTED_EXTENSIONS
@@ -43,9 +44,8 @@ class PDFLoader(DocumentLoader):
         
         with fitz.open(file_path) as doc:
             # Handle encrypted PDFs
-            if doc.is_encrypted:
-                if not doc.authenticate(password):
-                    raise ValueError("PDF is encrypted and password is incorrect or missing")
+            if doc.is_encrypted and not doc.authenticate(password):
+                raise ValueError("PDF is encrypted and password is incorrect or missing")
             
             if len(doc) == 0:
                 raise ValueError("PDF has no pages")
@@ -62,7 +62,9 @@ class PDFLoader(DocumentLoader):
 class ImageLoader(DocumentLoader):
     """Load image documents via Pillow."""
     
-    SUPPORTED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.gif', '.ico', '.tiff', '.tif'}
+    SUPPORTED_EXTENSIONS: ClassVar[set[str]] = {
+        '.jpg', '.jpeg', '.png', '.bmp', '.webp', '.gif', '.ico', '.tiff', '.tif'
+    }
     
     def supports(self, file_path: str | Path) -> bool:
         return Path(file_path).suffix.lower() in self.SUPPORTED_EXTENSIONS
@@ -104,7 +106,7 @@ class ImageLoader(DocumentLoader):
 class LibreOfficeLoader(DocumentLoader):
     """Load Word and ODT documents via LibreOffice conversion."""
     
-    SUPPORTED_EXTENSIONS = {'.docx', '.doc', '.odt'}
+    SUPPORTED_EXTENSIONS: ClassVar[set[str]] = {'.docx', '.doc', '.odt'}
     
     def __init__(self, libreoffice_path: str | None = None):
         """Initialize with optional LibreOffice path."""
@@ -207,7 +209,7 @@ class LibreOfficeLoader(DocumentLoader):
         import os
         
         # If path already points to an executable, return it directly
-        if base_path.endswith("soffice.exe") or base_path.endswith("soffice"):
+        if base_path.endswith(("soffice.exe", "soffice")):
             return base_path
         
         # On Windows, try program/soffice.exe first, then soffice.exe

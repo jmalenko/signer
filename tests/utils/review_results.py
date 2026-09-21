@@ -42,7 +42,7 @@ def list_results():
                 info = json.load(f)
             
             files = info.get("files", {})
-            file_count = len([k for k in files.keys() if k != "info"])
+            file_count = len([k for k in files if k != "info"])
             print(f"\n  {test_dir.name}")
             print(f"    Timestamp: {info.get('timestamp', 'N/A')}")
             

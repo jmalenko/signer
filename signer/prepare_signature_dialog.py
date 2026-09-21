@@ -737,8 +737,8 @@ class PrepareSignatureDialog(QDialog):
         box = (
             max(0, int(rect.left())),
             max(0, int(rect.top())),
-            min(image.width, int(round(rect.right()))),
-            min(image.height, int(round(rect.bottom()))),
+            min(image.width, round(rect.right())),
+            min(image.height, round(rect.bottom())),
         )
         if box[2] <= box[0] or box[3] <= box[1]:
             return None

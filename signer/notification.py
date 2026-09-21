@@ -168,7 +168,7 @@ class NotificationToast(QWidget):
 
             if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
                 raise OSError(f"Desktop environment could not open {path}")
-        except Exception:
+        except (OSError, RuntimeError, ValueError):
             NotificationToast(
                 self.parent(), "Unable to open directory", is_error=True
             )

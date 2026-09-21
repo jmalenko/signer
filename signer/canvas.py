@@ -451,7 +451,7 @@ class DocumentCanvas(QWidget):
     def get_selected_annotations(self) -> list[CanvasObject]:
         """Return all selected annotations (sorted for consistency)."""
         if self._selected_multiple:
-            return sorted(list(self._selected_multiple), key=lambda o: (o.y, o.x))
+            return sorted(self._selected_multiple, key=lambda o: (o.y, o.x))
         elif self._selected is not None:
             return [self._selected]
         return []

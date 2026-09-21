@@ -135,10 +135,12 @@ class TestMultipageAnnotations:
             # Single-page export doesn't need placeholder
             base_output = output_dir / "document-signed.jpg"
         
-        with patch.object(QFileDialog, 'getSaveFileName', return_value=(str(base_output), "JPEG files (*.jpg *.jpeg)")):
-            with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
-                result = main_window.save_signed_document()
-                assert result is True
+        with (
+            patch.object(QFileDialog, 'getSaveFileName', return_value=(str(base_output), "JPEG files (*.jpg *.jpeg)")),
+            patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok),
+        ):
+            result = main_window.save_signed_document()
+            assert result is True
         
         # 4. Verify each page was exported
         for page_idx in range(total_pages):

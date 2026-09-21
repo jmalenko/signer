@@ -147,7 +147,9 @@ class TestDialogReturnOnFormatMismatch:
             "document.pdf", page_count, ExportFormat.PDF
         )
         # User enters the same filename - no mismatch
-        assert pdf_suggested == pdf_suggested
+        assert pdf_suggested == build_suggested_filename_for_dialog(
+            "document.pdf", page_count, ExportFormat.PDF
+        )
         
         # Scenario 2: User changes format (PDF to JPG) - triggers mismatch
         jpg_suggested = build_suggested_filename_for_dialog(

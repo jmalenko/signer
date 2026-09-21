@@ -508,11 +508,13 @@ class ActionPlayer:
                 format_filter = "JPEG files (*.jpg *.jpeg)"  # default
             
             # Mock the file dialog to use our path
-            with patch.object(QFileDialog, 'getSaveFileName', return_value=(path_str, format_filter)):
-                with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
-                    result = self.main_window.save_signed_document()
-                    if not result:
-                        raise RuntimeError(f"Failed to save document to: {path_str}")
+            with (
+                patch.object(QFileDialog, 'getSaveFileName', return_value=(path_str, format_filter)),
+                patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok),
+            ):
+                result = self.main_window.save_signed_document()
+                if not result:
+                    raise RuntimeError(f"Failed to save document to: {path_str}")
         else:
             # No path specified and no output_path set - let the application use its default behavior
             # Mock only the message box, let the dialog proceed

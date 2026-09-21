@@ -267,14 +267,14 @@ def _generate_html_report(test_results: list, results_dir: Path) -> str:
                 expected_file = test_dir / f"{expected_base}_expected-p{page_num}.png"
                 diff_file = test_dir / f"{expected_base}_diff-p{page_num}.png"
                 
-                active_class = "active" if page_num == sorted([f.stem.split('-p')[-1] for f in page_files])[0] else ""
+                active_class = "active" if page_num == min([f.stem.split('-p')[-1] for f in page_files]) else ""
                 page_tabs += f'<button class="page-tab {active_class}" onclick="showPage(event, \'{test_name}-page{page_num}\')" data-page="{page_num}">Page {page_num}</button>'
                 
                 actual_rel = _image_data_url(page_file)
                 expected_rel = _image_data_url(expected_file)
                 diff_rel = _image_data_url(diff_file)
                 
-                display_style = "display: block;" if page_num == sorted([f.stem.split('-p')[-1] for f in page_files])[0] else "display: none;"
+                display_style = "display: block;" if page_num == min([f.stem.split('-p')[-1] for f in page_files]) else "display: none;"
                 page_content = f"""
                 <div id="{test_name}-page{page_num}" class="page-content" style="{display_style}">
                     <div class="image-comparison">

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from enum import Enum
 from pathlib import Path
 
 from PIL import Image
 
 from .objects import CanvasObject
+
+logger = logging.getLogger(__name__)
 
 
 class ExportFormat(Enum):
@@ -333,12 +336,11 @@ def build_overwrite_dialog_info(
         return "", "", False
     
     # Scenario A: Single file
-    if export_format.is_single_file_format() and existing_files:
-        if len(existing_files) == 1:
-            title = "File Already Exists"
-            filename = existing_files[0].name
-            message = f"The file '{filename}' already exists.\n\nDo you want to replace it?"
-            return title, message, False
+    if export_format.is_single_file_format() and existing_files and len(existing_files) == 1:
+        title = "File Already Exists"
+        filename = existing_files[0].name
+        message = f"The file '{filename}' already exists.\n\nDo you want to replace it?"
+        return title, message, False
     
     # Scenario E: Older files detected (multi-page export)
     if older_files and existing_files and export_format.is_per_file_format():
@@ -421,10 +423,11 @@ def _composite_objects(
             else:
                 overlay = obj.render_to_pil().convert("RGBA")
                 overlay_x, overlay_y = obj.x, obj.y
-        except Exception:
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.warning("Could not render annotation during compositing: %s", exc)
             continue
-        x = int(round(overlay_x))
-        y = int(round(overlay_y))
+        x = round(overlay_x)
+        y = round(overlay_y)
         right = x + overlay.width
         bottom = y + overlay.height
         clip_left = max(0, x)

@@ -325,8 +325,8 @@ class CanvasObject:
 
         rel_x = ((local_pt.x() - vx) / vw) * img.width
         rel_y = ((local_pt.y() - vy) / vh) * img.height
-        x = int(round(rel_x))
-        y = int(round(rel_y))
+        x = round(rel_x)
+        y = round(rel_y)
         if x < 0 or x >= img.width or y < 0 or y >= img.height:
             return False
 
@@ -418,8 +418,8 @@ class SignatureObject(CanvasObject):
     def _get_pixmap(self) -> QPixmap:
         if self._pixmap_cache is not None and self._pixmap_scale == self.scale:
             return self._pixmap_cache
-        w = max(1, int(round(self._base_width * self.scale)))
-        h = max(1, int(round(self._base_height * self.scale)))
+        w = max(1, round(self._base_width * self.scale))
+        h = max(1, round(self._base_height * self.scale))
         resized = self._image.resize((w, h), Image.Resampling.LANCZOS)
         self._pixmap_cache = QPixmap.fromImage(ImageQt(resized))
         self._pixmap_scale = self.scale
@@ -430,8 +430,8 @@ class SignatureObject(CanvasObject):
         painter.drawPixmap(QRectF(vx, vy, vw, vh), pm, QRectF(pm.rect()))
 
     def render_to_pil(self) -> Image.Image:
-        w = max(1, int(round(self._base_width * self.scale)))
-        h = max(1, int(round(self._base_height * self.scale)))
+        w = max(1, round(self._base_width * self.scale))
+        h = max(1, round(self._base_height * self.scale))
         return self._image.resize((w, h), Image.Resampling.LANCZOS)
 
     def duplicate(self) -> SignatureObject:
@@ -637,7 +637,7 @@ class VectorAnnotation(CanvasObject):
     def _make_font(self) -> QFont:
         f = QFont(self._font_family)
         # Font size is stored in PDF points; scale to pixels for 300 DPI rendering
-        f.setPixelSize(int(round(self._font_size_pt * DPI_SCALE)))
+        f.setPixelSize(round(self._font_size_pt * DPI_SCALE))
         return f
 
     def fit_text_box(self) -> None:
@@ -754,7 +754,7 @@ class VectorAnnotation(CanvasObject):
             )
             font = self._make_font()
             # Font size already includes DPI_SCALE from _make_font(), multiply by factor and doc_scale
-            font.setPixelSize(max(1, int(round(font.pixelSize() * factor * doc_scale))))
+            font.setPixelSize(max(1, round(font.pixelSize() * factor * doc_scale)))
             painter.setFont(font)
             painter.setPen(self.color)
             painter.setBrush(Qt.NoBrush)
@@ -791,8 +791,8 @@ class VectorAnnotation(CanvasObject):
     # ------------------------------------------------------------------ PIL render
 
     def render_to_pil(self) -> Image.Image:
-        w = max(1, int(round(self._base_width * self.scale)))
-        h = max(1, int(round(self._base_height * self.scale)))
+        w = max(1, round(self._base_width * self.scale))
+        h = max(1, round(self._base_height * self.scale))
         qimage = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
         qimage.fill(Qt.transparent)
         painter = QPainter(qimage)
@@ -922,7 +922,7 @@ class ProjectFile:
         if project.get("version") != cls.VERSION:
             raise ValueError("Unsupported signer project file version")
         if not isinstance(project.get("document_path"), str) or not isinstance(project.get("annotations"), list):
-            raise ValueError("Invalid signer project file")
+            raise TypeError("Invalid signer project file")
 
     @staticmethod
     def _utc_now() -> str:

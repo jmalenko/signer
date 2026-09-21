@@ -100,7 +100,7 @@ class SettingsStore:
                 if field_name in data
             }
             return AppSettings(**kwargs)
-        except Exception:
+        except (OSError, TypeError, ValueError):
             return AppSettings()
 
     def save(self, settings: AppSettings) -> None:

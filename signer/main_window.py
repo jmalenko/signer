@@ -8,7 +8,7 @@ import re
 
 logger = logging.getLogger(__name__)
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -53,7 +53,7 @@ from .compositor import (
     build_overwrite_dialog_info,
     build_suggested_filename_for_dialog,
     composite_objects_to_format,
-    composite_objects_to_jpg,
+    composite_objects_to_jpg,  # noqa: F401 - retained for test patch compatibility
     composite_pages_to_pdf,
     composite_pages_to_tiff,
     detect_existing_files,
@@ -68,7 +68,6 @@ from .objects import (
     DEFAULT_LINE_WIDTH_PT,
     DEFAULT_TEXT_FONT_PT,
     AnnotationType,
-    CanvasObject,
     ProjectFile,
     SignatureObject,
     VectorAnnotation,
@@ -1060,49 +1059,55 @@ class MainWindow(QMainWindow):
         """Handle font size spinner changes."""
         from .history import ChangeFontSizeAction
         selected = self.canvas.selected
-        if selected is not None and isinstance(selected, VectorAnnotation):
-            if selected.ann_type == AnnotationType.TEXT:
-                objs = self.canvas.current_page_objects()
-                obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
-                old_size = selected._font_size_pt
-                selected._font_size_pt = value
-                selected.fit_text_box()
-                # Record to history
-                if obj_id >= 0:
-                    action = ChangeFontSizeAction(
-                        object_id=obj_id,
-                        font_size_pt=value,
-                        from_font_size_pt=old_size,
-                    )
-                    self.canvas.history.record_action(action)
-                self._settings.recent_font_size_pt = value
-                self.canvas.objectChanged.emit()
-                self.canvas.update()
-                self._save_settings_safe()
+        if (
+            selected is not None
+            and isinstance(selected, VectorAnnotation)
+            and selected.ann_type == AnnotationType.TEXT
+        ):
+            objs = self.canvas.current_page_objects()
+            obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
+            old_size = selected._font_size_pt
+            selected._font_size_pt = value
+            selected.fit_text_box()
+            # Record to history
+            if obj_id >= 0:
+                action = ChangeFontSizeAction(
+                    object_id=obj_id,
+                    font_size_pt=value,
+                    from_font_size_pt=old_size,
+                )
+                self.canvas.history.record_action(action)
+            self._settings.recent_font_size_pt = value
+            self.canvas.objectChanged.emit()
+            self.canvas.update()
+            self._save_settings_safe()
 
     def _on_font_family_changed(self, family: str) -> None:
         """Handle font family combo changes."""
         from .history import ChangeFontFamilyAction
         selected = self.canvas.selected
-        if selected is not None and isinstance(selected, VectorAnnotation):
-            if selected.ann_type == AnnotationType.TEXT:
-                objs = self.canvas.current_page_objects()
-                obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
-                old_family = selected._font_family
-                selected._font_family = family
-                selected.fit_text_box()
-                # Record to history
-                if obj_id >= 0:
-                    action = ChangeFontFamilyAction(
-                        object_id=obj_id,
-                        font_family=family,
-                        from_font_family=old_family,
-                    )
-                    self.canvas.history.record_action(action)
-                self._settings.recent_font_family = family
-                self.canvas.objectChanged.emit()
-                self.canvas.update()
-                self._save_settings_safe()
+        if (
+            selected is not None
+            and isinstance(selected, VectorAnnotation)
+            and selected.ann_type == AnnotationType.TEXT
+        ):
+            objs = self.canvas.current_page_objects()
+            obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
+            old_family = selected._font_family
+            selected._font_family = family
+            selected.fit_text_box()
+            # Record to history
+            if obj_id >= 0:
+                action = ChangeFontFamilyAction(
+                    object_id=obj_id,
+                    font_family=family,
+                    from_font_family=old_family,
+                )
+                self.canvas.history.record_action(action)
+            self._settings.recent_font_family = family
+            self.canvas.objectChanged.emit()
+            self.canvas.update()
+            self._save_settings_safe()
 
     @staticmethod
     def _get_system_fonts() -> list[str]:
@@ -1123,25 +1128,25 @@ class MainWindow(QMainWindow):
     def _locale_date() -> str:
         try:
             locale.setlocale(locale.LC_TIME, "")
-        except Exception:
-            pass
-        return datetime.now().strftime("%x")
+        except locale.Error:
+            logger.debug("Could not set the system locale for date formatting", exc_info=True)
+        return datetime.now(timezone.utc).astimezone().strftime("%x")
 
     @staticmethod
     def _locale_time() -> str:
         try:
             locale.setlocale(locale.LC_TIME, "")
-        except Exception:
-            pass
-        return datetime.now().strftime("%X")
+        except locale.Error:
+            logger.debug("Could not set the system locale for time formatting", exc_info=True)
+        return datetime.now(timezone.utc).astimezone().strftime("%X")
 
     @staticmethod
     def _locale_datetime() -> str:
         try:
             locale.setlocale(locale.LC_TIME, "")
-        except Exception:
-            pass
-        return datetime.now().strftime("%x %X")
+        except locale.Error:
+            logger.debug("Could not set the system locale for datetime formatting", exc_info=True)
+        return datetime.now(timezone.utc).astimezone().strftime("%x %X")
 
     # ---------------------------------------------------------------- annotation actions
 
@@ -1359,7 +1364,7 @@ class MainWindow(QMainWindow):
             return False
         try:
             pages = render_all_pages(path, dpi=300, password="", libreoffice_path=self._settings.libreoffice_path)
-        except Exception as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
             return False
         self.canvas.set_pages(pages)
@@ -1386,9 +1391,8 @@ class MainWindow(QMainWindow):
 
     def open_document(self, path: str | None = None) -> bool:
         # Check for unsaved changes before opening a new document
-        if self.document_path and self._has_unsaved_changes:
-            if not self._check_unsaved_changes():
-                return False
+        if self.document_path and self._has_unsaved_changes and not self._check_unsaved_changes():
+            return False
         
         chosen = path
         if not chosen:
@@ -1437,7 +1441,7 @@ class MainWindow(QMainWindow):
                 else:
                     QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{error_msg}")
                     return False
-            except Exception as exc:
+            except (OSError, RuntimeError) as exc:
                 QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
                 return False
             break  # Success
@@ -1516,8 +1520,8 @@ class MainWindow(QMainWindow):
             # Allow both orientations - image must fit on A6 in either orientation
             a6_max_dimension = 1748
             return max(width, height) <= a6_max_dimension
-        except Exception as exc:
-            logging.error(f"Error checking image size: {exc}")
+        except (OSError, UnidentifiedImageError, ValueError) as exc:
+            logger.error("Error checking image size: %s", exc)
             return False
     
     def _handle_small_image_drop(self, file_path: str) -> None:
@@ -1532,7 +1536,7 @@ class MainWindow(QMainWindow):
         
         try:
             img = Image.open(file_path)
-        except (UnidentifiedImageError, Exception) as exc:
+        except (OSError, UnidentifiedImageError, ValueError) as exc:
             QMessageBox.critical(
                 self,
                 "Image Load Error",
@@ -1570,8 +1574,8 @@ class MainWindow(QMainWindow):
             self._has_unsaved_changes = True
             self._update_title()
             self._update_document_workflow_state()
-        except Exception as exc:
-            logging.error(f"Error creating dropped image annotation: {exc}")
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+            logger.error("Error creating dropped image annotation: %s", exc)
             QMessageBox.critical(
                 self,
                 "Error",
@@ -1915,7 +1919,7 @@ class MainWindow(QMainWindow):
             )
             
             # If there are files to overwrite, show confirmation dialog
-            if existing_files:
+            if existing_files:  # noqa: SIM102
                 if not self._in_test_mode:
                     cleanup_checkbox_result = False
                     
@@ -1949,20 +1953,24 @@ class MainWindow(QMainWindow):
                         # Connect button signals
                         user_clicked_replace = False
                         
-                        def update_replace_button_text(state=None):
+                        def update_replace_button_text(
+                            state=None,
+                            checkbox=cleanup_checkbox,
+                            button=replace_button,
+                        ):
                             """Update Replace button text based on checkbox state."""
-                            if cleanup_checkbox.isChecked():
-                                replace_button.setText("Replace and delete older page files")
+                            if checkbox.isChecked():
+                                button.setText("Replace and delete older page files")
                             else:
-                                replace_button.setText("Replace")
+                                button.setText("Replace")
                         
-                        def on_replace():
+                        def on_replace(target_dialog=dialog):
                             nonlocal user_clicked_replace
                             user_clicked_replace = True
-                            dialog.accept()
+                            target_dialog.accept()
                         
-                        def on_cancel():
-                            dialog.reject()
+                        def on_cancel(target_dialog=dialog):
+                            target_dialog.reject()
                         
                         # Connect checkbox state change to update button text
                         cleanup_checkbox.toggled.connect(update_replace_button_text)
@@ -1999,9 +2007,9 @@ class MainWindow(QMainWindow):
                         for old_file in older_files:
                             try:
                                 old_file.unlink()
-                            except Exception as e:
+                            except OSError as e:
                                 # Log but don't fail - user still wants to export
-                                logging.warning(f"Could not delete {old_file}: {e}")
+                                logger.warning("Could not delete %s: %s", old_file, e)
             
             # All checks passed, proceed with export
             break
@@ -2057,7 +2065,7 @@ class MainWindow(QMainWindow):
                             if not self._in_test_mode:
                                 QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                             return False
-                    except Exception as exc:
+                    except (RuntimeError, TypeError, ValueError) as exc:
                         if not self._in_test_mode:
                             QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                         return False
@@ -2095,7 +2103,7 @@ class MainWindow(QMainWindow):
                             if not self._in_test_mode:
                                 QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                             return False
-                    except Exception as exc:
+                    except (RuntimeError, TypeError, ValueError) as exc:
                         if not self._in_test_mode:
                             QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
                         return False
@@ -2129,7 +2137,7 @@ class MainWindow(QMainWindow):
                             return False
                         else:
                             failed_pages.append((idx, str(exc)))
-                    except Exception as exc:
+                    except (RuntimeError, TypeError, ValueError) as exc:
                         failed_pages.append((idx, str(exc)))
                 
                 # If some pages failed, show error
@@ -2175,7 +2183,7 @@ class MainWindow(QMainWindow):
             
             return True
         
-        except Exception as exc:
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
             QMessageBox.critical(self, "Save failed", f"Unexpected error:\n{exc}")
             return False
 
@@ -2262,7 +2270,7 @@ class MainWindow(QMainWindow):
     def _save_settings_safe(self) -> None:
         try:
             self._settings_store.save(self._settings)
-        except Exception as exc:
+        except (OSError, TypeError, ValueError) as exc:
             logger.warning("Failed to save settings: %s", exc)
 
     def _adjust_window_to_document(self, doc_w: int, doc_h: int) -> None:
