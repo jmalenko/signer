@@ -1,18 +1,19 @@
 """Unit tests for annotation serialization."""
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from PySide6.QtGui import QColor
 
 from signer.objects import (
-    CanvasObject, VectorAnnotation, SignatureObject, AnnotationType,
-    DEFAULT_FONT_FAMILY, DEFAULT_TEXT_FONT_PT
+    AnnotationType,
+    CanvasObject,
+    SignatureObject,
+    VectorAnnotation,
 )
 from signer.settings import AppSettings, SettingsStore
-from PIL import Image
 
 
 class TestAnnotationSerialization:
@@ -353,9 +354,10 @@ class TestCompositorSerialization:
     
     def test_composite_objects_to_jpg(self, temp_dir):
         """Test compositing objects to JPG."""
-        from signer.compositor import composite_objects_to_jpg
-        from signer.objects import VectorAnnotation, AnnotationType
         from PIL import Image
+
+        from signer.compositor import composite_objects_to_jpg
+        from signer.objects import AnnotationType, VectorAnnotation
         
         # Create a base page image
         page = Image.new("RGB", (800, 600), (255, 255, 255))

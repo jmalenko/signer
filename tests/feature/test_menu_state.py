@@ -1,6 +1,5 @@
 """Feature tests for context-sensitive hamburger menu item enable/disable state (v1.2.29)."""
 
-import pytest
 from PySide6.QtWidgets import QApplication
 
 from signer.objects import AnnotationType, VectorAnnotation

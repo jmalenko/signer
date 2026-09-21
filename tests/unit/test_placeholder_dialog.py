@@ -1,8 +1,6 @@
 """Tests for Version 1.2.12 - Dynamic Page Number Placeholder functionality."""
 
-from pathlib import Path
 
-import pytest
 
 from signer.compositor import (
     ExportFormat,

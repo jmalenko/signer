@@ -3,8 +3,7 @@
 import pytest
 from PySide6.QtCore import QPointF
 
-from signer.canvas import DocumentCanvas
-from signer.objects import CanvasObject, VectorAnnotation, AnnotationType
+from signer.objects import AnnotationType, CanvasObject, VectorAnnotation
 
 
 class TestCoordinateTransforms:

@@ -45,7 +45,7 @@ class ExportFormat(Enum):
         return "JPEG files (*.jpg *.jpeg)"
 
     @staticmethod
-    def from_extension(ext: str) -> "ExportFormat":
+    def from_extension(ext: str) -> ExportFormat:
         """Detect format from file extension."""
         ext = ext.lower()
         if ext in {".jpg", ".jpeg"}:
@@ -66,7 +66,7 @@ class ExportFormat(Enum):
         return "Supported Files (*.jpg *.jpeg *.png *.pdf *.tif *.tiff *.bmp);;JPEG files (*.jpg *.jpeg);;PNG files (*.png);;PDF files (*.pdf);;TIFF files (*.tif *.tiff);;BMP files (*.bmp)"
 
     @staticmethod
-    def from_filter_string(filter_string: str) -> "ExportFormat":
+    def from_filter_string(filter_string: str) -> ExportFormat:
         """Extract format from a Qt file dialog filter string.
         
         Args:

@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 """
 Helper script to inspect and manage test results.
 
@@ -12,16 +11,16 @@ Commands:
     copy-to-expected - Copy actual result to expected reference (requires test_name)
 """
 
-import sys
-from pathlib import Path
 import json
+import sys
 import webbrowser
+from pathlib import Path
 from shutil import copy2
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from tests.utils.test_results import get_test_results_dir, create_comparison_report
+from tests.utils.test_results import create_comparison_report, get_test_results_dir
 
 
 def list_results():
@@ -57,11 +56,11 @@ def list_results():
             else:
                 # Single-page display
                 if (test_dir / f"{info.get('expected_base', test_dir.name)}_actual.png").exists():
-                    print(f"    ✓ actual.png")
+                    print("    ✓ actual.png")
                 if (test_dir / f"{info.get('expected_base', test_dir.name)}_expected.png").exists():
-                    print(f"    ✓ expected.png")
+                    print("    ✓ expected.png")
                 if (test_dir / f"{info.get('expected_base', test_dir.name)}_diff.png").exists():
-                    print(f"    ✓ diff.png")
+                    print("    ✓ diff.png")
 
 
 def generate_report():
@@ -84,7 +83,6 @@ def copy_to_expected(test_name):
     Supports both single-page and multi-page results.
     For multi-page, copies all page files (e.g., *-p1.png, *-p2.png, etc.)
     """
-    from pathlib import Path
     results_dir = get_test_results_dir()
     test_dir = results_dir / test_name
     

@@ -6,6 +6,7 @@ within 10° threshold, unless a modifier key is pressed.
 """
 
 import pytest
+
 from signer.canvas import DocumentCanvas
 
 

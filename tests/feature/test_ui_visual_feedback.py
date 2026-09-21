@@ -1,10 +1,8 @@
 """Feature tests for UI visual feedback during annotation operations."""
 
-import pytest
 from PySide6.QtCore import QPointF
-from PySide6.QtGui import QColor
-from signer.objects import VectorAnnotation, AnnotationType
-from signer.canvas import DocumentCanvas
+
+from signer.objects import AnnotationType, VectorAnnotation
 
 
 class TestAnnotationCreationFeedback:

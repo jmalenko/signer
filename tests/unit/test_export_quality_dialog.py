@@ -1,11 +1,8 @@
 """Feature tests for export quality dialog and workflow."""
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QDialog
+import pytest
+from PySide6.QtWidgets import QApplication
 
 from signer.compositor import ExportFormat
 from signer.export_quality_dialog import ExportQualityOptionsPanel

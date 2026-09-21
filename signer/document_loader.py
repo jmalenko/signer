@@ -5,8 +5,9 @@ Normalizes various document formats (PDF, Word, ODT, Images) to PIL Image lists.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from PIL import Image
+
 import fitz
+from PIL import Image
 
 
 class DocumentLoader(ABC):
@@ -15,7 +16,6 @@ class DocumentLoader(ABC):
     @abstractmethod
     def supports(self, file_path: str | Path) -> bool:
         """Check if this loader can handle the given file."""
-        pass
     
     @abstractmethod
     def load(self, file_path: str | Path) -> list[Image.Image]:
@@ -24,7 +24,6 @@ class DocumentLoader(ABC):
         Raises:
             ValueError: If file cannot be loaded or format is invalid.
         """
-        pass
 
 
 class PDFLoader(DocumentLoader):
@@ -118,7 +117,6 @@ class LibreOfficeLoader(DocumentLoader):
         """Convert document to PDF via LibreOffice, then render pages."""
         import subprocess
         import tempfile
-        import os
         
         file_path = str(file_path)
         
@@ -156,7 +154,7 @@ class LibreOfficeLoader(DocumentLoader):
             pdf_path = Path(temp_dir) / f"{base_name}.pdf"
             
             if not pdf_path.exists():
-                raise ValueError(f"Failed to convert document to PDF")
+                raise ValueError("Failed to convert document to PDF")
             
             # Load PDF using PDFLoader
             pdf_loader = PDFLoader()
@@ -164,10 +162,9 @@ class LibreOfficeLoader(DocumentLoader):
     
     def _find_libreoffice(self) -> str | None:
         """Find LibreOffice executable on system."""
-        import shutil
         import os
+        import shutil
         import sys
-        from pathlib import Path
         
         # If path was explicitly set, use it
         if self.libreoffice_path:

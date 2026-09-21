@@ -1,11 +1,9 @@
 """Unit tests for image comparison diff visualization and test report generation."""
 
-from pathlib import Path
 from PIL import Image
-import pytest
 
 from tests.utils.image_comparison import _create_diff_image, compare_images
-from tests.utils.test_results import _generate_html_report, create_comparison_report
+from tests.utils.test_results import _generate_html_report
 
 
 def test_diff_image_expected_white_actual_nonwhite():

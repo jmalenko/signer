@@ -8,15 +8,13 @@ Tests cover:
 - Edge cases and boundary conditions
 """
 
-from pathlib import Path
 
-import pytest
 
 from signer.compositor import (
     ExportFormat,
+    build_overwrite_dialog_info,
     detect_existing_files,
     detect_older_page_files,
-    build_overwrite_dialog_info,
 )
 
 

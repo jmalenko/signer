@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
-import pytest
-
-from signer.compositor import ExportFormat, validate_placeholder_for_multipage_export, build_suggested_filename_for_dialog
+from signer.compositor import (
+    ExportFormat,
+    build_suggested_filename_for_dialog,
+    validate_placeholder_for_multipage_export,
+)
 
 
 class TestFormatSwitchingBehavior:
@@ -169,7 +171,6 @@ class TestDialogReturnOnFormatMismatch:
         # continue
         
         # The loop structure supports this retry mechanism
-        pass
 
 
 class TestValidationAfterFormatSwitch:

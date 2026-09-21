@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from PIL import Image
 import pytest
+from PIL import Image
 
 from signer.debug import debug_print
 from signer.signature_background import (
+    CHARACTER_TARGET_PT,
     RECOMMENDED_MAX_PT,
     RECOMMENDED_MIN_PT,
-    CHARACTER_TARGET_PT,
     alpha_row_histogram,
     auto_trim,
     calculate_character_scaling_factor,
@@ -17,14 +17,14 @@ from signer.signature_background import (
     expansion_bands_for_character,
     fit_to_recommended_range,
     height_px_to_pt,
+    histogram_cumulative_mass_at_fractions,
     histogram_mass_percentile_indices,
     histogram_mass_percentile_positions,
-    histogram_cumulative_mass_at_fractions,
     remove_background,
     remove_background_by_color,
     remove_background_combined,
-    resize_to_height_pt,
     resize_by_factor,
+    resize_to_height_pt,
 )
 
 

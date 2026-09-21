@@ -2,17 +2,16 @@
 
 import json
 import sys
-from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from PySide6.QtWidgets import QApplication
 
 from signer.main_window import MainWindow
 from signer.settings import SettingsStore
 from tests.conftest import FIXTURES_DIR
 from tests.recording.action_player import play_actions_from_file
 from tests.utils.image_comparison import assert_images_equal_with_results
-from PySide6.QtWidgets import QApplication
-from unittest.mock import patch
 
 
 class TestDocumentAllAnnotations:

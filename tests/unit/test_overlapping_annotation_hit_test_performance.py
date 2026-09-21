@@ -9,7 +9,6 @@ from PySide6.QtCore import QPointF
 
 from signer.objects import SignatureObject
 
-
 MAX_HIT_TEST_SECONDS = 0.1
 
 

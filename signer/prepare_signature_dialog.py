@@ -10,14 +10,22 @@ import os
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import Qt, QRectF, QPointF, QSize, QTimer
-from PySide6.QtGui import QImage, QPixmap, QPainter, QBrush, QColor, QPen, QWheelEvent, QMouseEvent
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QImage,
+    QMouseEvent,
+    QPainter,
+    QPen,
+    QPixmap,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
-    QComboBox,
     QCheckBox,
     QColorDialog,
+    QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -33,26 +41,21 @@ from PySide6.QtWidgets import (
 from .debug import debug_print
 from .pdf_utils import render_all_pages
 from .signature_background import (
+    CHARACTER_TARGET_PT,
     DEFAULT_COLOR_SOFTNESS,
     DEFAULT_COLOR_TOLERANCE,
     DEFAULT_INK_COLOR,
     DEFAULT_SOFTNESS,
     DEFAULT_THRESHOLD,
-    CHARACTER_TARGET_PT,
-    RECOMMENDED_MAX_PT,
-    RECOMMENDED_MIN_PT,
-    auto_trim,
     alpha_row_histogram,
+    auto_trim,
     calculate_character_scaling_factor,
     estimate_regular_character_band,
     expansion_bands_for_character,
-    fit_to_recommended_range,
-    height_px_to_pt,
     histogram_mass_percentile_positions,
     remove_background,
     remove_background_by_color,
     resize_by_factor,
-    resize_to_height_pt,
 )
 
 OPEN_FILTER = (
@@ -122,12 +125,12 @@ class _DraggablePreviewLabel(QLabel):
         self._drag_last_pos: QPointF | None = None
         self.setCursor(Qt.OpenHandCursor)
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             self._drag_last_pos = QPointF(event.position())
             self.setCursor(Qt.ClosedHandCursor)
 
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._drag_last_pos is None:
             return
         pos = QPointF(event.position())
@@ -136,7 +139,7 @@ class _DraggablePreviewLabel(QLabel):
         if self.pan_delta_callback is not None:
             self.pan_delta_callback(delta.x(), delta.y())
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self._drag_last_pos = None
         self.setCursor(Qt.OpenHandCursor)
 
@@ -243,7 +246,7 @@ class _CropWidget(QWidget):
 
     # -- Qt events ------------------------------------------------------------
 
-    def paintEvent(self, event) -> None:  # noqa: N802 (Qt override)
+    def paintEvent(self, event) -> None:
         painter = QPainter(self)
         if self._pixmap is not None:
             painter.drawPixmap(self.rect(), self._pixmap, self._pixmap.rect())
@@ -263,14 +266,14 @@ class _CropWidget(QWidget):
                 )
         painter.end()
 
-    def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802
+    def wheelEvent(self, event: QWheelEvent) -> None:
         if event.angleDelta().y() > 0:
             self.zoom_in()
         else:
             self.zoom_out()
         event.accept()
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() != Qt.LeftButton or self._image is None:
             return
         pos = QPointF(event.position())
@@ -295,7 +298,7 @@ class _CropWidget(QWidget):
         self._create_anchor = QPointF(image_pos)
         self._rect = QRectF(image_pos, image_pos)
 
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._drag_mode is None or self._image is None:
             hit = self._hit_test(QPointF(event.position()))
             self.setCursor(Qt.SizeAllCursor if hit == "move" else (Qt.PointingHandCursor if hit else Qt.ArrowCursor))
@@ -332,7 +335,7 @@ class _CropWidget(QWidget):
             rect.setBottom(image_pos.y())
         self._rect = rect.normalized()
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self._drag_mode = None
         self._drag_anchor = None
         self._rect_at_drag_start = None
@@ -348,7 +351,7 @@ class _CropScrollArea(QScrollArea):
         super().__init__(parent)
         self._crop_widget = crop_widget
 
-    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+    def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         if self._crop_widget._auto_fit:
             self._crop_widget.fit_to_view()
@@ -1069,7 +1072,7 @@ class PrepareSignatureDialog(QDialog):
 
     # ---------------------------------------------------------------- Close
 
-    def closeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+    def closeEvent(self, event) -> None:
         if self._dirty:
             reply = QMessageBox.question(
                 self,

@@ -1,6 +1,5 @@
 """Unit tests for notification toast widget."""
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -49,7 +48,7 @@ def test_notification_creation_with_directory(main_window, tmp_path):
 
 def test_notification_auto_dismisses(main_window, qapp):
     """Test that notification auto-dismisses after timeout."""
-    from PySide6.QtCore import QTimer, QEventLoop
+    from PySide6.QtCore import QEventLoop, QTimer
     
     notification = NotificationToast(main_window, "Test", duration_ms=100)
     assert notification.isVisible()
@@ -75,7 +74,7 @@ def test_notification_manual_close(main_window):
 
 def test_error_notification_is_red_and_does_not_auto_dismiss(main_window, qapp):
     """Error notifications must be styled red and require manual dismissal."""
-    from PySide6.QtCore import QTimer, QEventLoop
+    from PySide6.QtCore import QEventLoop, QTimer
 
     notification = NotificationToast(main_window, "Unable to open directory", is_error=True)
     assert "c62828" in notification.styleSheet()  # red border color

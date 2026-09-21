@@ -1,7 +1,5 @@
 """Unit tests for export quality settings and behavior."""
 
-import pytest
-from pathlib import Path
 
 from signer.compositor import ExportFormat
 from signer.settings import AppSettings

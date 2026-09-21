@@ -1,12 +1,13 @@
 """Unit tests for unsaved changes tracking feature."""
 
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
-from PySide6.QtWidgets import QApplication, QMessageBox
+
+import pytest
+from PySide6.QtWidgets import QMessageBox
 
 from signer.main_window import MainWindow
-from signer.settings import SettingsStore, AppSettings
+from signer.settings import AppSettings, SettingsStore
 
 
 class TestUnsavedChangesTracking:

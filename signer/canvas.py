@@ -7,24 +7,41 @@ import math
 from PIL import Image
 from PIL.ImageQt import ImageQt
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPixmap, QPolygonF
+from PySide6.QtGui import (
+    QColor,
+    QDragEnterEvent,
+    QDropEvent,
+    QPainter,
+    QPixmap,
+    QPolygonF,
+)
 from PySide6.QtWidgets import QApplication, QWidget
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
 
-from .history import HistoryStack, MoveAnnotationAction, ResizeAnnotationAction, RotateAnnotationAction, ChangeLineWidthAction, ChangeFontSizeAction, AddAnnotationAction, DeleteAnnotationAction, ChangeColorAction, PasteAnnotationAction, CompositeAction
+from .history import (
+    AddAnnotationAction,
+    ChangeColorAction,
+    ChangeFontSizeAction,
+    ChangeLineWidthAction,
+    CompositeAction,
+    DeleteAnnotationAction,
+    HistoryStack,
+    MoveAnnotationAction,
+    PasteAnnotationAction,
+    ResizeAnnotationAction,
+    RotateAnnotationAction,
+)
 from .objects import (
     ANCHOR_HANDLE,
-    HANDLE_FX,
-    HANDLE_FY,
-    ARROW_TYPES,
     DUPLICATE_OFFSET,
     FONT_SIZE_STEPS_PT,
+    HANDLE_FX,
+    HANDLE_FY,
     LINE_WIDTH_STEPS_PT,
     AnnotationType,
     CanvasObject,
+    VectorAnnotation,
     canvas_object_from_dict,
     step_size,
-    VectorAnnotation,
 )
 
 
@@ -236,7 +253,7 @@ class DocumentCanvas(QWidget):
         else:
             return original
     
-    def _rotate_pages(self, pages: "list[int] | range", delta: int) -> None:
+    def _rotate_pages(self, pages: list[int] | range, delta: int) -> None:
         """Rotate the given page indices by `delta` degrees (90 or 270)."""
         for i in pages:
             self._page_rotations[i] = (self._page_rotations.get(i, 0) + delta) % 360

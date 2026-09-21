@@ -1,8 +1,6 @@
 """Unit tests for settings persistence."""
 
 import json
-import tempfile
-from pathlib import Path
 
 import pytest
 

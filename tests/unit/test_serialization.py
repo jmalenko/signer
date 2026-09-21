@@ -1,15 +1,18 @@
 """Unit tests for annotation serialization."""
 
-import pytest
 import base64
 from io import BytesIO
-from PIL import Image
 
+import pytest
+from PIL import Image
 from PySide6.QtGui import QColor
 
 from signer.objects import (
-    CanvasObject, VectorAnnotation, SignatureObject, AnnotationType,
-    HANDLE_FX, HANDLE_FY, ANCHOR_HANDLE, ProjectFile,
+    AnnotationType,
+    CanvasObject,
+    ProjectFile,
+    SignatureObject,
+    VectorAnnotation,
 )
 
 

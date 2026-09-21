@@ -1,11 +1,6 @@
 """Feature tests for context-sensitive UI behavior."""
 
-import pytest
-from unittest.mock import MagicMock, Mock, patch
-from PySide6.QtCore import Qt
-from signer.objects import VectorAnnotation, AnnotationType
-from signer.canvas import DocumentCanvas
-from signer.main_window import MainWindow
+from signer.objects import AnnotationType, VectorAnnotation
 
 
 class TestControlVisibilityPerType:

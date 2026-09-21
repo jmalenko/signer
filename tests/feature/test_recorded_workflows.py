@@ -10,15 +10,13 @@ features by replaying recorded JSON action sequences and comparing pixel-perfect
 
 import json
 import sys
-from pathlib import Path
 
 import pytest
+from PySide6.QtWidgets import QApplication
 
 from tests.conftest import FIXTURES_DIR
 from tests.recording.action_player import play_actions_from_file
 from tests.utils.image_comparison import assert_images_equal_with_results
-from PySide6.QtWidgets import QApplication
-
 
 # Parametrization: workflow_type, fixture_name, expected_annotation_prefix, description
 WORKFLOW_TEST_CASES = [

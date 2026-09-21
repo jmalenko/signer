@@ -1,13 +1,18 @@
 """Unit tests for bounding box calculations."""
 
 import pytest
-from PySide6.QtCore import QRectF, QPointF
+from PIL import Image
+from PySide6.QtCore import QPointF, QRectF
 
 from signer.objects import (
-    CanvasObject, VectorAnnotation, SignatureObject, AnnotationType,
-    HANDLE_FX, HANDLE_FY, ANCHOR_HANDLE
+    ANCHOR_HANDLE,
+    HANDLE_FX,
+    HANDLE_FY,
+    AnnotationType,
+    CanvasObject,
+    SignatureObject,
+    VectorAnnotation,
 )
-from PIL import Image
 
 
 class TestBoundingBox:
@@ -460,7 +465,6 @@ class TestObjectRectangles:
     def test_object_view_rect(self):
         """Test _object_view_rect calculation."""
         from signer.canvas import DocumentCanvas
-        from PySide6.QtCore import QRectF
         
         canvas = DocumentCanvas()
         canvas._pages = [type('obj', (object,), {'size': (1000, 1000)})()]

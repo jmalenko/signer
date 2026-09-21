@@ -1,12 +1,11 @@
 """Unit tests for discrete step sizes of `[` / `]` keyboard shortcuts (v1.2.32)."""
 
-import pytest
 from signer.canvas import DocumentCanvas
 from signer.objects import (
-    VectorAnnotation,
-    AnnotationType,
     FONT_SIZE_STEPS_PT,
     LINE_WIDTH_STEPS_PT,
+    AnnotationType,
+    VectorAnnotation,
     step_size,
 )
 

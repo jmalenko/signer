@@ -5,15 +5,14 @@ when the SIGNER_RECORD_ACTIONS environment variable is set.
 """
 
 import os
-import json
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
 
-from tests.utils.test_helpers import ActionRecorder, get_recorder
+from tests.utils.test_helpers import get_recorder
 
 
 class ApplicationActionRecorder(QObject):
@@ -61,7 +60,6 @@ class ApplicationActionRecorder(QObject):
         """Called when an object is added, moved, resized, or removed."""
         # This is a generic signal - we need more specific tracking
         # The actual recording is done by wrapping the specific methods
-        pass
     
     def _on_page_changed(self, current: int, total: int) -> None:
         """Called when the page changes."""
@@ -160,7 +158,7 @@ class ApplicationActionRecorder(QObject):
             "text": text
         })
     
-    def get_recorded_actions(self) -> List[Dict[str, Any]]:
+    def get_recorded_actions(self) -> list[dict[str, Any]]:
         """Get all recorded actions."""
         return self._recorder.get_actions()
     
@@ -371,7 +369,7 @@ def unpatch_main_window(main_window) -> None:
         del canvas._original_mouse_release
 
 
-def setup_recording_if_enabled(main_window) -> Optional[ApplicationActionRecorder]:
+def setup_recording_if_enabled(main_window) -> ApplicationActionRecorder | None:
     """Set up action recording if the environment variable is set.
     
     Returns the recorder instance if recording is enabled, None otherwise.
@@ -418,4 +416,4 @@ def setup_recording_if_enabled(main_window) -> Optional[ApplicationActionRecorde
 
 
 # Import the enable/disable functions from test_helpers
-from tests.utils.test_helpers import enable_recording, disable_recording, is_recording_enabled
+from tests.utils.test_helpers import enable_recording

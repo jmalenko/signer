@@ -2,10 +2,9 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import MagicMock
 
-from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QColor
 
 
@@ -23,12 +22,8 @@ def create_mock_canvas_object(x: float = 100, y: float = 100, width: float = 200
 
 def simulate_mouse_drag(canvas, obj, start_x: float, start_y: float, end_x: float, end_y: float):
     """Simulate a mouse drag operation on an object."""
-    from PySide6.QtCore import QPointF
-    from PySide6.QtGui import QMouseEvent
-    from PySide6.QtCore import Qt
     
     # This is a helper for feature tests to simulate user interactions
-    pass
 
 
 def wait_for_signal(signal, timeout: int = 1000):
@@ -39,7 +34,7 @@ def wait_for_signal(signal, timeout: int = 1000):
     return spy
 
 
-def create_test_annotation_data(annotation_type: str, x: float, y: float, page: int = 0, **kwargs) -> Dict[str, Any]:
+def create_test_annotation_data(annotation_type: str, x: float, y: float, page: int = 0, **kwargs) -> dict[str, Any]:
     """Create a dictionary representing an annotation for test recording."""
     return {
         "type": "add_annotation",
@@ -51,7 +46,7 @@ def create_test_annotation_data(annotation_type: str, x: float, y: float, page: 
     }
 
 
-def create_test_move_data(object_id: int, x: float, y: float) -> Dict[str, Any]:
+def create_test_move_data(object_id: int, x: float, y: float) -> dict[str, Any]:
     """Create a dictionary representing a move action for test recording."""
     return {
         "type": "move_annotation",
@@ -61,7 +56,7 @@ def create_test_move_data(object_id: int, x: float, y: float) -> Dict[str, Any]:
     }
 
 
-def create_test_resize_data(object_id: int, width: float, height: float, handle: int) -> Dict[str, Any]:
+def create_test_resize_data(object_id: int, width: float, height: float, handle: int) -> dict[str, Any]:
     """Create a dictionary representing a width/height resize action."""
     return {
         "type": "resize_annotation",
@@ -77,7 +72,7 @@ def create_test_rotation_data(
     x: float,
     y: float,
     rotation: float,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Create a dictionary representing an annotation rotation action."""
     return {
         "type": "rotate_annotation",
@@ -88,7 +83,7 @@ def create_test_rotation_data(
     }
 
 
-def create_test_endpoint_resize_data(object_id: int, handle: int, x: float, y: float) -> Dict[str, Any]:
+def create_test_endpoint_resize_data(object_id: int, handle: int, x: float, y: float) -> dict[str, Any]:
     """Create a dictionary representing an endpoint-handle resize action."""
     return {
         "type": "resize_annotation",
@@ -99,7 +94,7 @@ def create_test_endpoint_resize_data(object_id: int, handle: int, x: float, y: f
     }
 
 
-def save_recorded_actions(actions: List[Dict[str, Any]], output_path: str | Path) -> None:
+def save_recorded_actions(actions: list[dict[str, Any]], output_path: str | Path) -> None:
     """Save recorded actions to a JSON file."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -109,7 +104,7 @@ def save_recorded_actions(actions: List[Dict[str, Any]], output_path: str | Path
     output_path.write_text(json.dumps(data, indent=2))
 
 
-def load_recorded_actions(input_path: str | Path) -> List[Dict[str, Any]]:
+def load_recorded_actions(input_path: str | Path) -> list[dict[str, Any]]:
     """Load recorded actions from a JSON file."""
     input_path = Path(input_path)
     data = json.loads(input_path.read_text())
@@ -120,10 +115,10 @@ class ActionRecorder:
     """Records user actions for test creation."""
     
     def __init__(self):
-        self.actions: List[Dict[str, Any]] = []
+        self.actions: list[dict[str, Any]] = []
         self._enabled = False
         self._object_id_counter = 0
-        self._object_map: Dict[int, int] = {}  # object -> id mapping
+        self._object_map: dict[int, int] = {}  # object -> id mapping
     
     def enable(self):
         """Enable recording."""
@@ -282,7 +277,7 @@ class ActionRecorder:
             "text": text
         })
     
-    def get_actions(self) -> List[Dict[str, Any]]:
+    def get_actions(self) -> list[dict[str, Any]]:
         return self.actions.copy()
     
     def export_json(self, output_path: str | Path):

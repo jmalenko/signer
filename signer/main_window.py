@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import locale
 import json
+import locale
 import logging
 import os
 import re
@@ -11,11 +11,18 @@ logger = logging.getLogger(__name__)
 from datetime import datetime
 from pathlib import Path
 
-import fitz
 from PIL import Image, UnidentifiedImageError
-from PySide6.QtCore import QSize, Qt, QTimer, QUrl, QCoreApplication
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QKeyEvent, QPainter, QImage, QPixmap, QPageSize
-from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+from PySide6.QtCore import QCoreApplication, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QDesktopServices,
+    QKeyEvent,
+    QPageSize,
+    QPainter,
+    QPixmap,
+)
+from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -42,31 +49,29 @@ from PySide6.QtWidgets import (
 from .canvas import DocumentCanvas
 from .compositor import (
     ExportFormat,
-    build_default_output_path,
-    build_page_output_path,
-    build_suggested_filename_for_dialog,
-    replace_placeholder_with_page_number,
-    validate_placeholder_for_multipage_export,
-    detect_existing_files,
-    detect_older_page_files,
+    _composite_objects,
     build_overwrite_dialog_info,
+    build_suggested_filename_for_dialog,
     composite_objects_to_format,
     composite_objects_to_jpg,
     composite_pages_to_pdf,
     composite_pages_to_tiff,
-    _composite_objects,
+    detect_existing_files,
+    detect_older_page_files,
+    replace_placeholder_with_page_number,
+    validate_placeholder_for_multipage_export,
 )
 from .export_quality_dialog import ExportQualityOptionsPanel
 from .notification import NotificationToast
 from .objects import (
-    AnnotationType,
-    CanvasObject,
     DEFAULT_FONT_FAMILY,
     DEFAULT_LINE_WIDTH_PT,
     DEFAULT_TEXT_FONT_PT,
+    AnnotationType,
+    CanvasObject,
+    ProjectFile,
     SignatureObject,
     VectorAnnotation,
-    ProjectFile,
 )
 from .pdf_utils import render_all_pages
 from .prepare_signature_dialog import PrepareSignatureDialog

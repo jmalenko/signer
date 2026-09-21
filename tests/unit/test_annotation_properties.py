@@ -1,7 +1,6 @@
 """Unit tests for annotation properties (width, font size, font family)."""
 
-import pytest
-from signer.objects import VectorAnnotation, AnnotationType, VECTOR_WITH_WIDTH
+from signer.objects import VECTOR_WITH_WIDTH, AnnotationType, VectorAnnotation
 
 
 class TestLineWidthProperty:

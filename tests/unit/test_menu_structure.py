@@ -1,6 +1,5 @@
 """Unit tests for menu structure and annotation menu items."""
 
-import pytest
 from signer.objects import AnnotationType
 
 

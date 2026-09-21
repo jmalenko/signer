@@ -6,7 +6,6 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-
 # Default settings constants - single source of truth
 DEFAULT_COLOR: str = "#cc0000"
 DEFAULT_LINE_WIDTH_PT: float = 1.5

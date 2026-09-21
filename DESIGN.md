@@ -28,7 +28,7 @@ diagnostics disabled.
 ```bash
 pytest
 ```
-See [TESTING.md](TESTING.md) for unit/feature test selection, coverage, and troubleshooting.
+See [TESTING.md](TESTING.md) for test selection, coverage, troubleshooting, and Ruff static analysis.
 
 **Build a single-file executable:**
 ```bash

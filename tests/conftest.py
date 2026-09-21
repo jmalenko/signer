@@ -13,9 +13,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from signer.canvas import DocumentCanvas
 from signer.main_window import MainWindow
-from signer.objects import AnnotationType, ProjectFile, SignatureObject, VectorAnnotation
+from signer.objects import (
+    AnnotationType,
+    ProjectFile,
+    SignatureObject,
+    VectorAnnotation,
+)
 from signer.settings import AppSettings, SettingsStore
-
 
 # Run Qt in offscreen mode so tests don't pop up visible application windows.
 # Respect an existing QT_QPA_PLATFORM (e.g. set by the user) if already defined.

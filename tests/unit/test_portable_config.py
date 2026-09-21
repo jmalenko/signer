@@ -6,14 +6,13 @@ Tests verify that the application correctly switches between portable mode
 based on file presence at runtime.
 """
 
-import os
 import sys
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from signer.settings import get_config_dir, SettingsStore, AppSettings
+from signer.settings import AppSettings, SettingsStore, get_config_dir
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-specific portable/installed config mode tests")

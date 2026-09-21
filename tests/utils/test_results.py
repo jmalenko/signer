@@ -1,12 +1,11 @@
 """Test results management - organizing and reporting image comparisons."""
 
-from pathlib import Path
-from typing import Optional
-import json
 import base64
 import html as html_lib
+import json
 import mimetypes
 import re
+from pathlib import Path
 
 # Results directory - persists across test runs for inspection
 RESULTS_DIR = Path(__file__).parent.parent / "test-results"
@@ -31,7 +30,7 @@ def organize_test_output(
     test_name: str,
     actual_image: str | Path,
     expected_image: str | Path,
-    diff_image: Optional[str | Path] = None,
+    diff_image: str | Path | None = None,
     match: bool = True,
 ) -> dict:
     """
@@ -94,7 +93,7 @@ def organize_test_output(
     return results
 
 
-def create_comparison_report(output_file: Optional[str | Path] = None) -> str:
+def create_comparison_report(output_file: str | Path | None = None) -> str:
     """
     Create an HTML report of all test comparisons.
     

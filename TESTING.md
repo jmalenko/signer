@@ -50,6 +50,36 @@ pytest --cov=signer --cov-report=html
 pytest tests/feature/test_document_all_annotations.py -q
 ```
 
+## Static Analysis with Ruff
+
+Install Ruff in the active virtual environment if needed:
+
+```bash
+python -m pip install ruff
+```
+
+Check application and test code:
+
+```bash
+python -m ruff check signer tests
+```
+
+Save the findings to a report:
+
+```bash
+python -m ruff check signer tests --output-format concise > ruff-report.txt
+```
+
+Ruff returns exit code `1` when it finds violations. Some findings can be fixed automatically:
+
+```bash
+python -m ruff check signer tests --fix
+```
+
+Review the resulting diff and run the full test suite after using `--fix`. Ruff's automatic
+cleanup may remove imports that are used indirectly by tests or runtime callbacks. Project-level
+exceptions are defined in `pyproject.toml`; currently `F841` and `RUF059` are ignored.
+
 ## Testing the Prepare Signature Tool
 
 The tool's image processing (luminance removal, hue filtering, sequential alpha composition,

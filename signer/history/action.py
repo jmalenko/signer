@@ -12,8 +12,8 @@ by updating the target state of the last stack element.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 import logging
+from abc import ABC, abstractmethod
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -35,12 +35,10 @@ class Action(ABC):
     @abstractmethod
     def execute(self, canvas: Any) -> None:
         """Execute the action (apply forward/redo)."""
-        pass
 
     @abstractmethod
     def undo(self, canvas: Any) -> None:
         """Undo the action (restore to previous state)."""
-        pass
 
     def serialize(self) -> dict[str, Any]:
         """Serialize action to dictionary for JSON storage."""
@@ -124,7 +122,7 @@ class CompositeAction(Action):
 class MergeableAction(Action):
     """Mixin for actions that support coalescing (merging consecutive actions)."""
 
-    def merge(self, other: "MergeableAction") -> None:
+    def merge(self, other: MergeableAction) -> None:
         """Merge another action into this one by updating the target state.
         
         This is called when consecutive move/resize operations on the same object
@@ -259,7 +257,7 @@ class MoveAnnotationAction(MergeableAction):
             self.data["y"] = target["y"]
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "MoveAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> MoveAnnotationAction:
         """Create action from serialized data."""
         return cls(
             object_id=data["object_id"],
@@ -428,7 +426,7 @@ class ResizeAnnotationAction(MergeableAction):
             self.data["height"] = target["height"]
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "ResizeAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> ResizeAnnotationAction:
         """Create action from serialized data."""
         return cls(
             object_id=data["object_id"],
@@ -456,7 +454,13 @@ class AddAnnotationAction(Action):
 
     def execute(self, canvas: Any) -> None:
         """Add annotation to current page."""
-        from ..objects import canvas_object_from_dict, AnnotationType, VectorAnnotation, ARROW_TYPES, LARGE_DEFAULT_TYPES, DPI_SCALE
+        from ..objects import (
+            DPI_SCALE,
+            LARGE_DEFAULT_TYPES,
+            AnnotationType,
+            VectorAnnotation,
+            canvas_object_from_dict,
+        )
         
         # Convert annotation_type to VectorAnnotation format
         data_for_creation = dict(self.data)  # Copy to avoid modifying original
@@ -501,7 +505,7 @@ class AddAnnotationAction(Action):
                 if "font_size_pt" not in data_for_creation:
                     data_for_creation["font_size_pt"] = 12
                 obj = VectorAnnotation.from_dict(data_for_creation)
-            except (KeyError, ValueError, TypeError) as e:
+            except (KeyError, ValueError, TypeError):
                 # Fallback: try canvas_object_from_dict
                 obj = None
         
@@ -560,7 +564,7 @@ class AddAnnotationAction(Action):
         # stable object_id (see canvas.py's _stable_id_for), this should not normally
         # trigger; log it so any remaining gaps are visible instead of silently
         # mutating the wrong object.
-        if page in canvas._page_objects and canvas._page_objects[page]:
+        if canvas._page_objects.get(page):
             # Try to find the object by matching key properties
             objects_on_page = canvas._page_objects[page]
             target_x = self.data.get("x")
@@ -605,7 +609,7 @@ class AddAnnotationAction(Action):
             canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "AddAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> AddAnnotationAction:
         """Create action from serialized data."""
         return cls(data)
 
@@ -670,7 +674,7 @@ class DeleteAnnotationAction(Action):
             canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "DeleteAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> DeleteAnnotationAction:
         """Create action from serialized data."""
         return cls(
             object_id=data["object_id"],
@@ -735,7 +739,7 @@ class ChangeColorAction(Action):
         canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "ChangeColorAction":
+    def from_data(cls, data: dict[str, Any]) -> ChangeColorAction:
         """Create action from serialized data."""
         return cls(
             object_id=data.get("object_id"),
@@ -790,7 +794,7 @@ class SetTextAnnotationAction(Action):
         canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "SetTextAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> SetTextAnnotationAction:
         """Create action from serialized data."""
         return cls(
             object_id=data["object_id"],
@@ -827,7 +831,7 @@ class SelectAnnotationAction(Action):
         canvas._selected = None
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "SelectAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> SelectAnnotationAction:
         """Create action from serialized data."""
         return cls(object_id=data.get("object_id"))
 
@@ -869,7 +873,7 @@ class DuplicateAnnotationAction(Action):
         canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "DuplicateAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> DuplicateAnnotationAction:
         """Create action from serialized data."""
         return cls(
             object_id=data["object_id"],
@@ -911,7 +915,7 @@ class CutAnnotationAction(Action):
                 canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "CutAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> CutAnnotationAction:
         """Create action from serialized data."""
         return cls(
             object_id=data["object_id"],
@@ -963,7 +967,7 @@ class PasteAnnotationAction(Action):
             canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "PasteAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> PasteAnnotationAction:
         """Create action from serialized data."""
         return cls(pasted_objects_data=data.get("pasted_objects_data"))
 
@@ -993,7 +997,7 @@ class ChangePageAction(Action):
             canvas.goto_page(self.data["from_page"])
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "ChangePageAction":
+    def from_data(cls, data: dict[str, Any]) -> ChangePageAction:
         """Create action from serialized data."""
         return cls(
             to_page=data["to_page"],
@@ -1038,7 +1042,7 @@ class RotatePageAction(Action):
             canvas.update()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "RotatePageAction":
+    def from_data(cls, data: dict[str, Any]) -> RotatePageAction:
         """Create action from serialized data."""
         return cls(
             page=data["page"],
@@ -1094,7 +1098,7 @@ class RotateAnnotationAction(Action):
         self._apply(canvas, "from")
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "RotateAnnotationAction":
+    def from_data(cls, data: dict[str, Any]) -> RotateAnnotationAction:
         return cls(
             object_id=data["object_id"],
             from_x=data["from_x"],
@@ -1161,7 +1165,7 @@ class ChangeLineWidthAction(Action):
         canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "ChangeLineWidthAction":
+    def from_data(cls, data: dict[str, Any]) -> ChangeLineWidthAction:
         """Create action from serialized data."""
         return cls(
             object_id=data.get("object_id"),
@@ -1231,7 +1235,7 @@ class ChangeFontSizeAction(Action):
         canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "ChangeFontSizeAction":
+    def from_data(cls, data: dict[str, Any]) -> ChangeFontSizeAction:
         """Create action from serialized data."""
         return cls(
             object_id=data.get("object_id"),
@@ -1301,7 +1305,7 @@ class ChangeFontFamilyAction(Action):
         canvas.objectChanged.emit()
 
     @classmethod
-    def from_data(cls, data: dict[str, Any]) -> "ChangeFontFamilyAction":
+    def from_data(cls, data: dict[str, Any]) -> ChangeFontFamilyAction:
         """Create action from serialized data."""
         return cls(
             object_id=data.get("object_id"),

@@ -3,19 +3,19 @@
 import json
 import math
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 from unittest.mock import patch
 
 from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
-from signer.main_window import MainWindow
-from signer.objects import AnnotationType, CanvasObject
 from signer.history import (
     AddAnnotationAction,
     MoveAnnotationAction,
     RotateAnnotationAction,
 )
+from signer.main_window import MainWindow
+from signer.objects import AnnotationType, CanvasObject
 
 
 def normalize_recorded_path(path: str | Path) -> str:
@@ -26,26 +26,26 @@ def normalize_recorded_path(path: str | Path) -> str:
 class ActionPlayer:
     """Plays back recorded actions against a MainWindow instance."""
 
-    def __init__(self, main_window: MainWindow, output_path: Optional[Path] = None):
+    def __init__(self, main_window: MainWindow, output_path: Path | None = None):
         self.main_window = main_window
         self.canvas = main_window.canvas
-        self._object_map: Dict[int, CanvasObject] = {}
+        self._object_map: dict[int, CanvasObject] = {}
         self._next_object_id = 0
-        self._endpoint_state: Dict[int, list[QPointF]] = {}
+        self._endpoint_state: dict[int, list[QPointF]] = {}
         self.output_path = output_path
 
-    def load_actions(self, actions_file: str | Path) -> List[Dict[str, Any]]:
+    def load_actions(self, actions_file: str | Path) -> list[dict[str, Any]]:
         """Load actions from a JSON file."""
         path = Path(actions_file)
         data = json.loads(path.read_text())
         return data.get("actions", [])
 
-    def play_actions(self, actions: List[Dict[str, Any]]) -> None:
+    def play_actions(self, actions: list[dict[str, Any]]) -> None:
         """Execute a list of recorded actions."""
         for action in actions:
             self._execute_action(action)
 
-    def _execute_action(self, action: Dict[str, Any]) -> None:
+    def _execute_action(self, action: dict[str, Any]) -> None:
         """Execute a single action."""
         action_type = action.get("type")
 
@@ -65,9 +65,7 @@ class ActionPlayer:
             self._execute_rotate_annotation(action)
         elif action_type == "select_annotation":
             self._execute_select_annotation(action)
-        elif action_type == "change_color":
-            self._execute_change_color(action)
-        elif action_type == "set_color":
+        elif action_type == "change_color" or action_type == "set_color":
             self._execute_change_color(action)
         elif action_type == "change_page":
             self._execute_change_page(action)
@@ -92,14 +90,14 @@ class ActionPlayer:
         else:
             raise ValueError(f"Unknown action type: {action_type}")
 
-    def _execute_open_document(self, action: Dict[str, Any]) -> None:
+    def _execute_open_document(self, action: dict[str, Any]) -> None:
         """Open a document."""
         path = normalize_recorded_path(action["path"])
         result = self.main_window.open_document(path)
         if not result:
             raise RuntimeError(f"Failed to open document: {path}")
 
-    def _execute_open_signature(self, action: Dict[str, Any]) -> None:
+    def _execute_open_signature(self, action: dict[str, Any]) -> None:
         """Load a signature file."""
         path = normalize_recorded_path(action["path"])
         result = self.main_window._load_signature_file(path, at_default_position=True)
@@ -112,7 +110,7 @@ class ActionPlayer:
             obj_id = action.get("object_id", self._next_object_id)
             self._register_object(obj_id, self.canvas.selected)
 
-    def _execute_add_signature(self, action: Dict[str, Any]) -> None:
+    def _execute_add_signature(self, action: dict[str, Any]) -> None:
         """Add a signature file (same as open_signature)."""
         path = normalize_recorded_path(action["path"])
         result = self.main_window._load_signature_file(path, at_default_position=True)
@@ -125,7 +123,7 @@ class ActionPlayer:
             obj_id = action.get("object_id", self._next_object_id)
             self._register_object(obj_id, self.canvas.selected)
 
-    def _execute_add_annotation(self, action: Dict[str, Any]) -> None:
+    def _execute_add_annotation(self, action: dict[str, Any]) -> None:
         """Add a vector annotation and record to history."""
         ann_type_str = action["annotation_type"]
         x = action["x"]
@@ -194,7 +192,7 @@ class ActionPlayer:
             add_action = AddAnnotationAction(annotation_data)
             self.canvas.history.record_action(add_action)
 
-    def _execute_move_annotation(self, action: Dict[str, Any]) -> None:
+    def _execute_move_annotation(self, action: dict[str, Any]) -> None:
         """Move an annotation and record to history."""
         obj_id = action["object_id"]
         x = action["x"]
@@ -237,7 +235,7 @@ class ActionPlayer:
         )
         self.canvas.history.record_action(move_action)
 
-    def _execute_rotate_annotation(self, action: Dict[str, Any]) -> None:
+    def _execute_rotate_annotation(self, action: dict[str, Any]) -> None:
         """Rotate and reposition an annotation from a recorded workflow."""
         object_id = action["object_id"]
         obj = self._object_map.get(object_id)
@@ -261,7 +259,7 @@ class ActionPlayer:
         rotate_action.execute(self.canvas)
         self.canvas.history.record_action(rotate_action)
 
-    def _execute_resize_annotation(self, action: Dict[str, Any]) -> None:
+    def _execute_resize_annotation(self, action: dict[str, Any]) -> None:
         """Resize an annotation and record to history."""
         obj_id = action["object_id"]
         handle = int(action.get("handle", 7))  # Default to bottom-right handle
@@ -401,7 +399,7 @@ class ActionPlayer:
         if hasattr(obj, '_angle'):
             obj._angle = angle
 
-    def _execute_select_annotation(self, action: Dict[str, Any]) -> None:
+    def _execute_select_annotation(self, action: dict[str, Any]) -> None:
         """Select an annotation."""
         obj_id = action["object_id"]
         
@@ -420,12 +418,13 @@ class ActionPlayer:
         self.canvas._selected = obj
         self.canvas.objectChanged.emit()
 
-    def _execute_change_color(self, action: Dict[str, Any]) -> None:
+    def _execute_change_color(self, action: dict[str, Any]) -> None:
         """Change color of an annotation or default color."""
         obj_id = action["object_id"]
         color_str = action["color"]
 
         from PySide6.QtGui import QColor
+
         from signer.history.action import ChangeColorAction
         
         color = QColor(color_str)
@@ -463,12 +462,12 @@ class ActionPlayer:
             )
             self.canvas.history.record_action(change_color_action)
 
-    def _execute_change_page(self, action: Dict[str, Any]) -> None:
+    def _execute_change_page(self, action: dict[str, Any]) -> None:
         """Change the current page."""
         page = action["page"]
         self.canvas.goto_page(page)
 
-    def _execute_copy_annotation(self, action: Dict[str, Any]) -> None:
+    def _execute_copy_annotation(self, action: dict[str, Any]) -> None:
         """Select and copy one recorded annotation."""
         obj = self._get_object(action["object_id"])
         if obj is None:
@@ -477,7 +476,7 @@ class ActionPlayer:
         self.canvas._selected = obj
         self.canvas.copy_selected()
 
-    def _execute_save_document(self, action: Dict[str, Any]) -> None:
+    def _execute_save_document(self, action: dict[str, Any]) -> None:
         """Save the document.
         
         If path is provided in the action, the file will be saved to that path.
@@ -487,7 +486,6 @@ class ActionPlayer:
         path = action.get("path") or self.output_path
         
         from pathlib import Path
-        from unittest.mock import patch
         
         if path:
             # Ensure it's a string path
@@ -522,7 +520,7 @@ class ActionPlayer:
                 result = self.main_window.save_signed_document()
                 if not result:
                     raise RuntimeError("Failed to save document")
-    def _execute_set_text(self, action: Dict[str, Any]) -> None:
+    def _execute_set_text(self, action: dict[str, Any]) -> None:
         """Execute set_text on a text annotation.
         
         This method simulates setting text on a text annotation.
@@ -554,7 +552,7 @@ class ActionPlayer:
         self.canvas.objectChanged.emit()
         self.canvas.update()
 
-    def _execute_set_font_size(self, action: Dict[str, Any]) -> None:
+    def _execute_set_font_size(self, action: dict[str, Any]) -> None:
         """Execute set_font_size on a text annotation.
         
         This method sets the font size (in points) on a text annotation.
@@ -586,7 +584,7 @@ class ActionPlayer:
         self.canvas.objectChanged.emit()
         self.canvas.update()
 
-    def _execute_set_font_family(self, action: Dict[str, Any]) -> None:
+    def _execute_set_font_family(self, action: dict[str, Any]) -> None:
         """Set font family on a text annotation."""
         obj_id = action.get("object_id")
         font_family = action.get("font_family", "Arial")
@@ -606,7 +604,7 @@ class ActionPlayer:
         self.canvas.objectChanged.emit()
         self.canvas.update()
 
-    def _execute_set_line_width(self, action: Dict[str, Any]) -> None:
+    def _execute_set_line_width(self, action: dict[str, Any]) -> None:
         """Set line width (in PDF points) on a vector annotation."""
         obj_id = action.get("object_id")
         width_pt = float(action.get("width_pt", 1.5))
@@ -624,14 +622,14 @@ class ActionPlayer:
         self.canvas.objectChanged.emit()
         self.canvas.update()
 
-    def _execute_undo(self, action: Dict[str, Any]) -> None:
+    def _execute_undo(self, action: dict[str, Any]) -> None:
         """Execute an undo operation."""
         if self.canvas.can_undo():
             self.canvas.undo()
         else:
             raise RuntimeError("Cannot undo: no actions in undo stack")
 
-    def _execute_redo(self, action: Dict[str, Any]) -> None:
+    def _execute_redo(self, action: dict[str, Any]) -> None:
         """Execute a redo operation."""
         if self.canvas.can_redo():
             self.canvas.redo()
@@ -646,12 +644,12 @@ class ActionPlayer:
             self.canvas._object_map[obj_id] = obj
         self._next_object_id = max(self._next_object_id, obj_id + 1)
 
-    def _get_object(self, obj_id: int) -> Optional[CanvasObject]:
+    def _get_object(self, obj_id: int) -> CanvasObject | None:
         """Get an object by its recorded ID."""
         return self._object_map.get(obj_id)
 
 
-def play_actions_from_file(main_window: MainWindow, actions_file: str | Path, output_path: Optional[Path] = None) -> None:
+def play_actions_from_file(main_window: MainWindow, actions_file: str | Path, output_path: Path | None = None) -> None:
     """Convenience function to play actions from a file.
     
     Args:

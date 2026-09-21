@@ -5,8 +5,6 @@ disk should be pruned automatically instead of repeatedly showing the same
 
 from unittest.mock import patch
 
-from signer.main_window import MainWindow
-
 
 def test_open_document_prunes_stale_recent_entry(main_window, tmp_path):
     missing = str(tmp_path / "no-longer-there.pdf")

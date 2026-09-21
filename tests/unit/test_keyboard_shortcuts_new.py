@@ -1,7 +1,6 @@
 """Unit tests for keyboard shortcuts ([ and ] keys) with new annotation types."""
 
-import pytest
-from signer.objects import VectorAnnotation, AnnotationType
+from signer.objects import AnnotationType, VectorAnnotation
 
 
 class TestBracketRightIncreaseWidth:

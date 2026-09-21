@@ -1,12 +1,6 @@
 """Unit tests for new annotation types (Line, Arrow, Rectangle, Ellipse, Image)."""
 
-import pytest
-from signer.objects import (
-    VectorAnnotation, SignatureObject, AnnotationType, 
-    ARROW_TYPES, VECTOR_WITH_WIDTH
-)
-from PIL import Image
-from io import BytesIO
+from signer.objects import ARROW_TYPES, AnnotationType, VectorAnnotation
 
 
 class TestLineAnnotation:

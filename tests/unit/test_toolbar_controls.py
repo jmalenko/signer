@@ -1,10 +1,10 @@
 """Unit tests for toolbar controls and context-sensitive visibility."""
 
-import pytest
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QContextMenuEvent
 from PySide6.QtWidgets import QApplication
-from signer.objects import VectorAnnotation, AnnotationType, VECTOR_WITH_WIDTH
+
+from signer.objects import VECTOR_WITH_WIDTH, AnnotationType, VectorAnnotation
 
 
 class TestWidthSpinnerVisibility:

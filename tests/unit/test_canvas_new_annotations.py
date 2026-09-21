@@ -1,12 +1,7 @@
 """Unit tests for canvas interactions with new annotation types."""
 
-import pytest
-from unittest.mock import Mock, MagicMock, patch
-from PySide6.QtCore import Qt, QPointF
-from PySide6.QtGui import QColor
-from signer.objects import VectorAnnotation, AnnotationType
 from signer.canvas import DocumentCanvas
-import math
+from signer.objects import AnnotationType, VectorAnnotation
 
 
 class TestCanvasAnnotationCreation:

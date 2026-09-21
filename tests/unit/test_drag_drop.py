@@ -1,21 +1,16 @@
 """Unit tests for drag-and-drop file handling feature (v1.2.25)."""
 
-import os
-import logging
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, call
-from io import BytesIO
+from unittest.mock import Mock, patch
 
 import pytest
 from PIL import Image
-from PySide6.QtCore import Qt, QMimeData, QUrl
+from PySide6.QtCore import QMimeData, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent
-from PySide6.QtWidgets import QApplication, QMessageBox, QDialog
 
 from signer.main_window import MainWindow
-from signer.canvas import DocumentCanvas
-from signer.settings import SettingsStore, AppSettings
 from signer.objects import SignatureObject
+from signer.settings import AppSettings, SettingsStore
 
 
 @pytest.fixture

@@ -1,7 +1,8 @@
 """Unit tests for encrypted PDF functionality."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 
 from signer.pdf_utils import render_all_pages
 

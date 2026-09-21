@@ -9,17 +9,14 @@ This test verifies:
 6. Verify each page output
 """
 
-import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from signer.main_window import MainWindow
-from signer.objects import AnnotationType, VectorAnnotation
-from signer.settings import AppSettings, SettingsStore
-from tests.utils.image_comparison import assert_images_equal
+from signer.objects import AnnotationType
+from signer.settings import SettingsStore
 
 
 class TestMultipageAnnotations:
@@ -173,8 +170,8 @@ class TestMultipageAnnotations:
         assert main_window.canvas.current_page == 0
         
         # PageDown -> page 1
-        from PySide6.QtTest import QTest
         from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
         QTest.keyClick(main_window.canvas, Qt.Key_PageDown)
         assert main_window.canvas.current_page == 1
         
@@ -200,8 +197,9 @@ class TestMultipageAnnotations:
         assert main_window.open_document(str(sample_pdf))
 
         from unittest.mock import patch
-        from PySide6.QtTest import QTest
+
         from PySide6.QtCore import Qt
+        from PySide6.QtTest import QTest
         main_window.canvas.setFocus()
         with patch.object(main_window._add_annotation_btn, "showMenu") as show_menu:
             QTest.keyClick(main_window.canvas, Qt.Key_Plus)

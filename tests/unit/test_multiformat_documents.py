@@ -1,11 +1,12 @@
 """Tests for multi-format document loading support (v1.2.9)."""
 
-import pytest
 from pathlib import Path
+
+import pytest
 from PIL import Image
 
+from signer.document_loader import DocumentLoaderRegistry
 from signer.pdf_utils import render_all_pages
-from signer.document_loader import DocumentLoaderRegistry, DocumentLoader
 
 
 class TestDocumentLoaderRegistry:
@@ -271,7 +272,7 @@ class TestLibreOfficePath:
         # Create a simple PDF for testing
         pdf_path = Path(__file__).parent.parent.parent / "examples" / "document.pdf"
         if not pdf_path.exists():
-            pytest.skip(f"Test PDF not found")
+            pytest.skip("Test PDF not found")
         
         # This should not raise an error even if the path doesn't exist
         # (PDF doesn't need LibreOffice anyway)
@@ -286,7 +287,7 @@ class TestDocumentLoaderRegistry:
         """Test that registry.load() accepts password parameter."""
         pdf_path = Path(__file__).parent.parent.parent / "examples" / "document.pdf"
         if not pdf_path.exists():
-            pytest.skip(f"Test PDF not found")
+            pytest.skip("Test PDF not found")
         
         registry = DocumentLoaderRegistry()
         pages = registry.load(str(pdf_path), password="")
@@ -297,7 +298,7 @@ class TestDocumentLoaderRegistry:
         """Test that registry.load() works without password for images."""
         img_path = Path(__file__).parent.parent.parent / "examples" / "document1.jpg"
         if not img_path.exists():
-            pytest.skip(f"Test image not found")
+            pytest.skip("Test image not found")
         
         registry = DocumentLoaderRegistry()
         pages = registry.load(str(img_path))

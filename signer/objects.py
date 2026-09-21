@@ -149,7 +149,7 @@ class CanvasObject:
         """Return an RGBA PIL image at the current scaled size for compositing."""
         raise NotImplementedError
 
-    def duplicate(self) -> "CanvasObject":
+    def duplicate(self) -> CanvasObject:
         raise NotImplementedError
 
     def handle_rects_viewport(
@@ -395,7 +395,7 @@ class CanvasObject:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CanvasObject":
+    def from_dict(cls, data: dict[str, Any]) -> CanvasObject:
         """Deserialize object from a dictionary."""
         raise NotImplementedError("Subclasses must implement from_dict")
 
@@ -434,7 +434,7 @@ class SignatureObject(CanvasObject):
         h = max(1, int(round(self._base_height * self.scale)))
         return self._image.resize((w, h), Image.Resampling.LANCZOS)
 
-    def duplicate(self) -> "SignatureObject":
+    def duplicate(self) -> SignatureObject:
         obj = SignatureObject(
             self._image.copy(),
             self.path,
@@ -460,7 +460,7 @@ class SignatureObject(CanvasObject):
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SignatureObject":
+    def from_dict(cls, data: dict[str, Any]) -> SignatureObject:
         """Deserialize object from a dictionary."""
         import base64
         from io import BytesIO
@@ -811,7 +811,7 @@ class VectorAnnotation(CanvasObject):
 
     # ------------------------------------------------------------------ duplicate
 
-    def duplicate(self) -> "VectorAnnotation":
+    def duplicate(self) -> VectorAnnotation:
         obj = VectorAnnotation(
             self.ann_type,
             self.x + DUPLICATE_OFFSET,
@@ -852,7 +852,7 @@ class VectorAnnotation(CanvasObject):
         return data
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "VectorAnnotation":
+    def from_dict(cls, data: dict[str, Any]) -> VectorAnnotation:
         """Deserialize object from a dictionary."""
         ann_type = AnnotationType(data["ann_type"])
         obj = cls(

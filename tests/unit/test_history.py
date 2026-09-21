@@ -1,7 +1,7 @@
 """Unit tests for undo/redo history stack and actions."""
 
-import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
+
 from signer.history import (
     HistoryStack,
     MoveAnnotationAction,

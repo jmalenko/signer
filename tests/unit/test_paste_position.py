@@ -1,6 +1,7 @@
 """Test multi-selection copy/paste with move scenario."""
 from PIL import Image
-from signer.objects import AnnotationType, DUPLICATE_OFFSET, VectorAnnotation
+
+from signer.objects import DUPLICATE_OFFSET, AnnotationType, VectorAnnotation
 
 
 def test_paste_preserves_original_position_after_move(canvas):

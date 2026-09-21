@@ -1,11 +1,6 @@
 """Feature tests for complete end-to-end workflows with new annotation types."""
 
-import pytest
-from unittest.mock import MagicMock, patch
-from PySide6.QtCore import Qt, QPointF
-from PySide6.QtGui import QColor
-from signer.objects import VectorAnnotation, AnnotationType
-from signer.canvas import DocumentCanvas
+from signer.objects import AnnotationType, VectorAnnotation
 
 
 class TestLineWorkflow:

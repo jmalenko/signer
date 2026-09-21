@@ -1,10 +1,11 @@
 """Feature tests for export functionality with new annotation types."""
 
-import pytest
 import sys
-from signer.objects import VectorAnnotation, AnnotationType
+
+import pytest
 from PIL import Image
-import io
+
+from signer.objects import AnnotationType, VectorAnnotation
 
 
 class TestLineExport:
