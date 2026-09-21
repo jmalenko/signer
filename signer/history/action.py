@@ -48,6 +48,24 @@ class Action(ABC):
         }
 
     @staticmethod
+    def find_object(canvas: Any, object_id: int) -> Any | None:
+        """Resolve an object ID, retaining the legacy list-index fallback."""
+        object_map = getattr(canvas, "_object_map", None)
+        if isinstance(object_map, dict) and object_id in object_map:
+            return object_map[object_id]
+
+        objects = canvas.current_page_objects()
+        if isinstance(object_id, int) and 0 <= object_id < len(objects):
+            logger.warning(
+                "Action object_id %r was not found in _object_map; "
+                "using legacy page-list index fallback",
+                object_id,
+            )
+            return objects[object_id]
+        logger.warning("Action object_id %r could not be resolved", object_id)
+        return None
+
+    @staticmethod
     def deserialize(data: dict[str, Any]) -> Action:
         """Deserialize action from dictionary."""
         action_type = data.get("type")
@@ -62,12 +80,6 @@ class Action(ABC):
             return DeleteAnnotationAction.from_data(data)
         elif action_type == "change_color":
             return ChangeColorAction.from_data(data)
-        elif action_type == "select_annotation":
-            return SelectAnnotationAction.from_data(data)
-        elif action_type == "duplicate_annotation":
-            return DuplicateAnnotationAction.from_data(data)
-        elif action_type == "cut_annotation":
-            return CutAnnotationAction.from_data(data)
         elif action_type == "paste_annotation":
             return PasteAnnotationAction.from_data(data)
         elif action_type == "change_page":
@@ -203,18 +215,10 @@ class MoveAnnotationAction(MergeableAction):
         obj_id = self.data["object_id"]
         target = self.get_target_state()
         
-        # Use the object map to find the object by ID
-        if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
-            obj_id in canvas._object_map):
-            obj = canvas._object_map[obj_id]
+        obj = self.find_object(canvas, obj_id)
+        if obj is not None:
             obj.x = target["x"]
             obj.y = target["y"]
-        else:
-            # Fallback to array index lookup for backward compatibility
-            page_objs = canvas.current_page_objects()
-            if obj_id < len(page_objs):
-                page_objs[obj_id].x = target["x"]
-                page_objs[obj_id].y = target["y"]
         
         # Emit signal to update canvas (required for render to work properly)
         canvas.objectChanged.emit()
@@ -226,18 +230,10 @@ class MoveAnnotationAction(MergeableAction):
         
         obj_id = self.data["object_id"]
         
-        # Use the object map to find the object by ID
-        if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
-            obj_id in canvas._object_map):
-            obj = canvas._object_map[obj_id]
+        obj = self.find_object(canvas, obj_id)
+        if obj is not None:
             obj.x = self.data["from_x"]
             obj.y = self.data["from_y"]
-        else:
-            # Fallback to array index lookup for backward compatibility
-            page_objs = canvas.current_page_objects()
-            if obj_id < len(page_objs):
-                page_objs[obj_id].x = self.data["from_x"]
-                page_objs[obj_id].y = self.data["from_y"]
         canvas.objectChanged.emit()
 
     def get_target_state(self) -> dict[str, Any]:
@@ -317,18 +313,10 @@ class ResizeAnnotationAction(MergeableAction):
         handle = self.data.get("handle")
         target = self.get_target_state()
         
-        # Use the object map to find the object by ID
-        if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
-            obj_id in canvas._object_map):
-            obj = canvas._object_map[obj_id]
-        else:
-            # Fallback to array index lookup for backward compatibility
-            page_objs = canvas.current_page_objects()
-            if obj_id < len(page_objs):
-                obj = page_objs[obj_id]
-            else:
-                canvas.objectChanged.emit()
-                return
+        obj = self.find_object(canvas, obj_id)
+        if obj is None:
+            canvas.objectChanged.emit()
+            return
         
         # For endpoint-based shapes (arrows/lines) with specific handle, preserve the fixed endpoint
         if handle is not None and handle in (0, 1) and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
@@ -368,18 +356,10 @@ class ResizeAnnotationAction(MergeableAction):
         from_h = self.data["from_height"]
         handle = self.data.get("handle")
         
-        # Use the object map to find the object by ID
-        if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
-            obj_id in canvas._object_map):
-            obj = canvas._object_map[obj_id]
-        else:
-            # Fallback to array index lookup for backward compatibility
-            page_objs = canvas.current_page_objects()
-            if obj_id < len(page_objs):
-                obj = page_objs[obj_id]
-            else:
-                canvas.objectChanged.emit()
-                return
+        obj = self.find_object(canvas, obj_id)
+        if obj is None:
+            canvas.objectChanged.emit()
+            return
         
         # For endpoint-based shapes (arrows/lines) with specific handle, preserve the fixed endpoint
         if handle is not None and handle in (0, 1) and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
@@ -704,15 +684,7 @@ class ChangeColorAction(Action):
         """Change color."""
         if "object_id" in self.data:
             obj_id = self.data["object_id"]
-            obj = None
-            if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and
-                    obj_id in canvas._object_map):
-                obj = canvas._object_map[obj_id]
-            else:
-                # Fallback to array index lookup for backward compatibility
-                objects = canvas.current_page_objects()
-                if 0 <= obj_id < len(objects):
-                    obj = objects[obj_id]
+            obj = self.find_object(canvas, obj_id)
             if obj is not None:
                 from PySide6.QtGui import QColor
                 obj.color = QColor(self.data["color"])
@@ -724,18 +696,10 @@ class ChangeColorAction(Action):
             obj_id = self.data["object_id"]
             from_color = self.data["from_color"]
             
-            # Use the object map to find the object by ID
-            if (hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and 
-                obj_id in canvas._object_map):
+            obj = self.find_object(canvas, obj_id)
+            if obj is not None:
                 from PySide6.QtGui import QColor
-                obj = canvas._object_map[obj_id]
                 obj.color = QColor(from_color)
-            else:
-                # Fallback to array index lookup for backward compatibility
-                objects = canvas.current_page_objects()
-                if 0 <= obj_id < len(objects):
-                    from PySide6.QtGui import QColor
-                    objects[obj_id].color = QColor(from_color)
         canvas.objectChanged.emit()
 
     @classmethod
@@ -766,13 +730,7 @@ class SetTextAnnotationAction(Action):
 
     @staticmethod
     def _find_object(canvas: Any, obj_id: int) -> Any:
-        if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
-            return canvas._object_map[obj_id]
-        # Fallback to array index lookup for backward compatibility
-        objects = canvas.current_page_objects()
-        if 0 <= obj_id < len(objects):
-            return objects[obj_id]
-        return None
+        return Action.find_object(canvas, obj_id)
 
     def execute(self, canvas: Any) -> None:
         """Set text on annotation."""
@@ -803,126 +761,6 @@ class SetTextAnnotationAction(Action):
         )
 
 
-class SelectAnnotationAction(Action):
-    """Action: Select or deselect an annotation."""
-
-    def __init__(self, object_id: int | None = None) -> None:
-        """Initialize select action.
-        
-        Args:
-            object_id: ID of object to select (None to deselect)
-        """
-        data = {}
-        if object_id is not None:
-            data["object_id"] = object_id
-        super().__init__("select_annotation", data)
-
-    def execute(self, canvas: Any) -> None:
-        """Select annotation."""
-        if "object_id" in self.data:
-            objects = canvas.current_page_objects()
-            if 0 <= self.data["object_id"] < len(objects):
-                canvas._selected = objects[self.data["object_id"]]
-        else:
-            canvas._selected = None
-
-    def undo(self, canvas: Any) -> None:
-        """Deselect."""
-        canvas._selected = None
-
-    @classmethod
-    def from_data(cls, data: dict[str, Any]) -> SelectAnnotationAction:
-        """Create action from serialized data."""
-        return cls(object_id=data.get("object_id"))
-
-
-class DuplicateAnnotationAction(Action):
-    """Action: Duplicate an annotation."""
-
-    def __init__(self, object_id: int, new_object_data: dict[str, Any] | None = None) -> None:
-        """Initialize duplicate action.
-        
-        Args:
-            object_id: ID of object to duplicate
-            new_object_data: Serialized data of duplicated object
-        """
-        data = {"object_id": object_id}
-        if new_object_data:
-            data["new_object_data"] = new_object_data
-        super().__init__("duplicate_annotation", data)
-        self._duplicated_object: Any = None  # Direct reference to the created duplicate
-
-    def execute(self, canvas: Any) -> None:
-        """Create duplicate annotation."""
-        objects = canvas.current_page_objects()
-        if 0 <= self.data["object_id"] < len(objects):
-            dup = objects[self.data["object_id"]].duplicate()
-            objects.append(dup)
-            self._duplicated_object = dup
-            canvas.objectChanged.emit()
-
-    def undo(self, canvas: Any) -> None:
-        """Remove exactly the duplicated object, not merely the last object in the list."""
-        objects = canvas.current_page_objects()
-        obj = self._duplicated_object
-        if obj is not None and obj in objects:
-            objects.remove(obj)
-        elif objects:
-            # No tracked reference (e.g. deserialized from data): last resort.
-            objects.pop()
-        canvas.objectChanged.emit()
-
-    @classmethod
-    def from_data(cls, data: dict[str, Any]) -> DuplicateAnnotationAction:
-        """Create action from serialized data."""
-        return cls(
-            object_id=data["object_id"],
-            new_object_data=data.get("new_object_data"),
-        )
-
-
-class CutAnnotationAction(Action):
-    """Action: Cut annotation to clipboard."""
-
-    def __init__(self, object_id: int, object_data: dict[str, Any] | None = None) -> None:
-        """Initialize cut action.
-        
-        Args:
-            object_id: ID of object to cut
-            object_data: Serialized object data
-        """
-        data = {"object_id": object_id}
-        if object_data:
-            data["object_data"] = object_data
-        super().__init__("cut_annotation", data)
-
-    def execute(self, canvas: Any) -> None:
-        """Cut annotation (remove and store in clipboard)."""
-        objects = canvas.current_page_objects()
-        if 0 <= self.data["object_id"] < len(objects):
-            canvas._cached_copy_data = [objects[self.data["object_id"]].to_dict()]
-            objects.pop(self.data["object_id"])
-            canvas.objectChanged.emit()
-
-    def undo(self, canvas: Any) -> None:
-        """Restore cut annotation."""
-        if "object_data" in self.data:
-            from ..objects import canvas_object_from_dict
-            obj = canvas_object_from_dict(self.data["object_data"])
-            if obj:
-                objects = canvas.current_page_objects()
-                objects.insert(self.data["object_id"], obj)
-                canvas.objectChanged.emit()
-
-    @classmethod
-    def from_data(cls, data: dict[str, Any]) -> CutAnnotationAction:
-        """Create action from serialized data."""
-        return cls(
-            object_id=data["object_id"],
-            object_data=data.get("object_data"),
-        )
-
-
 class PasteAnnotationAction(Action):
     """Action: Paste annotation from clipboard."""
 
@@ -942,9 +780,14 @@ class PasteAnnotationAction(Action):
         """Paste annotations (used to redo a previously-undone paste)."""
         objects = canvas.current_page_objects()
         if self._pasted_objects:
-            for obj in self._pasted_objects:
+            for index, obj in enumerate(self._pasted_objects):
                 if obj not in objects:
                     objects.append(obj)
+                if hasattr(canvas, "_object_map") and isinstance(canvas._object_map, dict):
+                    object_data = self.data.get("pasted_objects_data", [])
+                    object_id = object_data[index].get("object_id") if index < len(object_data) else None
+                    if object_id is not None:
+                        canvas._object_map[object_id] = obj
             canvas.objectChanged.emit()
         elif "pasted_objects_data" in self.data:
             from ..objects import canvas_object_from_dict
@@ -954,6 +797,13 @@ class PasteAnnotationAction(Action):
                 if obj:
                     objects.append(obj)
                     recreated.append(obj)
+                    object_id = obj_data.get("object_id")
+                    if hasattr(canvas, "_object_map") and isinstance(canvas._object_map, dict):
+                        if object_id is None:
+                            object_id = canvas._register_object(obj)
+                        else:
+                            canvas._object_map[object_id] = obj
+                            canvas._next_object_id = max(canvas._next_object_id, object_id + 1)
             self._pasted_objects = recreated
             canvas.objectChanged.emit()
 
@@ -964,6 +814,10 @@ class PasteAnnotationAction(Action):
             for obj in self._pasted_objects:
                 if obj in objects:
                     objects.remove(obj)
+                if hasattr(canvas, "_object_map") and isinstance(canvas._object_map, dict):
+                    for object_id, mapped_obj in list(canvas._object_map.items()):
+                        if mapped_obj is obj:
+                            del canvas._object_map[object_id]
             canvas.objectChanged.emit()
 
     @classmethod
@@ -1079,12 +933,9 @@ class RotateAnnotationAction(Action):
 
     def _apply(self, canvas: Any, prefix: str) -> None:
         object_id = self.data["object_id"]
-        obj = getattr(canvas, "_object_map", {}).get(object_id)
+        obj = self.find_object(canvas, object_id)
         if obj is None:
-            objects = canvas.current_page_objects()
-            if not 0 <= object_id < len(objects):
-                return
-            obj = objects[object_id]
+            return
         obj.x = self.data[f"{prefix}_x"]
         obj.y = self.data[f"{prefix}_y"]
         obj.rotation = self.data[f"{prefix}_rotation"] % 360.0
@@ -1132,16 +983,9 @@ class ChangeLineWidthAction(Action):
         """Apply line width change."""
         if "object_id" in self.data:
             obj_id = self.data["object_id"]
-            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
-                obj = canvas._object_map[obj_id]
-                if hasattr(obj, '_line_width_pt'):
-                    obj._line_width_pt = self.data["line_width_pt"]
-            else:
-                objects = canvas.current_page_objects()
-                if 0 <= obj_id < len(objects):
-                    obj = objects[obj_id]
-                    if hasattr(obj, '_line_width_pt'):
-                        obj._line_width_pt = self.data["line_width_pt"]
+            obj = self.find_object(canvas, obj_id)
+            if obj is not None and hasattr(obj, '_line_width_pt'):
+                obj._line_width_pt = self.data["line_width_pt"]
         canvas.update()
         canvas.objectChanged.emit()
 
@@ -1151,16 +995,9 @@ class ChangeLineWidthAction(Action):
             obj_id = self.data["object_id"]
             from_width = self.data["from_line_width_pt"]
             
-            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
-                obj = canvas._object_map[obj_id]
-                if hasattr(obj, '_line_width_pt'):
-                    obj._line_width_pt = from_width
-            else:
-                objects = canvas.current_page_objects()
-                if 0 <= obj_id < len(objects):
-                    obj = objects[obj_id]
-                    if hasattr(obj, '_line_width_pt'):
-                        obj._line_width_pt = from_width
+            obj = self.find_object(canvas, obj_id)
+            if obj is not None and hasattr(obj, '_line_width_pt'):
+                obj._line_width_pt = from_width
         canvas.update()
         canvas.objectChanged.emit()
 
@@ -1194,20 +1031,11 @@ class ChangeFontSizeAction(Action):
         """Apply font size change."""
         if "object_id" in self.data:
             obj_id = self.data["object_id"]
-            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
-                obj = canvas._object_map[obj_id]
-                if hasattr(obj, '_font_size_pt'):
-                    obj._font_size_pt = self.data["font_size_pt"]
-                    if hasattr(obj, 'fit_text_box'):
-                        obj.fit_text_box()
-            else:
-                objects = canvas.current_page_objects()
-                if 0 <= obj_id < len(objects):
-                    obj = objects[obj_id]
-                    if hasattr(obj, '_font_size_pt'):
-                        obj._font_size_pt = self.data["font_size_pt"]
-                        if hasattr(obj, 'fit_text_box'):
-                            obj.fit_text_box()
+            obj = self.find_object(canvas, obj_id)
+            if obj is not None and hasattr(obj, '_font_size_pt'):
+                obj._font_size_pt = self.data["font_size_pt"]
+                if hasattr(obj, 'fit_text_box'):
+                    obj.fit_text_box()
         canvas.update()
         canvas.objectChanged.emit()
 
@@ -1217,20 +1045,11 @@ class ChangeFontSizeAction(Action):
             obj_id = self.data["object_id"]
             from_size = self.data["from_font_size_pt"]
             
-            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
-                obj = canvas._object_map[obj_id]
-                if hasattr(obj, '_font_size_pt'):
-                    obj._font_size_pt = from_size
-                    if hasattr(obj, 'fit_text_box'):
-                        obj.fit_text_box()
-            else:
-                objects = canvas.current_page_objects()
-                if 0 <= obj_id < len(objects):
-                    obj = objects[obj_id]
-                    if hasattr(obj, '_font_size_pt'):
-                        obj._font_size_pt = from_size
-                        if hasattr(obj, 'fit_text_box'):
-                            obj.fit_text_box()
+            obj = self.find_object(canvas, obj_id)
+            if obj is not None and hasattr(obj, '_font_size_pt'):
+                obj._font_size_pt = from_size
+                if hasattr(obj, 'fit_text_box'):
+                    obj.fit_text_box()
         canvas.update()
         canvas.objectChanged.emit()
 
@@ -1264,20 +1083,11 @@ class ChangeFontFamilyAction(Action):
         """Apply font family change."""
         if "object_id" in self.data:
             obj_id = self.data["object_id"]
-            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
-                obj = canvas._object_map[obj_id]
-                if hasattr(obj, '_font_family'):
-                    obj._font_family = self.data["font_family"]
-                    if hasattr(obj, 'fit_text_box'):
-                        obj.fit_text_box()
-            else:
-                objects = canvas.current_page_objects()
-                if 0 <= obj_id < len(objects):
-                    obj = objects[obj_id]
-                    if hasattr(obj, '_font_family'):
-                        obj._font_family = self.data["font_family"]
-                        if hasattr(obj, 'fit_text_box'):
-                            obj.fit_text_box()
+            obj = self.find_object(canvas, obj_id)
+            if obj is not None and hasattr(obj, '_font_family'):
+                obj._font_family = self.data["font_family"]
+                if hasattr(obj, 'fit_text_box'):
+                    obj.fit_text_box()
         canvas.update()
         canvas.objectChanged.emit()
 
@@ -1287,20 +1097,11 @@ class ChangeFontFamilyAction(Action):
             obj_id = self.data["object_id"]
             from_family = self.data["from_font_family"]
             
-            if hasattr(canvas, '_object_map') and isinstance(canvas._object_map, dict) and obj_id in canvas._object_map:
-                obj = canvas._object_map[obj_id]
-                if hasattr(obj, '_font_family'):
-                    obj._font_family = from_family
-                    if hasattr(obj, 'fit_text_box'):
-                        obj.fit_text_box()
-            else:
-                objects = canvas.current_page_objects()
-                if 0 <= obj_id < len(objects):
-                    obj = objects[obj_id]
-                    if hasattr(obj, '_font_family'):
-                        obj._font_family = from_family
-                        if hasattr(obj, 'fit_text_box'):
-                            obj.fit_text_box()
+            obj = self.find_object(canvas, obj_id)
+            if obj is not None and hasattr(obj, '_font_family'):
+                obj._font_family = from_family
+                if hasattr(obj, 'fit_text_box'):
+                    obj.fit_text_box()
         canvas.update()
         canvas.objectChanged.emit()
 

@@ -21,52 +21,31 @@ class ExportFormat(Enum):
 
     def extension(self) -> str:
         """Get file extension for this format."""
-        if self == ExportFormat.JPG:
-            return ".jpg"
-        elif self == ExportFormat.PNG:
-            return ".png"
-        elif self == ExportFormat.PDF:
-            return ".pdf"
-        elif self == ExportFormat.TIFF:
-            return ".tif"
-        elif self == ExportFormat.BMP:
-            return ".bmp"
-        return ".jpg"
+        return _FORMAT_METADATA[self]["extension"]
 
     def file_filter(self) -> str:
         """Get Qt file dialog filter for this format."""
-        if self == ExportFormat.JPG:
-            return "JPEG files (*.jpg *.jpeg)"
-        elif self == ExportFormat.PNG:
-            return "PNG files (*.png)"
-        elif self == ExportFormat.PDF:
-            return "PDF files (*.pdf)"
-        elif self == ExportFormat.TIFF:
-            return "TIFF files (*.tif *.tiff)"
-        elif self == ExportFormat.BMP:
-            return "BMP files (*.bmp)"
-        return "JPEG files (*.jpg *.jpeg)"
+        return _FORMAT_METADATA[self]["filter"]
 
     @staticmethod
     def from_extension(ext: str) -> ExportFormat:
         """Detect format from file extension."""
         ext = ext.lower()
-        if ext in {".jpg", ".jpeg"}:
-            return ExportFormat.JPG
-        elif ext == ".png":
-            return ExportFormat.PNG
-        elif ext == ".pdf":
-            return ExportFormat.PDF
-        elif ext in {".tif", ".tiff"}:
-            return ExportFormat.TIFF
-        elif ext == ".bmp":
-            return ExportFormat.BMP
+        for export_format, metadata in _FORMAT_METADATA.items():
+            if ext in metadata["extensions"]:
+                return export_format
         return ExportFormat.JPG
 
     @staticmethod
     def all_formats_filter() -> str:
         """Get Qt file dialog filter for all supported formats."""
-        return "Supported Files (*.jpg *.jpeg *.png *.pdf *.tif *.tiff *.bmp);;JPEG files (*.jpg *.jpeg);;PNG files (*.png);;PDF files (*.pdf);;TIFF files (*.tif *.tiff);;BMP files (*.bmp)"
+        all_extensions = " ".join(
+            extension
+            for metadata in _FORMAT_METADATA.values()
+            for extension in sorted(metadata["extensions"])
+        )
+        filters = ";;".join(metadata["filter"] for metadata in _FORMAT_METADATA.values())
+        return f"Supported Files ({all_extensions});;{filters}"
 
     @staticmethod
     def from_filter_string(filter_string: str) -> ExportFormat:
@@ -79,25 +58,52 @@ class ExportFormat(Enum):
             Detected ExportFormat, defaults to JPG if not recognized
         """
         filter_lower = filter_string.lower()
-        if "jpeg" in filter_lower or "jpg" in filter_lower:
-            return ExportFormat.JPG
-        elif "png" in filter_lower:
-            return ExportFormat.PNG
-        elif "pdf" in filter_lower:
-            return ExportFormat.PDF
-        elif "tiff" in filter_lower or "tif" in filter_lower:
-            return ExportFormat.TIFF
-        elif "bmp" in filter_lower:
-            return ExportFormat.BMP
+        for export_format, metadata in _FORMAT_METADATA.items():
+            if any(extension in filter_lower for extension in metadata["extensions"]):
+                return export_format
         return ExportFormat.JPG
 
     def is_single_file_format(self) -> bool:
         """Check if this format stores all pages in a single file."""
-        return self in (ExportFormat.PDF, ExportFormat.TIFF)
+        return _FORMAT_METADATA[self]["single_file"]
 
     def is_per_file_format(self) -> bool:
         """Check if this format stores each page in a separate file."""
-        return self in (ExportFormat.JPG, ExportFormat.PNG, ExportFormat.BMP)
+        return not self.is_single_file_format()
+
+
+_FORMAT_METADATA = {
+    ExportFormat.JPG: {
+        "extension": ".jpg",
+        "extensions": {".jpg", ".jpeg"},
+        "filter": "JPEG files (*.jpg *.jpeg)",
+        "single_file": False,
+    },
+    ExportFormat.PNG: {
+        "extension": ".png",
+        "extensions": {".png"},
+        "filter": "PNG files (*.png)",
+        "single_file": False,
+    },
+    ExportFormat.PDF: {
+        "extension": ".pdf",
+        "extensions": {".pdf"},
+        "filter": "PDF files (*.pdf)",
+        "single_file": True,
+    },
+    ExportFormat.TIFF: {
+        "extension": ".tif",
+        "extensions": {".tif", ".tiff"},
+        "filter": "TIFF files (*.tif *.tiff)",
+        "single_file": True,
+    },
+    ExportFormat.BMP: {
+        "extension": ".bmp",
+        "extensions": {".bmp"},
+        "filter": "BMP files (*.bmp)",
+        "single_file": False,
+    },
+}
 
 
 def _page_suffix(page_index: int, total_pages: int) -> str:

@@ -9,16 +9,13 @@ from .action import (
     ChangeLineWidthAction,
     ChangePageAction,
     CompositeAction,
-    CutAnnotationAction,
     DeleteAnnotationAction,
-    DuplicateAnnotationAction,
     MergeableAction,
     MoveAnnotationAction,
     PasteAnnotationAction,
     ResizeAnnotationAction,
     RotateAnnotationAction,
     RotatePageAction,
-    SelectAnnotationAction,
     SetTextAnnotationAction,
 )
 from .history_stack import HistoryStack
@@ -32,9 +29,7 @@ __all__ = [
     "ChangeLineWidthAction",
     "ChangePageAction",
     "CompositeAction",
-    "CutAnnotationAction",
     "DeleteAnnotationAction",
-    "DuplicateAnnotationAction",
     "HistoryStack",
     "MergeableAction",
     "MoveAnnotationAction",
@@ -42,6 +37,5 @@ __all__ = [
     "ResizeAnnotationAction",
     "RotateAnnotationAction",
     "RotatePageAction",
-    "SelectAnnotationAction",
     "SetTextAnnotationAction",
 ]

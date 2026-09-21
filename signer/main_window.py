@@ -450,18 +450,7 @@ class MainWindow(QMainWindow):
         ann_btn.setMenu(ann_menu)
         self._add_annotation_btn = ann_btn
 
-        ann_menu.addAction("✔ Checkmark", lambda: self._add_vector(AnnotationType.CHECKMARK))
-        ann_menu.addAction("✖ Crossmark", lambda: self._add_vector(AnnotationType.CROSSMARK))
-        
-        # v1.2.22: Line annotation
-        ann_menu.addAction("— Line", lambda: self._add_vector(AnnotationType.LINE))
-
-        # v1.2.24: Arrow (single item, no submenu)
-        ann_menu.addAction("➡ Arrow", lambda: self._add_vector(AnnotationType.ARROW))
-
-        # v1.2.22: Rectangle and Ellipse
-        ann_menu.addAction("▭ Rectangle / Square", lambda: self._add_vector(AnnotationType.RECTANGLE))
-        ann_menu.addAction("○ Ellipse / Circle", lambda: self._add_vector(AnnotationType.ELLIPSE))
+        self._populate_annotation_type_actions(ann_menu, with_icons=True)
 
         self._toolbar_text_menu = ann_menu.addMenu("📝 Text")
         self._toolbar_text_menu.addAction("Free text…", lambda: self._add_text_annotation(""))
@@ -635,18 +624,7 @@ class MainWindow(QMainWindow):
         # Annotations menu
         annotations_menu = hamburger_menu.addMenu("Annotations")
         self._hamburger_annotations_menu = annotations_menu
-        annotations_menu.addAction("Checkmark", lambda: self._add_vector(AnnotationType.CHECKMARK))
-        annotations_menu.addAction("Crossmark", lambda: self._add_vector(AnnotationType.CROSSMARK))
-        
-        # v1.2.22: Add Line annotation
-        annotations_menu.addAction("Line", lambda: self._add_vector(AnnotationType.LINE))
-        
-        # v1.2.24: Arrow (single item, no submenu)
-        annotations_menu.addAction("Arrow", lambda: self._add_vector(AnnotationType.ARROW))
-        
-        # v1.2.22: Add Rectangle and Ellipse
-        annotations_menu.addAction("Rectangle / Square", lambda: self._add_vector(AnnotationType.RECTANGLE))
-        annotations_menu.addAction("Ellipse / Circle", lambda: self._add_vector(AnnotationType.ELLIPSE))
+        self._populate_annotation_type_actions(annotations_menu)
         
         self._hamburger_text_submenu = annotations_menu.addMenu("Text")
         self._hamburger_text_submenu.addAction("Free text…", lambda: self._add_text_annotation(""))
@@ -682,6 +660,22 @@ class MainWindow(QMainWindow):
         """Open the toolbar annotation menu from a keyboard shortcut."""
         if self._add_annotation_btn.isEnabled():
             self._add_annotation_btn.showMenu()
+
+    def _populate_annotation_type_actions(self, menu: QMenu, with_icons: bool = False) -> None:
+        """Add the shared vector annotation commands to an annotation menu."""
+        labels = {
+            AnnotationType.CHECKMARK: "✔ Checkmark" if with_icons else "Checkmark",
+            AnnotationType.CROSSMARK: "✖ Crossmark" if with_icons else "Crossmark",
+            AnnotationType.LINE: "— Line" if with_icons else "Line",
+            AnnotationType.ARROW: "➡ Arrow" if with_icons else "Arrow",
+            AnnotationType.RECTANGLE: "▭ Rectangle / Square" if with_icons else "Rectangle / Square",
+            AnnotationType.ELLIPSE: "○ Ellipse / Circle" if with_icons else "Ellipse / Circle",
+        }
+        for annotation_type, label in labels.items():
+            menu.addAction(
+                label,
+                lambda checked=False, ann_type=annotation_type: self._add_vector(ann_type),
+            )
 
     def _update_menu_state(self) -> None:
         """Enable/disable hamburger menu items based on document/selection/history state."""
@@ -1032,81 +1026,37 @@ class MainWindow(QMainWindow):
     # v1.2.22: Line width, font size, and font family handlers
     def _on_width_changed(self, value: float) -> None:
         """Handle line width spinner changes."""
-        from .history import ChangeLineWidthAction
         selected = self.canvas.selected
         if selected is not None and isinstance(selected, VectorAnnotation):
             from .objects import AnnotationType
             # Only allow width change for vector types that support it
             if selected.ann_type != AnnotationType.TEXT:
-                objs = self.canvas.current_page_objects()
-                obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
-                old_width = selected._line_width_pt
-                selected._line_width_pt = value
-                # Record to history
-                if obj_id >= 0:
-                    action = ChangeLineWidthAction(
-                        object_id=obj_id,
-                        line_width_pt=value,
-                        from_line_width_pt=old_width,
-                    )
-                    self.canvas.history.record_action(action)
+                self.canvas.set_line_width_selected(value)
                 self._settings.recent_line_width_pt = value
-                self.canvas.objectChanged.emit()
-                self.canvas.update()
                 self._save_settings_safe()
 
     def _on_font_size_changed(self, value: int) -> None:
         """Handle font size spinner changes."""
-        from .history import ChangeFontSizeAction
         selected = self.canvas.selected
         if (
             selected is not None
             and isinstance(selected, VectorAnnotation)
             and selected.ann_type == AnnotationType.TEXT
         ):
-            objs = self.canvas.current_page_objects()
-            obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
-            old_size = selected._font_size_pt
-            selected._font_size_pt = value
-            selected.fit_text_box()
-            # Record to history
-            if obj_id >= 0:
-                action = ChangeFontSizeAction(
-                    object_id=obj_id,
-                    font_size_pt=value,
-                    from_font_size_pt=old_size,
-                )
-                self.canvas.history.record_action(action)
+            self.canvas.set_font_size_selected(value)
             self._settings.recent_font_size_pt = value
-            self.canvas.objectChanged.emit()
-            self.canvas.update()
             self._save_settings_safe()
 
     def _on_font_family_changed(self, family: str) -> None:
         """Handle font family combo changes."""
-        from .history import ChangeFontFamilyAction
         selected = self.canvas.selected
         if (
             selected is not None
             and isinstance(selected, VectorAnnotation)
             and selected.ann_type == AnnotationType.TEXT
         ):
-            objs = self.canvas.current_page_objects()
-            obj_id = self.canvas._stable_id_for(selected) if selected in objs else -1
-            old_family = selected._font_family
-            selected._font_family = family
-            selected.fit_text_box()
-            # Record to history
-            if obj_id >= 0:
-                action = ChangeFontFamilyAction(
-                    object_id=obj_id,
-                    font_family=family,
-                    from_font_family=old_family,
-                )
-                self.canvas.history.record_action(action)
+            self.canvas.set_font_family_selected(family)
             self._settings.recent_font_family = family
-            self.canvas.objectChanged.emit()
-            self.canvas.update()
             self._save_settings_safe()
 
     @staticmethod
@@ -1363,7 +1313,7 @@ class MainWindow(QMainWindow):
         if not path.exists():
             return False
         try:
-            pages = render_all_pages(path, dpi=300, password="", libreoffice_path=self._settings.libreoffice_path)
+            pages = render_all_pages(path, password="", libreoffice_path=self._settings.libreoffice_path)
         except (OSError, RuntimeError, ValueError) as exc:
             QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
             return False
@@ -1426,8 +1376,9 @@ class MainWindow(QMainWindow):
         for attempt in range(max_attempts):
             try:
                 pages = render_all_pages(
-                    p, dpi=300, password=password,
-                    libreoffice_path=self._settings.libreoffice_path
+                    p,
+                    password=password,
+                    libreoffice_path=self._settings.libreoffice_path,
                 )
             except ValueError as exc:
                 error_msg = str(exc)

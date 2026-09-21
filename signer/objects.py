@@ -24,15 +24,19 @@ from PySide6.QtGui import (
     QPixmap,
 )
 
+from .constants import (
+    DEFAULT_COLOR,
+    DEFAULT_FONT_FAMILY,
+    DEFAULT_LINE_WIDTH_PT,
+    DEFAULT_TEXT_FONT_PT,
+)
+
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_TEXT_FONT_PT: int = 11
 # Document is internally rendered at 300 DPI, PDF standard is 72 DPI
 # DPI_SCALE is used to convert PDF points to 300 DPI pixels for rendering
 DPI_SCALE: float = 300.0 / 72.0  # 4.16667
-DEFAULT_FONT_FAMILY: str = "Arial"
-DEFAULT_LINE_WIDTH_PT: float = 1.5  # v1.2.22: Default line width in points
 DUPLICATE_OFFSET: float = 20.0
 
 # v1.2.32: Discrete step lists for the `[` / `]` keyboard shortcuts, so each press
@@ -120,7 +124,7 @@ class CanvasObject:
         self.scale: float = 1.0
         self._rotation: float = 0.0
         self.page: int = page
-        self.color: QColor = QColor("#cc0000")
+        self.color: QColor = QColor(DEFAULT_COLOR)
 
     @property
     def scaled_width(self) -> float:
@@ -659,8 +663,8 @@ class VectorAnnotation(CanvasObject):
             self._natural_width = self._base_width
             self._natural_height = self._base_height
             self.scale = 1.0
-        except Exception:
-            # Fallback for Qt font metrics failures on other platforms
+        except (RuntimeError, AttributeError, TypeError):
+            # Fallback for unavailable Qt font metrics on headless platforms.
             logger.debug("fit_text_box(): QFontMetricsF unavailable, using approximate sizing", exc_info=True)
             font_pixel_size = self._make_font().pixelSize()
             avg_char_width = max(8.0, float(font_pixel_size))
@@ -986,7 +990,7 @@ class ProjectFile:
                 object_data["type"] = "SignatureObject"
                 object_data.setdefault("page", 0)
                 object_data.setdefault("scale", 1.0)
-                object_data.setdefault("color", "#cc0000")
+                object_data.setdefault("color", DEFAULT_COLOR)
                 if base_path and not Path(object_data["path"]).is_absolute():
                     object_data["path"] = str(Path(base_path) / object_data["path"])
                 if "image_data" in object_data:

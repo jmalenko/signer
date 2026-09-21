@@ -4,6 +4,7 @@ See CODE_REVIEW_PLAN.md sections 0, 1.1, 1.2, 1.3, 1.4 for the detailed analysis
 """
 
 from PIL import Image
+from PySide6.QtGui import QColor
 
 from signer.objects import AnnotationType, VectorAnnotation
 
@@ -113,3 +114,37 @@ def test_paste_action_undo_removes_only_pasted_objects():
     action.undo(canvas)
 
     assert page_objects == [unrelated], "only the pasted objects should be removed"
+
+
+def test_multi_selection_property_change_is_one_undo_unit(canvas):
+    """Selected property changes apply to all eligible objects and undo together."""
+    _setup_page(canvas)
+    first = VectorAnnotation(AnnotationType.CHECKMARK, 100, 100, page=0)
+    second = VectorAnnotation(AnnotationType.CROSSMARK, 200, 100, page=0)
+    canvas.add_object(first)
+    canvas.add_object(second)
+    canvas.select_all_on_page()
+
+    canvas.set_color_selected(QColor("#0066cc"))
+    assert first.color.name() == "#0066cc"
+    assert second.color.name() == "#0066cc"
+    assert canvas.undo() is True
+    assert first.color.name() == "#cc0000"
+    assert second.color.name() == "#cc0000"
+    assert canvas.can_undo() is True  # The two add actions remain in history.
+
+
+def test_pasted_annotation_is_registered_with_a_stable_id(canvas):
+    """Pasted annotations must participate in stable-ID history operations."""
+    _setup_page(canvas)
+    source = VectorAnnotation(AnnotationType.CHECKMARK, 100, 100, page=0)
+    canvas.add_object(source)
+    canvas.select_annotation(source)
+    canvas.copy_selected()
+
+    canvas.paste_selected()
+    pasted = canvas.current_page_objects()[-1]
+
+    assert any(mapped is pasted for mapped in canvas._object_map.values())
+    object_id = canvas._stable_id_for(pasted)
+    assert canvas._object_map[object_id] is pasted

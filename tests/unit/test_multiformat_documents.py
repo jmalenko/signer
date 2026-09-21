@@ -235,6 +235,19 @@ class TestImageDocumentLoading:
         assert page.width >= 100
         assert page.height >= 100
 
+    def test_load_multiframe_gif_preserves_all_frames(self, tmp_path):
+        """GIF frames must remain separate document pages after RGB conversion."""
+        gif_path = tmp_path / "animated.gif"
+        first = Image.new("RGB", (12, 12), "red")
+        second = Image.new("RGB", (12, 12), "blue")
+        first.save(gif_path, save_all=True, append_images=[second], duration=100, loop=0)
+
+        pages = render_all_pages(gif_path)
+
+        assert len(pages) == 2
+        assert pages[0].getpixel((0, 0)) == (255, 0, 0)
+        assert pages[1].getpixel((0, 0)) == (0, 0, 255)
+
 
 class TestUnsupportedFormats:
     """Test handling of unsupported file formats."""

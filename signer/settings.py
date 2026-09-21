@@ -6,11 +6,15 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-# Default settings constants - single source of truth
-DEFAULT_COLOR: str = "#cc0000"
-DEFAULT_LINE_WIDTH_PT: float = 1.5
-DEFAULT_FONT_FAMILY: str = "Arial"
-DEFAULT_FONT_SIZE_PT: int = 11
+from .constants import (
+    DEFAULT_COLOR,
+    DEFAULT_FONT_FAMILY,
+    DEFAULT_LINE_WIDTH_PT,
+    DEFAULT_TEXT_FONT_PT,
+)
+
+# Backward-compatible settings name for the shared text-size default.
+DEFAULT_FONT_SIZE_PT: int = DEFAULT_TEXT_FONT_PT
 
 
 def get_config_dir(app_name: str = "Signer") -> Path:

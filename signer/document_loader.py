@@ -79,23 +79,16 @@ class ImageLoader(DocumentLoader):
         pages: list[Image.Image] = []
         
         with Image.open(file_path) as img:
-            # Convert to RGB if needed
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            
-            # Check if image has multiple frames (e.g., animated GIF, multi-frame TIFF)
+            # Iterate the decoder before converting each frame so animated GIFs and
+            # multi-page TIFFs retain all pages.
             try:
-                # Try to iterate through frames
                 while True:
-                    pages.append(img.copy().convert('RGB'))
+                    frame = img.copy()
+                    pages.append(frame.convert('RGB'))
                     img.seek(len(pages))
             except EOFError:
                 # No more frames
                 pass
-            except AttributeError:
-                # Image doesn't support seeking, just add the single image
-                if not pages:
-                    pages.append(img.convert('RGB'))
         
         if not pages:
             raise ValueError(f"Could not load any images from {file_path}")

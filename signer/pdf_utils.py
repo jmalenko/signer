@@ -9,17 +9,15 @@ from .document_loader import DocumentLoaderRegistry
 
 def render_all_pages(
     document_path: str | Path,
-    dpi: int = 300,
     password: str = "",
     libreoffice_path: str | None = None
 ) -> list[Image.Image]:
-    """Render every page of a document to PIL RGB images at the given DPI.
+    """Render every page of a document to PIL RGB images at 300 DPI.
     
     Supports PDF, Word (.docx, .doc), ODT, and image formats.
     
     Args:
         document_path: Path to the document file
-        dpi: Resolution in dots per inch (default 300)
         password: Password for encrypted PDFs (default empty string)
         libreoffice_path: Optional path to LibreOffice installation for Word/ODT conversion
         
@@ -29,7 +27,6 @@ def render_all_pages(
     Raises:
         ValueError: If the document cannot be loaded or format is unsupported
     """
-    # Note: dpi parameter is kept for API compatibility but the loader uses 300 DPI internally
     loader_registry = DocumentLoaderRegistry(libreoffice_path)
     
     # For PDFs with password

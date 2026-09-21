@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from .history import (
     AddAnnotationAction,
     ChangeColorAction,
+    ChangeFontFamilyAction,
     ChangeFontSizeAction,
     ChangeLineWidthAction,
     CompositeAction,
@@ -535,38 +536,34 @@ class DocumentCanvas(QWidget):
     # stepping through a fixed list of "usual" sizes instead of a small increment.
     def _adjust_annotation_property(self, selected, direction: str) -> None:
         """Adjust line width for vector annotations or font size for text annotations."""
-        
-        objs = self.current_page_objects()
+        actions = []
         for obj in selected:
             if isinstance(obj, VectorAnnotation):
-                obj_id = self._stable_id_for(obj) if obj in objs else -1
+                obj_id = self._stable_id_for(obj)
                 if obj.ann_type == AnnotationType.TEXT:
                     # Adjust font size for text
                     old_size = obj._font_size_pt
                     new_size = step_size(old_size, FONT_SIZE_STEPS_PT, direction)
                     obj._font_size_pt = new_size
                     obj.fit_text_box()
-                    # Record to history
-                    if obj_id >= 0:
-                        action = ChangeFontSizeAction(
-                            object_id=obj_id,
-                            font_size_pt=new_size,
-                            from_font_size_pt=old_size,
-                        )
-                        self.history.record_action(action)
+                    actions.append(ChangeFontSizeAction(
+                        object_id=obj_id,
+                        font_size_pt=new_size,
+                        from_font_size_pt=old_size,
+                    ))
                 elif obj.ann_type not in {AnnotationType.TEXT}:
                     # Adjust line width for vector annotations (not TEXT)
                     old_width = obj._line_width_pt
                     new_width = step_size(old_width, LINE_WIDTH_STEPS_PT, direction)
                     obj._line_width_pt = new_width
-                    # Record to history
-                    if obj_id >= 0:
-                        action = ChangeLineWidthAction(
-                            object_id=obj_id,
-                            line_width_pt=new_width,
-                            from_line_width_pt=old_width,
-                        )
-                        self.history.record_action(action)
+                    actions.append(ChangeLineWidthAction(
+                        object_id=obj_id,
+                        line_width_pt=new_width,
+                        from_line_width_pt=old_width,
+                    ))
+
+        if actions:
+            self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
         
         self.objectChanged.emit()
         self.update()
@@ -738,6 +735,7 @@ class DocumentCanvas(QWidget):
                     pw, ph = self.current_page_image.size
                     obj.clamp_to_page(pw, ph)
                 
+                self._register_object(obj)
                 objs.append(obj)
                 pasted_objs.append(obj)
             except (KeyError, ValueError, TypeError):
@@ -751,7 +749,11 @@ class DocumentCanvas(QWidget):
         self.objectChanged.emit()
 
         # Record paste action for undo support
-        pasted_data = [obj.to_dict() for obj in pasted_objs]
+        pasted_data = []
+        for obj in pasted_objs:
+            obj_data = obj.to_dict()
+            obj_data["object_id"] = self._stable_id_for(obj)
+            pasted_data.append(obj_data)
         if pasted_data:
             action = PasteAnnotationAction(pasted_objects_data=pasted_data)
             action._pasted_objects = pasted_objs
@@ -765,19 +767,18 @@ class DocumentCanvas(QWidget):
         if not selected:
             return
 
-        # Record color change actions for undo support
-        objs = self.current_page_objects()
+        actions = []
         for obj in selected:
-            obj_id = self._stable_id_for(obj) if obj in objs else -1
-            if obj_id >= 0:
-                from_color = obj.color.name()
-                action = ChangeColorAction(
-                    object_id=obj_id,
-                    color=color.name(),
-                    from_color=from_color,
-                )
-                self.history.record_action(action)
+            obj_id = self._stable_id_for(obj)
+            from_color = obj.color.name()
+            actions.append(ChangeColorAction(
+                object_id=obj_id,
+                color=color.name(),
+                from_color=from_color,
+            ))
             obj.color = color
+
+        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
 
         self.objectChanged.emit()
         self.update()
@@ -785,12 +786,66 @@ class DocumentCanvas(QWidget):
     def set_line_width_selected(self, width_pt: float) -> None:
         """Set line width in points for selected vector annotations."""
 
-        selected = self.get_selected_annotations()
+        selected = [
+            obj for obj in self.get_selected_annotations()
+            if isinstance(obj, VectorAnnotation) and obj.ann_type != AnnotationType.TEXT
+        ]
         if not selected:
             return
+        actions = []
         for obj in selected:
-            if hasattr(obj, '_line_width_pt'):
-                obj._line_width_pt = width_pt
+            old_width = obj._line_width_pt
+            obj._line_width_pt = width_pt
+            actions.append(ChangeLineWidthAction(
+                object_id=self._stable_id_for(obj),
+                line_width_pt=width_pt,
+                from_line_width_pt=old_width,
+            ))
+        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
+        self.objectChanged.emit()
+        self.update()
+
+    def set_font_size_selected(self, font_size_pt: int) -> None:
+        """Set font size for all selected text annotations as one undo unit."""
+        selected = [
+            obj for obj in self.get_selected_annotations()
+            if isinstance(obj, VectorAnnotation) and obj.ann_type == AnnotationType.TEXT
+        ]
+        if not selected:
+            return
+        actions = []
+        for obj in selected:
+            old_size = obj._font_size_pt
+            obj._font_size_pt = font_size_pt
+            obj.fit_text_box()
+            actions.append(ChangeFontSizeAction(
+                object_id=self._stable_id_for(obj),
+                font_size_pt=font_size_pt,
+                from_font_size_pt=old_size,
+            ))
+        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
+        self.objectChanged.emit()
+        self.update()
+
+    def set_font_family_selected(self, family: str) -> None:
+        """Set font family for all selected text annotations as one undo unit."""
+        selected = [
+            obj for obj in self.get_selected_annotations()
+            if isinstance(obj, VectorAnnotation) and obj.ann_type == AnnotationType.TEXT
+        ]
+        if not selected:
+            return
+        actions = []
+        for obj in selected:
+            old_family = obj._font_family
+            obj._font_family = family
+            obj.fit_text_box()
+            actions.append(ChangeFontFamilyAction(
+                object_id=self._stable_id_for(obj),
+                font_family=family,
+                from_font_family=old_family,
+            ))
+        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
         self.objectChanged.emit()
         self.update()
 

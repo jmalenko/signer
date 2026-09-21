@@ -38,6 +38,14 @@ CHARACTER_TARGET_PT: float = 12.0
 CHARACTER_EXPANSION_BASELINE_PERCENT: float = 60.0
 
 
+def _apply_alpha_mask(rgba: Image.Image, computed_alpha: Image.Image) -> Image.Image:
+    """Combine a computed visibility mask with existing source transparency."""
+    combined_alpha = ImageChops.darker(computed_alpha, rgba.getchannel("A"))
+    result = rgba.copy()
+    result.putalpha(combined_alpha)
+    return result
+
+
 def remove_background(image: Image.Image, threshold: float = DEFAULT_THRESHOLD, softness: float = DEFAULT_SOFTNESS) -> Image.Image:
     """Return an RGBA copy of `image` with a luminance-based alpha channel.
 
@@ -69,14 +77,7 @@ def remove_background(image: Image.Image, threshold: float = DEFAULT_THRESHOLD, 
 
     computed_alpha = luminance.point(lut)
 
-    existing_alpha = rgba.split()[3]
-    # Take the more-transparent (lower) alpha at each pixel, so pre-existing transparency
-    # is never made more opaque by the luminance-based computation.
-    combined_alpha = ImageChops.darker(computed_alpha, existing_alpha)
-
-    result = rgba.copy()
-    result.putalpha(combined_alpha)
-    return result
+    return _apply_alpha_mask(rgba, computed_alpha)
 
 
 def remove_background_by_color(
@@ -107,11 +108,11 @@ def remove_background_by_color(
 
     src = rgba.load()
     width, height = rgba.size
-    out = Image.new("RGBA", rgba.size)
-    dst = out.load()
+    computed_alpha = Image.new("L", rgba.size)
+    dst = computed_alpha.load()
     for y in range(height):
         for x in range(width):
-            r, g, b, existing_alpha = src[x, y]
+            r, g, b, _existing_alpha = src[x, y]
             hue, saturation, _value = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
             if saturation < min_saturation:
                 alpha = 0
@@ -126,8 +127,8 @@ def remove_background_by_color(
                     alpha = 0
                 else:
                     alpha = round(255 * (hi - hue_distance_deg) / span)
-            dst[x, y] = (r, g, b, min(alpha, existing_alpha))
-    return out
+            dst[x, y] = alpha
+    return _apply_alpha_mask(rgba, computed_alpha)
 
 
 def remove_background_combined(
