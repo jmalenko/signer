@@ -15,6 +15,15 @@ python main.py -document examples/document.pdf -signature examples/signature.png
 ```
 (Equivalent to the "Run Signer" / "Run Signer (examples)" tasks.)
 
+**Opt-in diagnostics:**
+```bash
+DEBUG=1 python main.py
+```
+`DEBUG=1` is the standard diagnostic switch. It enables visual/stdout diagnostics for supported
+features, including the Prepare Signature tool's development overlays and diagnostic output.
+It does not change startup routing or automatically open any tool. Normal runs leave these
+diagnostics disabled.
+
 **Run tests:**
 ```bash
 pytest
@@ -75,6 +84,7 @@ flowchart TD
     mw --> quality[export_quality_dialog.py]
     mw --> prepsig[prepare_signature_dialog.py]
     prepsig --> sigbg[signature_background.py: background removal, trim, resize]
+    prepsig --> debug[debug.py: DEBUG-gated diagnostics]
     canvas --> objects[objects.py: CanvasObject hierarchy]
     canvas --> history[history/: Action, HistoryStack]
     mw --> loader[document_loader.py: DocumentLoaderRegistry]
@@ -95,6 +105,7 @@ flowchart TD
 | `export_quality_dialog.py` | Non-modal "Export Quality Options" panel (JPG/PDF quality slider) |
 | `prepare_signature_dialog.py` | "Prepare Signature…" tool (hamburger Tools menu): open scan/PDF page → crop → transparency preview, tuning, sizing, save; standalone from the open document/canvas |
 | `signature_background.py` | Pure image-processing functions used by the dialog above: luminance and hue-based background removal, sequential alpha-mask composition, content-bounding-box auto-trim, and aspect-ratio-locked resize to a target point size |
+| `debug.py` | Public `debug_print` helper for `DEBUG=1` diagnostics; tags default to the calling module's filename |
 | `notification.py` | Toast notification widget (success/error variants) |
 | `settings.py` | `AppSettings` dataclass, `SettingsStore` (load/save JSON), portable-vs-installed config resolution |
 | `history/action.py` | One `Action` subclass per undoable operation (move, resize, add, delete, color/width/font change, cut/paste, rotate, …) |

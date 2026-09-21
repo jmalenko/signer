@@ -8,7 +8,12 @@ from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from signer.prepare_signature_dialog import PrepareSignatureDialog
-from signer.signature_background import RECOMMENDED_MAX_PT, RECOMMENDED_MIN_PT, height_px_to_pt
+from signer.signature_background import (
+    RECOMMENDED_MAX_PT,
+    RECOMMENDED_MIN_PT,
+    alpha_row_histogram,
+    height_px_to_pt,
+)
 
 
 @pytest.fixture
@@ -45,6 +50,13 @@ def test_dialog_starts_on_stage1(qapp):
     assert dialog._stack.currentIndex() == 0
 
 
+def test_debug_mode_does_not_auto_open_signature_tool(qapp, monkeypatch):
+    monkeypatch.setenv("DEBUG", "1")
+    dialog = PrepareSignatureDialog()
+    assert dialog._stack.currentIndex() == 0
+    assert dialog._source_path is None
+
+
 def test_show_boundary_checkbox_is_checked_by_default(qapp):
     dialog = PrepareSignatureDialog()
     assert dialog._show_boundary_checkbox.isChecked() is True
@@ -66,8 +78,8 @@ def test_crop_and_tuning_produces_trimmed_transparent_image(qapp):
     final = dialog._final_image
     assert final is not None
     assert final.mode == "RGBA"
-    # Auto-trim finds 40x20 content, then default fit-to-range scales it to 10pt high.
-    assert final.size == (84, 42)
+    # The top-60% candidate band is 12px high and scales to 50px; the full output is larger.
+    assert final.size == (167, 83)
 
 
 def test_stage2_fits_source_image_to_available_view(qapp):
@@ -123,19 +135,15 @@ def test_fit_to_range_toggle_rescales_into_recommended_bounds(qapp):
     assert RECOMMENDED_MIN_PT - 0.5 <= height_pt <= RECOMMENDED_MAX_PT + 0.5
 
 
-def test_manual_height_edit_disables_fit_to_range(qapp):
+def test_scale_mode_has_no_height_input(qapp):
     dialog = PrepareSignatureDialog()
     dialog._pages = [_make_scan_with_dark_square()]
     dialog._go_to_crop()
     dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
     dialog._go_to_tuning()
 
-    dialog._fit_range_checkbox.setChecked(True)
     assert dialog._fit_to_range is True
-
-    dialog._height_spin.setValue(dialog._height_spin.value() + 5)
-    assert dialog._fit_range_checkbox.isChecked() is False
-    assert dialog._fit_to_range is False
+    assert not hasattr(dialog, "_height_spin")
 
 
 def test_crop_rectangle_can_be_drawn_from_bottom_right_corner(qapp):
@@ -174,6 +182,94 @@ def test_combined_method_drops_black_text_under_blue_signature(qapp):
     opaque_pixels = [p for p in rgba.getdata() if p[3] > 0]
     assert opaque_pixels, "expected the blue ink to remain"
     assert all(not (p[0] < 30 and p[1] < 30 and p[2] < 30) for p in opaque_pixels)
+
+
+def test_preview_histogram_matches_post_method_image(qapp):
+    dialog = PrepareSignatureDialog()
+    dialog._pages = [_make_scan_with_blue_ink_over_black_text()]
+    dialog._go_to_crop()
+    dialog._crop_widget._rect = QRectF(0, 0, 100, 100)
+    dialog._go_to_tuning()
+
+    processed_histogram = alpha_row_histogram(dialog._compute_processed_image())
+
+    assert dialog._last_histogram == processed_histogram
+
+
+def test_preview_histogram_hidden_when_debug_disabled(qapp, monkeypatch):
+    monkeypatch.delenv("DEBUG", raising=False)
+    dialog = PrepareSignatureDialog()
+    image = Image.new("RGBA", (80, 80), (255, 255, 255, 0))
+    histogram = ((0, 0, 80, 80), [10, 20, 30, 40, 50, 60])
+
+    dialog._render_preview(
+        image,
+        boundary_bbox=(0, 0, 80, 80),
+        post_method_histogram=histogram,
+    )
+
+    pixmap = dialog._preview_label.pixmap()
+    assert pixmap is not None
+    img = pixmap.toImage()
+    greenish = False
+    for y in range(img.height()):
+        for x in range(img.width()):
+            color = img.pixelColor(x, y)
+            r, g, b, a = color.getRgb()
+            if g > 140 and r < 120 and b < 120 and a > 0:
+                greenish = True
+                break
+        if greenish:
+            break
+
+    assert greenish is False
+
+
+def test_preview_histogram_hidden_when_scaling_disabled(qapp, monkeypatch):
+    monkeypatch.setenv("DEBUG", "1")
+    dialog = PrepareSignatureDialog()
+    dialog._fit_to_range = False
+    image = Image.new("RGBA", (80, 80), (255, 255, 255, 0))
+    histogram = ((0, 0, 80, 80), [10, 20, 30, 40, 50, 60])
+
+    dialog._render_preview(
+        image,
+        boundary_bbox=(0, 0, 80, 80),
+        post_method_histogram=histogram,
+    )
+
+    pixmap = dialog._preview_label.pixmap()
+    assert pixmap is not None
+    img = pixmap.toImage()
+    greenish = False
+    for y in range(img.height()):
+        for x in range(img.width()):
+            color = img.pixelColor(x, y)
+            r, g, b, a = color.getRgb()
+            if g > 140 and r < 120 and b < 120 and a > 0:
+                greenish = True
+                break
+        if greenish:
+            break
+
+    assert greenish is False
+
+
+def test_preview_keeps_same_position_when_debug_expansion_bars_are_added(qapp, monkeypatch):
+    monkeypatch.setenv("DEBUG", "1")
+    dialog = PrepareSignatureDialog()
+    dialog._pages = [_make_scan_with_dark_square()]
+    dialog._go_to_crop()
+    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._color_method_checkbox.setChecked(False)
+    dialog._go_to_tuning()
+
+    original_pan = QPointF(32, -14)
+    dialog._preview_pan = original_pan
+    dialog._fit_range_checkbox.setChecked(False)
+    dialog._fit_range_checkbox.setChecked(True)
+
+    assert dialog._preview_pan == original_pan
 
 
 def test_methods_use_independent_checkboxes_and_controls(qapp):
@@ -218,50 +314,11 @@ def test_scaled_mode_shows_status_and_hides_height_input(qapp):
     dialog._pages = [_make_scan_with_dark_square()]
     dialog._go_to_crop()
     dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._color_method_checkbox.setChecked(False)
     dialog._go_to_tuning()
 
     assert dialog._scale_status_label.isVisible() is False
-    assert "Will be scaled to" in dialog._scale_status_label.text()
-    assert ".0pt" not in dialog._scale_status_label.text()
-    assert dialog._scale_status_label.text().endswith("pt")
-    assert dialog._height_spin.isVisible() is False
-    assert dialog._height_label.isVisible() is False
-
-
-def test_manual_mode_shows_height_input_and_keeps_current_target(qapp):
-    dialog = PrepareSignatureDialog()
-    dialog._pages = [_make_scan_with_dark_square()]
-    dialog._go_to_crop()
-    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
-    dialog._go_to_tuning()
-
-    dialog._fit_range_checkbox.setChecked(False)
-    assert dialog._manual_height_pt is not None
-    manual_height = dialog._manual_height_pt
-    assert dialog._scale_status_label.isVisible() is False
-    assert dialog._height_spin.isVisible() is False
-    assert dialog._height_label.isVisible() is False
-    # Parent dialog is not shown in this test, so check widget visibility state via isHidden.
-    assert dialog._height_spin.isHidden() is False
-    assert dialog._height_label.isHidden() is False
-    dialog._threshold_slider.setValue(150)
-    assert dialog._height_spin.value() == round(manual_height, 1)
-
-
-def test_manual_height_remains_fixed_when_other_controls_change(qapp):
-    dialog = PrepareSignatureDialog()
-    dialog._pages = [_make_scan_with_dark_square()]
-    dialog._go_to_crop()
-    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
-    dialog._go_to_tuning()
-
-    dialog._fit_range_checkbox.setChecked(False)
-    dialog._height_spin.setValue(18.5)
-    dialog._threshold_slider.setValue(150)
-
-    assert dialog._fit_range_checkbox.isChecked() is False
-    assert dialog._manual_height_pt == 18.5
-    assert dialog._height_spin.value() == 18.5
+    assert dialog._scale_status_label.text() == ""
 
 
 def test_preview_canvas_fits_selection_to_viewport(qapp):
@@ -283,6 +340,7 @@ def test_preview_canvas_size_is_fixed_to_crop_regardless_of_sliders(qapp):
     dialog._pages = [_make_scan_with_dark_square()]
     dialog._go_to_crop()
     dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._color_method_checkbox.setChecked(False)
     dialog._go_to_tuning()
 
     size_before = dialog._compute_processed_image().size
@@ -316,7 +374,67 @@ def test_boundary_bbox_matches_final_trimmed_size(qapp):
     bbox = full.split()[3].getbbox()
     left, top, right, bottom = bbox
     assert (right - left, bottom - top) == (40, 20)
-    assert dialog._final_image.size == (84, 42)
+    assert dialog._final_image.size == (167, 83)
+
+
+def test_character_guides_use_full_crop_boundary_coordinates(qapp):
+    dialog = PrepareSignatureDialog()
+    dialog._pages = [_make_scan_with_dark_square()]
+    dialog._go_to_crop()
+    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._color_method_checkbox.setChecked(False)
+    dialog._go_to_tuning()
+
+    boundary = dialog._last_boundary_bbox
+    band = dialog._last_character_band
+    assert boundary is not None
+    assert band is not None
+    assert boundary[1] <= band[0] < band[1] <= boundary[3]
+
+
+def test_red_guides_use_sixty_percent_expansion_band(qapp):
+    dialog = PrepareSignatureDialog()
+    dialog._pages = [_make_scan_with_dark_square()]
+    dialog._go_to_crop()
+    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._color_method_checkbox.setChecked(False)
+    dialog._go_to_tuning()
+
+    assert dialog._last_expansion_bands is not None
+    assert dialog._last_guide_band == dialog._last_expansion_bands[5]
+
+
+def test_scaling_summary_reports_character_boundary_and_output_heights(qapp, monkeypatch, capsys):
+    monkeypatch.setenv("DEBUG", "1")
+    dialog = PrepareSignatureDialog()
+    dialog._pages = [_make_scan_with_dark_square()]
+    dialog._crop_loaded_page_index = None
+    dialog._go_to_crop()
+    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._color_method_checkbox.setChecked(False)
+    dialog._go_to_tuning()
+
+    output = capsys.readouterr().out
+    assert "scaling summary:" in output
+    assert "Regular character height =" in output
+    assert "boundary-box height =" in output
+    assert "total output signature height =" in output
+
+
+def test_expansion_bars_start_at_sixty_percent_and_are_nested(qapp):
+    dialog = PrepareSignatureDialog()
+    dialog._pages = [_make_scan_with_dark_square()]
+    dialog._go_to_crop()
+    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._color_method_checkbox.setChecked(False)
+    dialog._go_to_tuning()
+
+    bands = dialog._last_expansion_bands
+    assert bands is not None
+    assert len(bands) == 9
+    for previous, current in zip(bands, bands[1:]):
+        assert current[0] <= previous[0]
+        assert current[1] >= previous[1]
 
 
 def test_opening_a_scan_marks_dialog_dirty(qapp):

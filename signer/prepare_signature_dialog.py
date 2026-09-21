@@ -6,6 +6,7 @@ it doesn't read or modify the currently open document/canvas.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from PIL import Image
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .debug import debug_print
 from .pdf_utils import render_all_pages
 from .signature_background import (
     DEFAULT_COLOR_SOFTNESS,
@@ -36,13 +38,20 @@ from .signature_background import (
     DEFAULT_INK_COLOR,
     DEFAULT_SOFTNESS,
     DEFAULT_THRESHOLD,
+    CHARACTER_TARGET_PT,
     RECOMMENDED_MAX_PT,
     RECOMMENDED_MIN_PT,
     auto_trim,
+    alpha_row_histogram,
+    calculate_character_scaling_factor,
+    estimate_regular_character_band,
+    expansion_bands_for_character,
     fit_to_recommended_range,
     height_px_to_pt,
+    histogram_mass_percentile_positions,
     remove_background,
     remove_background_by_color,
+    resize_by_factor,
     resize_to_height_pt,
 )
 
@@ -366,7 +375,10 @@ class PrepareSignatureDialog(QDialog):
         self._last_full_size: tuple[int, int] | None = None
         self._last_preview_image: Image.Image | None = None
         self._last_boundary_bbox: tuple[int, int, int, int] | None = None
-        self._manual_height_pt: float | None = None
+        self._last_histogram: tuple[tuple[int, int, int, int], list[int]] | None = None
+        self._last_character_band: tuple[int, int] | None = None
+        self._last_guide_band: tuple[int, int] | None = None
+        self._last_expansion_bands: list[tuple[int, int]] | None = None
 
         self._stack = QStackedWidget(self)
         self._build_stage1()
@@ -433,17 +445,28 @@ class PrepareSignatureDialog(QDialog):
         path, _ = QFileDialog.getOpenFileName(self, "Open Scan", "", OPEN_FILTER)
         if not path:
             return
+        self._load_source_path(Path(path))
+
+    def _load_source_path(self, source_path: Path) -> None:
         try:
-            pages = render_all_pages(path)
+            pages = render_all_pages(source_path)
         except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Cannot open file", f"Unable to open '{path}':\n{exc}")
+            QMessageBox.critical(
+                self,
+                "Cannot open file",
+                f"Unable to open '{source_path}':\n{exc}",
+            )
             return
         if not pages:
-            QMessageBox.critical(self, "Cannot open file", f"'{path}' has no pages to show.")
+            QMessageBox.critical(
+                self,
+                "Cannot open file",
+                f"'{source_path}' has no pages to show.",
+            )
             return
         self._pages = pages
         self._page_index = 0
-        self._source_path = Path(path)
+        self._source_path = source_path
         self._opened_file_label.setText(f"Opened: {self._source_path.name}")
         self._set_page_nav_visible(len(pages) > 1)
         self._update_page_label()
@@ -634,7 +657,7 @@ class PrepareSignatureDialog(QDialog):
 
         size_row = QHBoxLayout()
         self._fit_range_checkbox = QCheckBox(
-            "Scale signature to fit recommended range (10-24pt)"
+            "Scale signature to fit recommended height"
         )
         self._fit_range_checkbox.setChecked(True)
         self._fit_range_checkbox.toggled.connect(self._on_fit_range_toggled)
@@ -642,21 +665,10 @@ class PrepareSignatureDialog(QDialog):
         size_row.addStretch(1)
         self._scale_status_label = QLabel("")
         size_row.addWidget(self._scale_status_label)
-        self._height_label = QLabel("Height (pt):")
-        size_row.addWidget(self._height_label)
-        self._height_spin = QDoubleSpinBox()
-        self._height_spin.setRange(1.0, 500.0)
-        self._height_spin.setDecimals(1)
-        self._height_spin.valueChanged.connect(self._on_height_changed)
-        size_row.addWidget(self._height_spin)
-        self._size_warning_label = QLabel("")
-        self._size_warning_label.setStyleSheet("color: #b45309;")
-        size_row.addWidget(self._size_warning_label)
         reset_btn = QPushButton("Reset")
         reset_btn.clicked.connect(self._reset_sliders)
         size_row.addWidget(reset_btn)
         layout.addLayout(size_row)
-        self._update_height_control_visibility()
 
         button_row = QHBoxLayout()
         back_btn = QPushButton("Back")
@@ -676,35 +688,9 @@ class PrepareSignatureDialog(QDialog):
         self._color_tolerance_slider.setValue(int(DEFAULT_COLOR_TOLERANCE))
         self._color_softness_slider.setValue(int(DEFAULT_COLOR_SOFTNESS))
 
-    def _on_height_changed(self, _value: float) -> None:
-        if self._updating_height:
-            return
-        self._manual_height_pt = self._height_spin.value()
-        self._fit_range_checkbox.setChecked(False)
-        self._update_preview(resize_from_height_field=True)
-
     def _on_fit_range_toggled(self, checked: bool) -> None:
         self._fit_to_range = checked
-        if not checked and self._manual_height_pt is None:
-            self._manual_height_pt = self._current_actual_height_pt()
-            self._updating_height = True
-            self._height_spin.setValue(round(self._manual_height_pt, 1))
-            self._updating_height = False
-        self._update_height_control_visibility()
         self._update_preview()
-
-    def _update_height_control_visibility(self) -> None:
-        scaled = self._fit_range_checkbox.isChecked()
-        self._scale_status_label.setVisible(scaled)
-        self._height_label.setVisible(not scaled)
-        self._height_spin.setVisible(not scaled)
-        self._size_warning_label.setVisible(not scaled)
-
-    def _current_actual_height_pt(self) -> float:
-        full = self._compute_processed_image()
-        if full is None:
-            return 0.0
-        return height_px_to_pt(auto_trim(full).height)
 
     def _on_methods_changed(self, _checked: bool) -> None:
         self._update_mode_visibility()
@@ -782,49 +768,78 @@ class PrepareSignatureDialog(QDialog):
             )
         return processed
 
-    def _update_preview(self, *_args, resize_from_height_field: bool = False) -> None:
+    def _update_preview(self, *_args) -> None:
         full = self._compute_processed_image()
         if full is None:
             return
         trimmed = auto_trim(full)
 
-        if self._fit_to_range:
-            final = fit_to_recommended_range(trimmed)
+        trim_bbox = full.getchannel("A").getbbox()
+        dense_character_band = estimate_regular_character_band(trimmed)
+        if dense_character_band is not None and trim_bbox is not None:
+            dense_character_band = (
+                dense_character_band[0] + trim_bbox[1],
+                dense_character_band[1] + trim_bbox[1],
+            )
+        post_method_histogram = alpha_row_histogram(full)
+        expansion_bands = None
+        scaling_band = dense_character_band
+        scaling_band_relative = None
+        if self._fit_to_range and dense_character_band is not None and post_method_histogram is not None:
+            histogram_bbox, row_values = post_method_histogram
+            relative_band = (
+                dense_character_band[0] - histogram_bbox[1],
+                dense_character_band[1] - histogram_bbox[1],
+            )
+            expansion_bands = expansion_bands_for_character(
+                row_values,
+                relative_band,
+                list(range(10, 100, 10)),
+            )
+            if os.environ.get("DEBUG") == "1":
+                debug_print(
+                    "expansion coordinate space: "
+                    f"histogram_bbox={histogram_bbox} "
+                        f"offset_y={histogram_bbox[1]}"
+                )
+            expansion_bands = [
+                (start + histogram_bbox[1], end + histogram_bbox[1])
+                for start, end in expansion_bands
+            ]
+            if len(expansion_bands) >= 6:
+                # The 60% expansion is the regular-character band used for scaling.
+                scaling_band = expansion_bands[5]
+                scaling_band_relative = (
+                    scaling_band[0] - histogram_bbox[1],
+                    scaling_band[1] - histogram_bbox[1],
+                )
+        if self._fit_to_range and scaling_band is not None:
+            character_height = scaling_band[1] - scaling_band[0]
+            scaling_factor = calculate_character_scaling_factor(
+                character_height,
+                CHARACTER_TARGET_PT,
+            )
+            final = resize_by_factor(trimmed, scaling_factor)
         else:
-            target_height = self._manual_height_pt
-            if target_height is None:
-                target_height = height_px_to_pt(trimmed.height)
-            final = resize_to_height_pt(trimmed, target_height)
+            scaling_factor = 1.0
+            final = trimmed
+
+        if os.environ.get("DEBUG") == "1":
+            debug_print(
+                "preview: "
+                f"full={full.size} trimmed={trimmed.size} final={final.size} "
+                f"trim_bbox={trim_bbox} scale_enabled={self._fit_to_range} "
+                f"method1={self._luminance_method_checkbox.isChecked()} "
+                f"method2={self._color_method_checkbox.isChecked()} "
+                f"dense_character_band={dense_character_band} "
+                f"scaling_band_relative={scaling_band_relative} "
+                f"scaling_band={scaling_band} (full-crop-coordinates) "
+                f"scaling_factor={scaling_factor:.6f}"
+            )
 
         self._final_image = final
 
-        current_pt = height_px_to_pt(final.height)
-        if self._fit_to_range or self._manual_height_pt is None:
-            self._updating_height = True
-            self._height_spin.setValue(round(current_pt, 1))
-            self._updating_height = False
-
-        actual_pt = height_px_to_pt(trimmed.height)
-        if self._fit_to_range:
-            if actual_pt < RECOMMENDED_MIN_PT:
-                target_pt = RECOMMENDED_MIN_PT
-            elif actual_pt > RECOMMENDED_MAX_PT:
-                target_pt = RECOMMENDED_MAX_PT
-            else:
-                target_pt = round(actual_pt)
-            target_text = f"{target_pt:g}"
-            actual_text = f"{actual_pt:g}"
-            self._scale_status_label.setText(
-                f"Will be scaled to {target_text}pt from the current {actual_text}pt"
-            )
-        self._update_height_control_visibility()
-
-        if current_pt < RECOMMENDED_MIN_PT or current_pt > RECOMMENDED_MAX_PT:
-            self._size_warning_label.setText(
-                f"Outside recommended {RECOMMENDED_MIN_PT:.0f}\u2013{RECOMMENDED_MAX_PT:.0f}pt range"
-            )
-        else:
-            self._size_warning_label.setText("")
+        self._scale_status_label.setText("")
 
         boundary_bbox = full.split()[3].getbbox() if self._show_boundary_checkbox.isChecked() else None
         if full.size != self._last_full_size:
@@ -833,14 +848,66 @@ class PrepareSignatureDialog(QDialog):
             self._last_full_size = full.size
         self._last_preview_image = full
         self._last_boundary_bbox = boundary_bbox
-        self._render_preview(full, boundary_bbox)
+        # This is captured from the image after both extraction methods have run.
+        self._last_histogram = post_method_histogram
+        self._last_character_band = dense_character_band if self._fit_to_range else None
+        self._last_expansion_bands = expansion_bands
+        guide_band = scaling_band if self._fit_to_range else None
+        self._last_guide_band = guide_band
+        if os.environ.get("DEBUG") == "1":
+            regular_height = None
+            if scaling_band is not None:
+                regular_height = scaling_band[1] - scaling_band[0]
+            target_pixels = CHARACTER_TARGET_PT * 300 / 72.0
+            boundary_height = trimmed.height
+            debug_print(
+                "scaling: "
+                f"enabled={self._fit_to_range} "
+                f"scaling_band={scaling_band} "
+                f"regular_height_px={regular_height} "
+                f"target={CHARACTER_TARGET_PT:g}pt "
+                f"target_px={target_pixels:.4f} "
+                f"factor={scaling_factor:.6f} "
+                f"input_size={trimmed.size} output_size={final.size} "
+                f"guide_band={guide_band}"
+            )
+            if scaling_band is not None and regular_height is not None:
+                debug_print(
+                    "scaling summary: "
+                    f"Regular character height = {scaling_band[1]} - "
+                    f"{scaling_band[0]} = {regular_height}px; "
+                    f"scaling this to {CHARACTER_TARGET_PT:g}pt "
+                    f"means {target_pixels:.2f}px; "
+                    f"boundary-box height = {boundary_height}px; "
+                    f"total output signature height = {final.height}px"
+                )
+        self._render_preview(
+            full,
+            boundary_bbox,
+            guide_band,
+            self._last_histogram,
+            self._last_expansion_bands,
+        )
 
     def _on_preview_dragged(self, dx: float, dy: float) -> None:
         self._preview_pan += QPointF(dx, dy)
         if self._last_preview_image is not None:
-            self._render_preview(self._last_preview_image, self._last_boundary_bbox)
+            self._render_preview(
+                self._last_preview_image,
+                self._last_boundary_bbox,
+                self._last_guide_band,
+                self._last_histogram,
+                self._last_expansion_bands,
+            )
 
-    def _render_preview(self, image: Image.Image, boundary_bbox: tuple[int, int, int, int] | None = None) -> None:
+    def _render_preview(
+        self,
+        image: Image.Image,
+        boundary_bbox: tuple[int, int, int, int] | None = None,
+        character_band: tuple[int, int] | None = None,
+        post_method_histogram: tuple[tuple[int, int, int, int], list[int]] | None = None,
+        expansion_bands: list[tuple[int, int]] | None = None,
+    ) -> None:
         viewport = self._preview_scroll.viewport().size()
         canvas_w = max(viewport.width(), 1)
         canvas_h = max(viewport.height(), 1)
@@ -850,9 +917,13 @@ class PrepareSignatureDialog(QDialog):
         else:
             backdrop = _checkerboard_pixmap(QSize(canvas_w, canvas_h))
 
+        # Keep the preview image locked in place even when debug-only expansion bars
+        # appear/disappear. The bars are drawn to the right of the image instead of
+        # consuming layout width and re-centering the crop during the scale toggle.
+        expansion_space = 0
         display_scale = min(
             1.0,
-            viewport.width() / image.width if image.width else 1.0,
+            max(1, viewport.width()) / image.width if image.width else 1.0,
             viewport.height() / image.height if image.height else 1.0,
         )
         display_width = max(1, round(image.width * display_scale))
@@ -865,7 +936,7 @@ class PrepareSignatureDialog(QDialog):
             display_bbox = tuple(
                 round(value * display_scale) for value in boundary_bbox
             )
-        x = (canvas_w - display_width) // 2 + round(self._preview_pan.x())
+        x = (canvas_w - expansion_space - display_width) // 2 + round(self._preview_pan.x())
         y = (canvas_h - display_height) // 2 + round(self._preview_pan.y())
         painter = QPainter(backdrop)
         painter.drawPixmap(x, y, pil_to_qpixmap(display_image))
@@ -877,6 +948,102 @@ class PrepareSignatureDialog(QDialog):
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
             painter.drawRect(x + left, y + top, right - left, bottom - top)
+            if (
+                os.environ.get("DEBUG") == "1"
+                and self._fit_to_range
+                and post_method_histogram is not None
+            ):
+                _histogram_bbox, row_values = post_method_histogram
+                peak = max(row_values, default=0)
+                if peak > 0:
+                    green = QColor("#2e7d32")
+                    green.setAlpha(150)
+                    painter.setPen(Qt.NoPen)
+                    painter.setBrush(QBrush(green))
+                    for row_index, row_value in enumerate(row_values):
+                        bar_width = round(
+                            (right - left) * row_value / peak
+                        )
+                        histogram_row_fraction = row_index / max(1, len(row_values) - 1)
+                        bar_y = y + top + round(
+                            (bottom - top) * histogram_row_fraction
+                        )
+                        bar_height = max(1, round(display_scale))
+                        painter.drawRect(
+                            x + left,
+                            bar_y,
+                            max(1, bar_width),
+                            bar_height,
+                        )
+                    marker_pen = QPen(QColor("#2e7d32"))
+                    marker_pen.setWidth(1)
+                    painter.setPen(marker_pen)
+                    painter.setBrush(Qt.NoBrush)
+                    marker_font = painter.font()
+                    marker_font.setPointSize(8)
+                    painter.setFont(marker_font)
+                    marker_percents = list(range(0, 101, 10))
+                    marker_positions_in_rows = histogram_mass_percentile_positions(
+                        row_values,
+                        marker_percents,
+                    )
+                    marker_positions = []
+                    for percent, row_position in zip(
+                        marker_percents,
+                        marker_positions_in_rows,
+                    ):
+                        marker_y = y + top + round(row_position * display_scale)
+                        marker_positions.append((percent, marker_y))
+                        painter.drawLine(x + left - 22, marker_y, x + left, marker_y)
+                        painter.drawText(x + left - 48, marker_y + 4, f"{percent}%")
+                    debug_print(
+                        "histogram markers: "
+                        f"positions={marker_positions} "
+                        f"boundary_y=({y + top},{y + bottom})"
+                    )
+        if character_band is not None and display_bbox is not None:
+            left, boundary_top, right, boundary_bottom = display_bbox
+            band_top = max(
+                y + boundary_top,
+                min(y + boundary_bottom, y + round(character_band[0] * display_scale)),
+            )
+            band_bottom = max(
+                band_top,
+                min(y + boundary_bottom, y + round(character_band[1] * display_scale)),
+            )
+            if os.environ.get("DEBUG") == "1":
+                debug_print(
+                    "guides: "
+                    f"display_scale={display_scale:.6f} image_origin=({x},{y}) "
+                    f"boundary={display_bbox} guides_y=({band_top},{band_bottom}) "
+                    f"guide_x=({x + left},{x + right})"
+                )
+            guide_pen = QPen(QColor("#e53935"))
+            guide_pen.setWidth(2)
+            guide_pen.setStyle(Qt.DashLine)
+            painter.setPen(guide_pen)
+            painter.drawLine(x + left, band_top, x + right, band_top)
+            painter.drawLine(x + left, band_bottom, x + right, band_bottom)
+        if os.environ.get("DEBUG") == "1" and expansion_bands is not None and display_bbox is not None:
+            _left, _top, right, _bottom = display_bbox
+            expansion_pen = QPen(QColor("#2e7d32"))
+            expansion_pen.setWidth(2)
+            expansion_pen.setStyle(Qt.SolidLine)
+            painter.setPen(expansion_pen)
+            marker_font = painter.font()
+            marker_font.setPointSize(8)
+            painter.setFont(marker_font)
+            for index, (start, end) in enumerate(expansion_bands):
+                start_y = y + round(start * display_scale)
+                end_y = y + round(end * display_scale)
+                target_percent = 10 + index * 10
+                bar_x = x + right + 8 + index * 8
+                painter.drawLine(bar_x, start_y, bar_x, end_y)
+                painter.save()
+                painter.translate(bar_x + 3, start_y - 8)
+                painter.rotate(-90)
+                painter.drawText(0, 0, f"{target_percent}%")
+                painter.restore()
         painter.end()
         self._preview_label.setFixedSize(canvas_w, canvas_h)
         self._preview_label.setPixmap(backdrop)

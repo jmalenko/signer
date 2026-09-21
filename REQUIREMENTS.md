@@ -502,3 +502,39 @@ of a larger scanned page) into a ready-to-use transparent PNG.
    them.
 
 See [FUNCTIONAL_SPECIFICATION.md §17](FUNCTIONAL_SPECIFICATION.md#17-prepare-signature-tool).
+
+## Version 1.2.38 - Regular Character Signature Sizing
+
+Motivation: a signature's overall bounds can be dominated by tall ascenders or descenders,
+making overall-height scaling produce ordinary letters that are too small. Scale against the
+regular character body instead, while preserving the complete signature including its tall
+strokes.
+
+1. When signature scaling is enabled, estimate the regular character height from the
+   non-transparent-pixel row histogram using two independent constants:
+   - `CHARACTER_BAND_TOP_FRACTION` (default `0.70`) limits the densest-band search to the top 70%
+     of the actual signature bounds, avoiding domination by long lower strokes.
+   - `CHARACTER_EXPANSION_BASELINE_PERCENT` (default `60.0`) selects the first cumulative-alpha
+     row that defines the regular-character expansion baseline. This is separate from the search
+     limit and both constants may be tuned independently.
+2. Starting from that expansion baseline, add one row at a time from the top or bottom, choosing
+   the candidate that adds more alpha-weighted pixels. Each requested expansion range contains
+   the previous range.
+3. Calculate a scaling factor, before applying any resize, that makes the estimated regular
+   character height 12pt. Apply that factor to the complete signature; the final image may be
+   taller than 12pt because tall strokes remain included.
+4. Show two horizontal guide lines around the estimated regular-character band in the Stage 3
+   preview, updating live as extraction settings change.
+5. When the scale checkbox is selected, show the current regular-character height and calculated
+   scaling information without a target-height input. The target is fixed at 12pt.
+6. The existing 10pt–24pt recommendation applies to the regular character height; the overall
+   signature height may exceed 24pt when tall strokes are present.
+7. In debug mode (`DEBUG=1`) with scaling selected, the Stage 3 preview shall show an
+   alpha-weighted green row histogram inside the actual signature boundary. The existing 70%
+   top-of-signature limit remains the character-estimation rule. Debug-only expansion bars shall
+   target 10%, 20%, through 90% of the full visible signature height, centered on the
+   regular-character band; each bar shall be wider than and contain the previous bar, and shall
+   be labelled with its expansion percentage. These overlays are display-only and shall not
+   affect preview centering or saved output.
+
+See [FUNCTIONAL_SPECIFICATION.md §17](FUNCTIONAL_SPECIFICATION.md#17-prepare-signature-tool).

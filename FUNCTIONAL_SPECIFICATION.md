@@ -742,25 +742,25 @@ are not separate dialog stages, just further behavior of the same screen.
   signature boundary** checkbox. The boundary checkbox is selected by default; both controls
   apply to either method. A vertical gap separates this row from Method 1.
 - Directly below Method 2, the screen shows a selected-by-default checkbox labelled
-  **"Scale signature to fit recommended range (10-24pt)"**. When selected, the height input is
-  hidden and replaced by a status sentence such as **"Will be scaled to 24pt from the current
-  50pt"**. The status always reflects the current actual signature-boundary height and the
-  selected target. When the checkbox is cleared, the status is replaced by an editable
-  **Height (pt)** input; the user-entered value is preserved when other controls change and is
-  used for the saved output. Editing the height input automatically clears the checkbox.
+  **"Scale signature to fit 12pt"**. The target regular-character height
+  is fixed at 12pt; there is no target-height input. When selected, the UI shows the current
+  estimated regular-character height and the calculated scaling information; numeric values are
+  informational and are not required in the wireframe. When cleared, no automatic signature
+  scaling is applied and the full extracted signature keeps its current dimensions.
 - "Reset" restores the controls of each selected method to their default values.
 
 #### Stage 3.1 wireframe
 
 The Stage 3 tuning screen is arranged as follows. The two method selectors are shown together;
 either or both can be active at the same time. The exact widget toolkit styling is implementation-defined,
-but the grouping and order are part of the specification.
+but the grouping and order are part of the specification. The lower part of the screen has two
+states depending on the Scale signature checkbox.
 
 ```text
 +--------------------------------------------------------------------------+
 | Transparency preview                                                     |
 |                                                                          |
-|                 [ fixed-size crop preview, draggable/pannable ]          |
+|                 [ full crop preview, fit to available area ]            |
 |                 [ dashed actual-signature boundary by default ]         |
 |                                                                          |
 +--------------------------------------------------------------------------+
@@ -776,8 +776,7 @@ but the grouping and order are part of the specification.
 |     Color tolerance:     [================o===========]                  |
 |     Color softness:      [============o===============]                  |
 |                                                                          |
-| [x] Scale signature to fit recommended range (10-24pt)                   |
-| [status: Will be scaled to 24pt from the current 50pt]      [Reset]     |
+| [x] Scale signature to fit 12pt                                         |
 |                                                                          |
 | [Back]                                                       [Save As...] |
 +--------------------------------------------------------------------------+
@@ -786,8 +785,9 @@ but the grouping and order are part of the specification.
 The method selectors are independent checkboxes. The preview background selector and
 actual-boundary checkbox apply to both methods. Method 1 has only the luminance controls, and
 Method 2 has only the ink-color controls. If both methods are checked, the output alpha from
-Method 1 is passed to Method 2 before auto-trimming and scaling. The scale checkbox and height
-value are below Method 2 because they apply to the final output of either method combination.
+Method 1 is passed to Method 2 before auto-trimming and scaling. The scale checkbox is below
+Method 2 because it applies to the final output of either method combination. There is no height
+control in either scale state.
 - "Back" returns to Stage 2 to reselect the crop region without re-opening the file.
 - The preview always represents the entire user-drawn crop rectangle. If it is larger than the
   available preview area, the app scales the displayed preview down proportionally to fit the
@@ -795,7 +795,7 @@ value are below Method 2 because they apply to the final output of either method
   changes the crop selection or the saved signature dimensions. Resizing the selection requires
   going back to Stage 2.
 - Re-entering Stage 3 (Back to Stage 2, then Next again) preserves every Stage 3 control exactly
-  as the user left it (method checkboxes, ink color, sliders, height/fit-to-range) -
+  as the user left it (method checkboxes, ink color, sliders, scale checkbox, and preview state) -
   none of it resets to defaults just from navigating between stages. Likewise, returning to
   Stage 1 and continuing again preserves the Stage 2 crop selection, as long as the same page is
   still selected.
@@ -805,7 +805,8 @@ value are below Method 2 because they apply to the final output of either method
 - What the user drew in Stage 2 is a rough working area, not necessarily the exact signature
   bounds; after background removal there is usually a tighter "actual signature" rectangle
   (the bounding box of non-transparent content) inside it. To avoid confusing the two, the
-  displayed preview (§17.3) always shows the full drawn crop at a fixed size, while a
+  displayed preview (§17.3) always shows the full drawn crop, scaled to fit the available
+  preview area when necessary, while a
   **"Show actual signature boundary"** checkbox (checked by default) overlays a dashed outline of
   the tighter bounding box on top of it, updating live as the threshold/softness (or
   color/tolerance) controls change.
@@ -813,22 +814,40 @@ value are below Method 2 because they apply to the final output of either method
   actually gets saved: the saved PNG's bounds are auto-trimmed to it, so fully transparent
   border rows/columns left over from an imprecise Stage 2 selection are dropped and the saved
   file's bounds exactly match the visible signature. This auto-trim is not user-configurable.
-- The tool shows the trimmed image's height in points, using the same 300 DPI page-pixel
-  convention as the rest of the app ([§7.1](#7-annotations)), so the displayed size matches what
-  the signature would measure once placed as an annotation without resizing.
-- With **"Scale signature to fit recommended range (10-24pt)"** selected, the height value is
-  read-only and continuously reflects the current output after method, slider, crop, and trim
-  changes. The output is aspect-ratio locked and resampled at high quality to stay within the
-  10-24pt range.
-- When the checkbox is cleared, the height value becomes editable. The user's entered value is
-  retained as a fixed target when method controls, preview settings, crop processing, or other
-  non-height controls change, and is used as the target output height when saving. Editing the
-  height also clears the checkbox. When the checkbox is selected, the field instead always shows
-  the current actual signature-boundary height.
-- 10pt–24pt is flagged as the recommended range (matching common minimum/maximum document body
-  font sizes, so the signature reads at a natural size next to document text without needing to
-  be resized after insertion). Sizes outside this range show a non-blocking warning; the user can
-  still save at any size.
+- The tool calculates the full actual signature-boundary height using the same 300 DPI page-pixel
+  convention as the rest of the app ([§7.1](#7-annotations)). The value is used for scaling
+  information and is not an editable height control.
+- To estimate regular-character height, calculate an alpha-weighted histogram of non-transparent
+  pixels for each row within the actual signature bounds. Two independent constants control the
+  estimate:
+  - `CHARACTER_BAND_TOP_FRACTION` (constant `0.70`, found empirically) limits the search for the densest contiguous
+    character band to the top 70% of the visible signature. This avoids letting long lower strokes
+    dominate the normal-character estimate and can be tuned if the writing style requires it.
+  - `CHARACTER_EXPANSION_BASELINE_PERCENT` (constant `60.0`, found empirically) identifies the first cumulative-alpha
+    row used as the expansion baseline. That cumulative range defines the regular-character
+    starting height for the expansion visualization; it is separate from the top-fraction search
+    limit. The algorithm must be recalculated whenever extraction settings change.
+- Starting from the expansion baseline, the expansion algorithm adds one row at a time from the
+  top or bottom, choosing the candidate that adds more alpha-weighted pixels, until each requested
+  expansion target is covered. Each later range contains the previous range.
+- When scaling is selected, calculate the scaling factor before applying any resize:
+  `scaling_factor = target_character_height / estimated_character_height`, with
+  `target_character_height = 12pt`. Apply that factor to the complete extracted signature,
+  including tall strokes, using aspect-ratio-locked high-quality resampling.
+- When scaling is selected, the preview shows two horizontal guide lines surrounding the
+  estimated regular-character band, updating live as extraction settings change. It also shows
+  the estimated character height and calculated scaling factor; no other size input is shown.
+- When `DEBUG=1` and scaling is selected, the preview also overlays a green, alpha-weighted row
+  histogram inside the actual signature boundary. Each row's green bar extends from the
+  boundary's left edge toward its right edge in proportion to that row's non-transparent pixel
+  density. The 70% top-of-signature limit remains the character-estimation rule. Separately,
+  debug mode shows expansion bars targeting 10%, 20%, through 90% of the full visible signature
+  height, centered on the estimated regular-character band. Each later bar must be larger than
+  or equal to the previous bar and contain it; labels show the expansion percentage. These
+  overlays are display-only and do not affect preview centering or saved output.
+- The recommended regular-character range is 10pt–24pt. The fixed 12pt target is within that
+  range; the final full-signature height may exceed 24pt because tall strokes are intentionally
+  preserved.
 
 ### 17.5 Stage 3.3 — Save
 
