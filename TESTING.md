@@ -50,6 +50,17 @@ pytest --cov=signer --cov-report=html
 pytest tests/feature/test_document_all_annotations.py -q
 ```
 
+## Testing the Prepare Signature Tool
+
+The tool's image processing (luminance removal, hue filtering, sequential alpha composition,
+content auto-trim, resize) lives in
+`signer/signature_background.py` as pure functions and is covered by `tests/unit/` cases that
+assert on pixel/alpha values of small synthetic images (no Qt event loop needed). The dialog
+itself (`signer/prepare_signature_dialog.py`) is a standalone workflow that doesn't touch the
+open document/canvas, so it is exercised with targeted widget-level unit tests rather than the
+canvas action-recording/playback system in `tests/recording/` (which is scoped to document
+annotation workflows).
+
 ## Multi-Format Document Testing (Word, ODT)
 
 Multi-format tests require LibreOffice to convert Word and ODT documents to PDF before rendering.

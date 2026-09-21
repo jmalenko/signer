@@ -24,8 +24,9 @@ For architecture, rationale, and how to run/build/test the app, see [DESIGN.md](
 14. [Notifications & Error Handling](#14-notifications--error-handling)
 15. [Persistence & Settings](#15-persistence--settings)
 16. [Project Files (.signer)](#16-project-files-signer)
-17. [CLI Parameters](#17-cli-parameters)
-18. [Platform Support](#18-platform-support)
+17. [Prepare Signature Tool](#17-prepare-signature-tool)
+18. [CLI Parameters](#18-cli-parameters)
+19. [Platform Support](#19-platform-support)
 
 ---
 
@@ -110,9 +111,14 @@ recent images).
 │   ├── Ellipse / Circle
 │   ├── Text ▶ (Free text / Current date / time / date & time, then recent texts)
 │   └── Signature / Image
+├── Tools
+│   └── Prepare Signature…
 └── Help
     └── Homepage
 ```
+
+The **Tools** group holds standalone utilities that don't operate on the currently open
+document. See [§17](#17-prepare-signature-tool) for "Prepare Signature…".
 
 Recent items (documents, texts, images/signatures) appear at the **top level** of their
 respective menu, after the static items, separated by a horizontal rule. Each recent list holds
@@ -654,7 +660,195 @@ UTF-8 JSON. Root object contains exactly:
 
 ---
 
-## 17. CLI Parameters
+## 17. Prepare Signature Tool
+
+A standalone utility (hamburger menu → Tools → "Prepare Signature…") that turns a plain scan or
+photo of a signature into a transparent PNG, without requiring an external image editor. It does
+not read or modify the currently open document/canvas; it only opens one image or PDF file and
+saves a PNG.
+
+The tool is a modal dialog with three stages (§17.1-§17.3); the tuning stage (Stage 3) also
+covers live auto-trim/size guidance (§17.4) and concludes with the save action (§17.5) — those
+are not separate dialog stages, just further behavior of the same screen.
+
+### 17.1 Stage 1 — Open scan
+
+- File picker accepts the same image formats the app can already open for documents/annotations
+  (JPG, PNG, BMP, WEBP, GIF, ICO, TIFF), plus multi-page PDF, using the same rendering pipeline as
+  document loading ([§3](#3-supported-document-formats)).
+- For a PDF, page navigation controls (same style as the main document view, [§6](#6-page-navigation))
+  let the user pick which page to work from; only shown when the opened file has more than one
+  page.
+- The chosen image/page is expected to be a plain scan/photo (e.g. of a full sheet of paper) and
+  may contain more than just the signature.
+
+### 17.2 Stage 2 — Crop
+
+- The opened image is displayed with zoom (mouse wheel, `+`/`-`, fit-to-window default) and pan,
+  so a small signature within a large scanned page can be selected precisely.
+- The Stage 2 instructions explicitly tell the user to include the entire signature, including
+  every stroke, because the selected area is processed in Stage 3.
+- The user draws a rectangular selection over the signature, starting the drag from any corner
+  (the opposite corner stays anchored regardless of drag direction); the selection can be
+  redrawn or its edges/corners dragged to adjust, same interaction model as resizing an
+  annotation. Only rectangular selection is supported (no freeform/lasso).
+- "Next" advances to Stage 3 using the current selection; "Back"/re-opening lets the user pick a
+  different file.
+
+### 17.3 Stage 3.1 — Transparency preview & tuning
+
+- The cropped region is background-removed and shown composited over a **checkerboard pattern**
+  by default (the standard transparency indicator used by image editors), so the user can
+  visually distinguish transparent pixels from white/light ones — this matters because a
+  signature is typically placed over documents that aren't pure white.
+- A preview background control lets the user switch the composited backdrop between
+  **Checkerboard** and **White**, purely so they can visually confirm how the signature will
+  look once applied to a page before saving. This choice affects only the on-screen preview, not
+  the saved PNG (which always keeps its real alpha channel).
+- The tool offers two sequential signature-extraction **methods**, each controlled by its own
+  checkbox. Both methods may be selected at the same time and run in order:
+  1. **Method 1: Luminance background removal** (selected by default): pixels are classified by
+     how light they are, not by an exact color match, so it works on ordinary paper scans
+     without color calibration.
+  2. **Method 2: Keep ink color** (selected by default): pixels are classified by hue
+     distance to a user-picked ink color, allowing black printed text or dots to be removed from
+     around a colored signature.
+- In **Method 1: Luminance background removal**, two sliders control the result, updating the
+  preview live:
+  - **Threshold** — luminance cutoff; pixels lighter than this become fully transparent, darker
+    ink stays opaque.
+  - **Softness** — width of the gradient band around the threshold, producing smooth
+    (anti-aliased) edges instead of a hard cutout.
+- In **Method 2: Keep ink color**, the user tunes the color filter applied to the output of
+  Method 1 (or to the original crop when Method 1 is not selected):
+  - The target ink-color swatch is **blue by default**, matching the common blue-ink signature
+    case. The user may choose another color with the swatch color picker or use an eyedropper
+    to sample a pixel directly from the crop.
+  - Pixels are classified by **hue distance** to the target color (not luminance), so a colored
+    signature is kept while black/gray/white content — regardless of how dark it is — is
+    dropped, since it doesn't match the target hue and additionally fails a minimum-saturation
+    check (near-black/white/gray pixels have no reliable hue and are always excluded). This is
+    what removes black text/dots crossed by the ink: the overlapping black content is dropped,
+    and the ink stroke crossing over it survives intact.
+- **Color tolerance** (hue-distance cutoff) and **Softness** sliders control the ink-color
+  filter. Method 2 has no luminance controls; those belong only to Method 1.
+- The methods are displayed vertically, one below the other, rather than in a combobox. Each
+  method has an independent checkbox and its controls directly below it. Checking or clearing
+  either method immediately updates the preview. When both are checked, Method 1 runs first and
+  Method 2 runs second; when only one is checked, only that method runs. Both methods are
+  selected by default.
+- The preview controls are displayed together in one row directly below the preview as
+  **Preview**, a gap, **Background**, a gap, the background selector, and the **Show actual
+  signature boundary** checkbox. The boundary checkbox is selected by default; both controls
+  apply to either method. A vertical gap separates this row from Method 1.
+- Directly below Method 2, the screen shows a selected-by-default checkbox labelled
+  **"Scale signature to fit recommended range (10-24pt)"**. When selected, the height input is
+  hidden and replaced by a status sentence such as **"Will be scaled to 24pt from the current
+  50pt"**. The status always reflects the current actual signature-boundary height and the
+  selected target. When the checkbox is cleared, the status is replaced by an editable
+  **Height (pt)** input; the user-entered value is preserved when other controls change and is
+  used for the saved output. Editing the height input automatically clears the checkbox.
+- "Reset" restores the controls of each selected method to their default values.
+
+#### Stage 3.1 wireframe
+
+The Stage 3 tuning screen is arranged as follows. The two method selectors are shown together;
+either or both can be active at the same time. The exact widget toolkit styling is implementation-defined,
+but the grouping and order are part of the specification.
+
+```text
++--------------------------------------------------------------------------+
+| Transparency preview                                                     |
+|                                                                          |
+|                 [ fixed-size crop preview, draggable/pannable ]          |
+|                 [ dashed actual-signature boundary by default ]         |
+|                                                                          |
++--------------------------------------------------------------------------+
+| Preview background: (o) Checkerboard  ( ) White   [x] Show actual       |
+|                                                     signature boundary   |
+|                                                                          |
+| [x] Method 1: Luminance background removal                              |
+|     Threshold:       [====================o=========]                    |
+|     Edge softness:   [=============o================]                    |
+|                                                                          |
+| [x] Method 2: Keep ink color                                             |
+|     Ink color:           [blue swatch] [Pick from image...]               |
+|     Color tolerance:     [================o===========]                  |
+|     Color softness:      [============o===============]                  |
+|                                                                          |
+| [x] Scale signature to fit recommended range (10-24pt)                   |
+| [status: Will be scaled to 24pt from the current 50pt]      [Reset]     |
+|                                                                          |
+| [Back]                                                       [Save As...] |
++--------------------------------------------------------------------------+
+```
+
+The method selectors are independent checkboxes. The preview background selector and
+actual-boundary checkbox apply to both methods. Method 1 has only the luminance controls, and
+Method 2 has only the ink-color controls. If both methods are checked, the output alpha from
+Method 1 is passed to Method 2 before auto-trimming and scaling. The scale checkbox and height
+value are below Method 2 because they apply to the final output of either method combination.
+- "Back" returns to Stage 2 to reselect the crop region without re-opening the file.
+- The preview always represents the entire user-drawn crop rectangle. If it is larger than the
+  available preview area, the app scales the displayed preview down proportionally to fit the
+  available width and height; it does not require scrolling. This display-only scaling never
+  changes the crop selection or the saved signature dimensions. Resizing the selection requires
+  going back to Stage 2.
+- Re-entering Stage 3 (Back to Stage 2, then Next again) preserves every Stage 3 control exactly
+  as the user left it (method checkboxes, ink color, sliders, height/fit-to-range) -
+  none of it resets to defaults just from navigating between stages. Likewise, returning to
+  Stage 1 and continuing again preserves the Stage 2 crop selection, as long as the same page is
+  still selected.
+
+### 17.4 Stage 3.2 — Auto-trim & size guidance
+
+- What the user drew in Stage 2 is a rough working area, not necessarily the exact signature
+  bounds; after background removal there is usually a tighter "actual signature" rectangle
+  (the bounding box of non-transparent content) inside it. To avoid confusing the two, the
+  displayed preview (§17.3) always shows the full drawn crop at a fixed size, while a
+  **"Show actual signature boundary"** checkbox (checked by default) overlays a dashed outline of
+  the tighter bounding box on top of it, updating live as the threshold/softness (or
+  color/tolerance) controls change.
+- Regardless of whether the boundary overlay is shown, the bounding box described above is what
+  actually gets saved: the saved PNG's bounds are auto-trimmed to it, so fully transparent
+  border rows/columns left over from an imprecise Stage 2 selection are dropped and the saved
+  file's bounds exactly match the visible signature. This auto-trim is not user-configurable.
+- The tool shows the trimmed image's height in points, using the same 300 DPI page-pixel
+  convention as the rest of the app ([§7.1](#7-annotations)), so the displayed size matches what
+  the signature would measure once placed as an annotation without resizing.
+- With **"Scale signature to fit recommended range (10-24pt)"** selected, the height value is
+  read-only and continuously reflects the current output after method, slider, crop, and trim
+  changes. The output is aspect-ratio locked and resampled at high quality to stay within the
+  10-24pt range.
+- When the checkbox is cleared, the height value becomes editable. The user's entered value is
+  retained as a fixed target when method controls, preview settings, crop processing, or other
+  non-height controls change, and is used as the target output height when saving. Editing the
+  height also clears the checkbox. When the checkbox is selected, the field instead always shows
+  the current actual signature-boundary height.
+- 10pt–24pt is flagged as the recommended range (matching common minimum/maximum document body
+  font sizes, so the signature reads at a natural size next to document text without needing to
+  be resized after insertion). Sizes outside this range show a non-blocking warning; the user can
+  still save at any size.
+
+### 17.5 Stage 3.3 — Save
+
+- "Save As…" writes the resulting image as a PNG (the only format the app treats as a signature
+  source that supports an alpha channel), defaulting the filename to `signature.png` next to the
+  source scan.
+- After saving, the dialog remains on Stage 3 with the same preview and settings, so the user can
+  continue reviewing or adjust the extraction before saving another version. The opened scan and
+  Stage 2 crop remain available via Back without reopening the file.
+- The saved file is a regular signature image: it can be used afterwards via Annotations →
+  Signature/Image → From file…, via the recent-images list, or via the `-signature` CLI
+  argument — no different from any other pre-made transparent signature.
+- Closing the dialog (X button, Cancel/Escape) while a scan has been opened but not yet saved
+  (or saved again after further changes) shows a confirmation: "You have not saved the prepared
+  signature. Close anyway?" (Yes/No, default No). Closing after a successful save, or before any
+  file has been opened, closes immediately without a prompt.
+
+---
+
+## 18. CLI Parameters
 
 | Parameter | Meaning |
 |---|---|
@@ -672,7 +866,7 @@ Example: `signer -document examples/document.pdf -signature examples/signature.p
 
 ---
 
-## 18. Platform Support
+## 19. Platform Support
 
 - Supported OSes: Windows 7+, macOS 10.13+, and a maintained Linux distribution whose glibc is
   compatible with the release's PySide6/PyInstaller build.

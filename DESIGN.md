@@ -73,6 +73,8 @@ flowchart TD
     mw --> canvas[canvas.py: Canvas]
     mw --> notification[notification.py: toast widget]
     mw --> quality[export_quality_dialog.py]
+    mw --> prepsig[prepare_signature_dialog.py]
+    prepsig --> sigbg[signature_background.py: background removal, trim, resize]
     canvas --> objects[objects.py: CanvasObject hierarchy]
     canvas --> history[history/: Action, HistoryStack]
     mw --> loader[document_loader.py: DocumentLoaderRegistry]
@@ -91,6 +93,8 @@ flowchart TD
 | `document_loader.py` | `DocumentLoaderRegistry`: format detection and per-format loading (PyMuPDF for PDF, LibreOffice conversion for Word/ODT, Pillow for images) |
 | `pdf_utils.py` | Thin `render_all_pages()` wrapper delegating to `DocumentLoaderRegistry` |
 | `export_quality_dialog.py` | Non-modal "Export Quality Options" panel (JPG/PDF quality slider) |
+| `prepare_signature_dialog.py` | "Prepare Signature…" tool (hamburger Tools menu): open scan/PDF page → crop → transparency preview, tuning, sizing, save; standalone from the open document/canvas |
+| `signature_background.py` | Pure image-processing functions used by the dialog above: luminance and hue-based background removal, sequential alpha-mask composition, content-bounding-box auto-trim, and aspect-ratio-locked resize to a target point size |
 | `notification.py` | Toast notification widget (success/error variants) |
 | `settings.py` | `AppSettings` dataclass, `SettingsStore` (load/save JSON), portable-vs-installed config resolution |
 | `history/action.py` | One `Action` subclass per undoable operation (move, resize, add, delete, color/width/font change, cut/paste, rotate, …) |
@@ -130,6 +134,10 @@ flowchart TD
   `config.json` first (before the platform user-config directory) lets a whole
   executable-plus-config folder be copied/moved as a unit, with no separate "portable mode"
   installer needed.
+- **Two sequential extraction methods for "Prepare Signature…"**: luminance removal handles the
+  ordinary dark-ink-on-light-paper case, while optional hue filtering can run afterward to remove
+  black text/dots around colored ink. Keeping the filters independent makes each method tunable
+  and allows either one or both to be selected.
 
 ## 5. Testing Architecture
 

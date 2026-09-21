@@ -68,6 +68,7 @@ from .objects import (
     ProjectFile,
 )
 from .pdf_utils import render_all_pages
+from .prepare_signature_dialog import PrepareSignatureDialog
 from .settings import AppSettings, SettingsStore
 
 SUPPORTED_SIGNATURE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff", ".tif", ".webp", ".ico"}
@@ -637,6 +638,10 @@ class MainWindow(QMainWindow):
         # v1.2.22: Rename to Signature/Image
         annotations_menu.addAction("Signature / Image", self._add_signature_from_file)
 
+        # Tools menu: standalone utilities that don't operate on the currently open document
+        tools_menu = hamburger_menu.addMenu("Tools")
+        tools_menu.addAction("Prepare Signature…", self._open_prepare_signature_tool)
+
         # Help menu
         help_menu = hamburger_menu.addMenu("Help")
         help_menu.addAction("Homepage", lambda: QDesktopServices.openUrl(QUrl("https://github.com/jmalenko/signer")))
@@ -1152,6 +1157,10 @@ class MainWindow(QMainWindow):
         )
         if path:
             self._load_signature_file(path, at_default_position=False)
+
+    def _open_prepare_signature_tool(self) -> None:
+        dialog = PrepareSignatureDialog(self)
+        dialog.exec()
 
     # ---------------------------------------------------------------- open/save
 

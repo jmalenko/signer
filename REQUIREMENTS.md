@@ -30,7 +30,7 @@ following the existing `## Version x.y.z - Title` convention.
 8. Default position for the signature is 80% from top, centered horizontally.
 9. Document with signature has 300 DPI.
 
-See [FUNCTIONAL_SPECIFICATION.md §17](FUNCTIONAL_SPECIFICATION.md#17-cli-parameters) (CLI) and
+See [FUNCTIONAL_SPECIFICATION.md §18](FUNCTIONAL_SPECIFICATION.md#18-cli-parameters) (CLI) and
 [§7.7](FUNCTIONAL_SPECIFICATION.md#7-annotations) (default placement).
 
 # Version 1.1
@@ -420,7 +420,7 @@ Motivation: broaden the user base beyond Windows without maintaining a separate 
 2. A single-file executable shall be buildable for each supported platform; releases are built and tested separately per OS/architecture since PyInstaller does not cross-compile.
 3. Linux releases shall be tested on the oldest supported distribution and on both X11 and Wayland sessions where applicable.
 
-See [FUNCTIONAL_SPECIFICATION.md §18](FUNCTIONAL_SPECIFICATION.md#18-platform-support) and [DESIGN.md](DESIGN.md) for build details.
+See [FUNCTIONAL_SPECIFICATION.md §19](FUNCTIONAL_SPECIFICATION.md#19-platform-support) and [DESIGN.md](DESIGN.md) for build details.
 
 ## Version 1.2.36 - Signer project file
 
@@ -437,3 +437,68 @@ orientation. Project persistence reuses the same annotation entity model as acti
 test fixtures, avoiding a second serialization format.
 
 See [FUNCTIONAL_SPECIFICATION.md §16](FUNCTIONAL_SPECIFICATION.md#16-project-files-signer) for the full format, naming, and lifecycle rules.
+
+## Version 1.2.37 - Prepare Signature Tool
+
+Motivation: the app assumed the signature image already had a transparent background, which
+required users to prepare it manually (e.g. in GIMP) before use — a step most users cannot do
+themselves. Provide a built-in tool that turns a plain scan/photo of a signature (possibly part
+of a larger scanned page) into a ready-to-use transparent PNG.
+
+1. Add a "Prepare Signature..." tool (hamburger menu → new "Tools" group), independent of the
+   currently open document.
+2. The tool lets the user open any supported image (a scan/photo, possibly containing more than
+   just the signature), or a multi-page PDF (with page navigation to pick the right page), then
+   zoom/pan it, and draw a rectangular selection around the signature.
+3. After cropping, the tool shows a live preview of the selection with its background removed,
+   composited over a checkerboard pattern (the standard transparency indicator), so the user can
+   tell transparent pixels apart from white ones. A control lets the user switch the preview
+   backdrop between checkerboard and white, purely for visual confidence in how the signature
+   will look once applied — it has no effect on the saved file.
+4. The app offers two sequential signature-extraction methods, each controlled by its own
+    checkbox:
+    - **Method 1: Luminance background removal** (selected by default): pixels are classified by
+       how light they are (not by exact color), so it works on ordinary scans without color
+       calibration. Its controls are threshold and edge softness.
+    - **Method 2: Keep ink color** (selected by default): pixels are classified by hue distance to
+       a user-picked ink color, primarily to remove black printed text or dots around a colored
+       signature. Its controls are color tolerance and color softness; the default swatch is blue.
+5. Both methods may be selected at the same time. When both are selected, Method 1 runs first
+    and Method 2 runs second on Method 1's output. When only one is selected, only that method
+    runs. The live preview updates immediately when either method checkbox or one of its controls
+    changes.
+6. A selected-by-default toggle shall scale the signature to fit the recommended 10pt–24pt
+   range. While selected, the height input is hidden and replaced by a status such as
+   "Will be scaled to 24pt from the current 50pt"; the status always reflects the current
+   actual signature-boundary height.
+7. When the scale toggle is cleared, an editable height input shall be shown. The user's entered
+   height shall remain fixed when other method, crop-processing, or preview controls change and
+   shall be used for the saved output. Editing the height automatically clears the scale toggle.
+   The 10pt–24pt range remains the recommended target range.
+8. Once satisfied with either method, the user saves the result as a PNG file (default filename
+   `signature.png`) with a real alpha channel.
+9. The saved PNG is a regular signature file: it can be opened afterwards via the normal
+   Annotations → Signature/Image → From file... flow, or passed to `-signature`.
+10. The saved PNG's bounds shall be auto-trimmed to the signature content — no fully transparent
+    border rows/columns at the top, bottom, left, or right.
+11. The user-drawn crop rectangle (step 2) and the actual bounding box of the signature content
+    (after background removal) are two different rectangles, which was confusing. To clarify:
+      - The Stage 3 preview shall always display the full crop rectangle; if necessary, it shall be
+         proportionally downscaled to fit the available preview area. It shall not resize or
+         reposition the crop selection as the removal sliders/methods/color change.
+    - A "Show actual signature boundary" checkbox, **checked by default**, overlays the actual
+      (auto-trimmed) signature bounding box on the preview, updating live as removal settings
+      change.
+      - The display is scaled down proportionally when the crop is larger than the available
+         preview area, without requiring scrolling. This display-only scaling shall not change the
+         crop selection or saved signature dimensions. Resizing the selection is out of scope here;
+         the user must go back to step 2 for that.
+12. Closing the tool (X button, Cancel/Escape) after opening a scan but before saving (or saving
+    again after further changes) shall ask for confirmation before discarding the work.
+13. Navigating back and forth between steps shall preserve prior settings: returning to step 2
+   and continuing again keeps the previously drawn crop selection (for the same page), and
+   returning to step 3 keeps all of its controls (method checkboxes, ink color, sliders,
+   height/fit toggle, and manual height value) exactly as previously left, instead of resetting
+   them.
+
+See [FUNCTIONAL_SPECIFICATION.md §17](FUNCTIONAL_SPECIFICATION.md#17-prepare-signature-tool).
