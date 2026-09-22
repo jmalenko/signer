@@ -11,6 +11,35 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+# Color themes for the two notification kinds: (background, border, text, hover).
+_ERROR_THEME = ("#ffcdd2", "#c62828", "#b71c1c", "#ef9a9a")
+_SUCCESS_THEME = ("#c8e6c9", "#2e7d32", "#1b5e20", "#a5d6a7")
+
+_STYLE_TEMPLATE = """
+    NotificationToast {{
+        background-color: {bg};
+        border: 2px solid {border};
+        border-radius: 6px;
+    }}
+    QLabel {{
+        color: {text};
+        font-size: 11px;
+        background-color: transparent;
+    }}
+    QPushButton {{
+        color: {text};
+        border: none;
+        padding: 0px;
+        margin: 0px;
+        background-color: transparent;
+        font-weight: bold;
+    }}
+    QPushButton:hover {{
+        background-color: {hover};
+        border-radius: 3px;
+    }}
+"""
+
 
 class NotificationToast(QWidget):
     """Notification widget displayed at bottom-right of parent window.
@@ -86,60 +115,10 @@ class NotificationToast(QWidget):
         layout.addWidget(close_btn)
         
         # Styling - more visible with solid background; red for errors, green for success
-        if is_error:
-            self.setStyleSheet(
-                """
-                NotificationToast {
-                    background-color: #ffcdd2;
-                    border: 2px solid #c62828;
-                    border-radius: 6px;
-                }
-                QLabel {
-                    color: #b71c1c;
-                    font-size: 11px;
-                    background-color: transparent;
-                }
-                QPushButton {
-                    color: #b71c1c;
-                    border: none;
-                    padding: 0px;
-                    margin: 0px;
-                    background-color: transparent;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #ef9a9a;
-                    border-radius: 3px;
-                }
-                """
-            )
-        else:
-            self.setStyleSheet(
-                """
-                NotificationToast {
-                    background-color: #c8e6c9;
-                    border: 2px solid #2e7d32;
-                    border-radius: 6px;
-                }
-                QLabel {
-                    color: #1b5e20;
-                    font-size: 11px;
-                    background-color: transparent;
-                }
-                QPushButton {
-                    color: #1b5e20;
-                    border: none;
-                    padding: 0px;
-                    margin: 0px;
-                    background-color: transparent;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #a5d6a7;
-                    border-radius: 3px;
-                }
-                """
-            )
+        bg, border, text, hover = _ERROR_THEME if is_error else _SUCCESS_THEME
+        self.setStyleSheet(
+            _STYLE_TEMPLATE.format(bg=bg, border=border, text=text, hover=hover)
+        )
         
         # Dynamic sizing based on content
         self.adjustSize()

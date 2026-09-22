@@ -686,10 +686,14 @@ class PrepareSignatureDialog(QDialog):
         self._stack.addWidget(page)
 
     def _reset_sliders(self) -> None:
-        self._threshold_slider.setValue(int(DEFAULT_THRESHOLD))
-        self._softness_slider.setValue(int(DEFAULT_SOFTNESS))
-        self._color_tolerance_slider.setValue(int(DEFAULT_COLOR_TOLERANCE))
-        self._color_softness_slider.setValue(int(DEFAULT_COLOR_SOFTNESS))
+        sliders_and_defaults = (
+            (self._threshold_slider, DEFAULT_THRESHOLD),
+            (self._softness_slider, DEFAULT_SOFTNESS),
+            (self._color_tolerance_slider, DEFAULT_COLOR_TOLERANCE),
+            (self._color_softness_slider, DEFAULT_COLOR_SOFTNESS),
+        )
+        for slider, default_value in sliders_and_defaults:
+            slider.setValue(int(default_value))
 
     def _on_fit_range_toggled(self, checked: bool) -> None:
         self._fit_to_range = checked
@@ -709,13 +713,16 @@ class PrepareSignatureDialog(QDialog):
         color = QColor(*self._ink_color)
         self._color_swatch_btn.setStyleSheet(f"background-color: {color.name()};")
 
+    def _set_ink_color(self, color: tuple[int, int, int]) -> None:
+        self._ink_color = color
+        self._update_ink_color_swatch()
+        self._update_preview()
+
     def _pick_ink_color(self) -> None:
         color = QColorDialog.getColor(QColor(*self._ink_color), self, "Pick Ink Color")
         if not color.isValid():
             return
-        self._ink_color = (color.red(), color.green(), color.blue())
-        self._update_ink_color_swatch()
-        self._update_preview()
+        self._set_ink_color((color.red(), color.green(), color.blue()))
 
     def _pick_ink_color_from_image(self) -> None:
         cropped = self._cropped_source()
@@ -724,9 +731,7 @@ class PrepareSignatureDialog(QDialog):
         picker = _EyedropperDialog(cropped, self)
         picker.exec()
         if picker.picked_color is not None:
-            self._ink_color = picker.picked_color
-            self._update_ink_color_swatch()
-            self._update_preview()
+            self._set_ink_color(picker.picked_color)
 
     def _cropped_source(self) -> Image.Image | None:
         """Return the raw (pre-background-removal) crop, or None if there's no selection."""

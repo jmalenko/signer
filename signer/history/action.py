@@ -8,6 +8,20 @@ Action Format (Dual Support):
 
 The system handles both seamlessly: record_action() merges partial-format actions
 by updating the target state of the last stack element.
+
+Who produces which format:
+- The action recorder/player (tests/recording/) only ever writes partial format,
+  since it replays a scripted end state and never needs to undo.
+- Live user interaction (canvas.py drag handlers) writes full format: the first
+  mouse-move of a drag records the initial state, subsequent moves record
+  partial-format updates that get merged (`HistoryStack.record_action` calls
+  `MergeableAction.merge()`) into that first action's target state in place.
+
+Calling `undo()` on a `MergeableAction` (Move/Resize) that only has partial
+format (no initial state) raises `ValueError` - this should not happen for
+actions reached via the live undo stack, since those always start from a
+full-format action; it can only happen if a fixture/recorded partial-format
+action is fed directly into `undo()`, which the action player never does.
 """
 
 from __future__ import annotations
@@ -21,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 class Action(ABC):
     """Base class for all actions in the undo/redo system."""
+
+    _registry: dict[str, type["Action"]] = {}
 
     def __init__(self, action_type: str, data: dict[str, Any] | None = None) -> None:
         """Initialize an action.
@@ -49,7 +65,13 @@ class Action(ABC):
 
     @staticmethod
     def find_object(canvas: Any, object_id: int) -> Any | None:
-        """Resolve an object ID, retaining the legacy list-index fallback."""
+        """Resolve an object ID, retaining the legacy list-index fallback.
+
+        The `_object_map` dict (stable id -> object) is the source of truth;
+        the list-index fallback exists only for older serialized actions/fixtures
+        recorded before every producer assigned a stable object_id, and is
+        expected to be exercised rarely in current code paths.
+        """
         object_map = getattr(canvas, "_object_map", None)
         if isinstance(object_map, dict) and object_id in object_map:
             return object_map[object_id]
@@ -65,39 +87,25 @@ class Action(ABC):
         logger.warning("Action object_id %r could not be resolved", object_id)
         return None
 
+    @classmethod
+    def register(cls, action_type: str):
+        """Class decorator: register a concrete Action subclass under `action_type`
+        so `deserialize()` can find it without a central if/elif chain. Applied
+        immediately below each class definition, e.g. `@Action.register("move_annotation")`.
+        """
+        def decorator(subcls: type["Action"]) -> type["Action"]:
+            cls._registry[action_type] = subcls
+            return subcls
+        return decorator
+
     @staticmethod
     def deserialize(data: dict[str, Any]) -> Action:
         """Deserialize action from dictionary."""
         action_type = data.get("type")
-        
-        if action_type == "move_annotation":
-            return MoveAnnotationAction.from_data(data)
-        elif action_type == "resize_annotation":
-            return ResizeAnnotationAction.from_data(data)
-        elif action_type == "add_annotation":
-            return AddAnnotationAction.from_data(data)
-        elif action_type == "delete_annotation":
-            return DeleteAnnotationAction.from_data(data)
-        elif action_type == "change_color":
-            return ChangeColorAction.from_data(data)
-        elif action_type == "paste_annotation":
-            return PasteAnnotationAction.from_data(data)
-        elif action_type == "change_page":
-            return ChangePageAction.from_data(data)
-        elif action_type == "rotate_page":
-            return RotatePageAction.from_data(data)
-        elif action_type == "rotate_annotation":
-            return RotateAnnotationAction.from_data(data)
-        elif action_type == "set_text":
-            return SetTextAnnotationAction.from_data(data)
-        elif action_type == "change_line_width":  # v1.2.22
-            return ChangeLineWidthAction.from_data(data)
-        elif action_type == "change_font_size":  # v1.2.22
-            return ChangeFontSizeAction.from_data(data)
-        elif action_type == "change_font_family":  # v1.2.22
-            return ChangeFontFamilyAction.from_data(data)
-        else:
+        subcls = Action._registry.get(action_type)
+        if subcls is None:
             raise ValueError(f"Unknown action type: {action_type}")
+        return subcls.from_data(data)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.data})"
@@ -172,6 +180,7 @@ class MergeableAction(Action):
         raise NotImplementedError("Subclasses must implement set_target_state")
 
 
+@Action.register("move_annotation")
 class MoveAnnotationAction(MergeableAction):
     """Action: Move an annotation to a new position.
     
@@ -266,6 +275,7 @@ class MoveAnnotationAction(MergeableAction):
         )
 
 
+@Action.register("resize_annotation")
 class ResizeAnnotationAction(MergeableAction):
     """Action: Resize an annotation.
     
@@ -304,6 +314,35 @@ class ResizeAnnotationAction(MergeableAction):
         
         super().__init__("resize_annotation", data)
 
+    def _resize_to_size(self, obj: Any, handle: int | None, width: float, height: float) -> None:
+        """Resize obj to (width, height), preserving the fixed endpoint's position
+        if obj is an endpoint-based shape (line/arrow) being resized via handle 0/1.
+        Shared by execute() and undo(), which only differ in which size to resize to.
+        """
+        if handle is not None and handle in (0, 1) and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
+            # Get the fixed endpoint position before resizing
+            old_endpoints = obj.endpoint_points_doc()
+            if len(old_endpoints) == 2:
+                fixed_idx = 1 - handle  # If dragging handle 1, keep 0 fixed; if dragging 0, keep 1 fixed
+                fixed_endpoint_doc = old_endpoints[fixed_idx]
+
+                obj.set_scaled_size(width, height)
+
+                # Get the new endpoint positions after resizing
+                new_endpoints = obj.endpoint_points_doc()
+                if len(new_endpoints) == 2:
+                    new_fixed_endpoint = new_endpoints[fixed_idx]
+
+                    # Adjust object position to keep the fixed endpoint at its original location
+                    dx = fixed_endpoint_doc.x() - new_fixed_endpoint.x()
+                    dy = fixed_endpoint_doc.y() - new_fixed_endpoint.y()
+                    obj.x += dx
+                    obj.y += dy
+            else:
+                obj.set_scaled_size(width, height)
+        else:
+            obj.resize_to_bounds(width, height)
+
     def execute(self, canvas: Any) -> None:
         """Resize annotation to target size.
         
@@ -317,33 +356,8 @@ class ResizeAnnotationAction(MergeableAction):
         if obj is None:
             canvas.objectChanged.emit()
             return
-        
-        # For endpoint-based shapes (arrows/lines) with specific handle, preserve the fixed endpoint
-        if handle is not None and handle in (0, 1) and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
-            # Get the fixed endpoint position before resizing
-            old_endpoints = obj.endpoint_points_doc()
-            if len(old_endpoints) == 2:
-                fixed_idx = 1 - handle  # If dragging handle 1, keep 0 fixed; if dragging 0, keep 1 fixed
-                fixed_endpoint_doc = old_endpoints[fixed_idx]
-                
-                # Resize the annotation
-                obj.set_scaled_size(target["width"], target["height"])
-                
-                # Get the new endpoint positions after resizing
-                new_endpoints = obj.endpoint_points_doc()
-                if len(new_endpoints) == 2:
-                    new_fixed_endpoint = new_endpoints[fixed_idx]
-                    
-                    # Adjust object position to keep the fixed endpoint at its original location
-                    dx = fixed_endpoint_doc.x() - new_fixed_endpoint.x()
-                    dy = fixed_endpoint_doc.y() - new_fixed_endpoint.y()
-                    obj.x += dx
-                    obj.y += dy
-            else:
-                obj.set_scaled_size(target["width"], target["height"])
-        else:
-            obj.resize_to_bounds(target["width"], target["height"])
-        
+
+        self._resize_to_size(obj, handle, target["width"], target["height"])
         canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
@@ -360,33 +374,8 @@ class ResizeAnnotationAction(MergeableAction):
         if obj is None:
             canvas.objectChanged.emit()
             return
-        
-        # For endpoint-based shapes (arrows/lines) with specific handle, preserve the fixed endpoint
-        if handle is not None and handle in (0, 1) and hasattr(obj, 'supports_endpoint_handles') and obj.supports_endpoint_handles():
-            # Get the fixed endpoint position before resizing back
-            old_endpoints = obj.endpoint_points_doc()
-            if len(old_endpoints) == 2:
-                fixed_idx = 1 - handle  # If dragging handle 1, keep 0 fixed; if dragging 0, keep 1 fixed
-                fixed_endpoint_doc = old_endpoints[fixed_idx]
-                
-                # Resize the annotation back
-                obj.set_scaled_size(from_w, from_h)
-                
-                # Get the new endpoint positions after resizing
-                new_endpoints = obj.endpoint_points_doc()
-                if len(new_endpoints) == 2:
-                    new_fixed_endpoint = new_endpoints[fixed_idx]
-                    
-                    # Adjust object position to keep the fixed endpoint at its original location
-                    dx = fixed_endpoint_doc.x() - new_fixed_endpoint.x()
-                    dy = fixed_endpoint_doc.y() - new_fixed_endpoint.y()
-                    obj.x += dx
-                    obj.y += dy
-            else:
-                obj.set_scaled_size(from_w, from_h)
-        else:
-            obj.resize_to_bounds(from_w, from_h)
-        
+
+        self._resize_to_size(obj, handle, from_w, from_h)
         canvas.objectChanged.emit()
 
     def get_target_state(self) -> dict[str, Any]:
@@ -420,6 +409,7 @@ class ResizeAnnotationAction(MergeableAction):
         )
 
 
+@Action.register("add_annotation")
 class AddAnnotationAction(Action):
     """Action: Add a new annotation."""
 
@@ -434,8 +424,8 @@ class AddAnnotationAction(Action):
 
     def execute(self, canvas: Any) -> None:
         """Add annotation to current page."""
+        from ..constants import DPI_SCALE
         from ..objects import (
-            DPI_SCALE,
             LARGE_DEFAULT_TYPES,
             AnnotationType,
             VectorAnnotation,
@@ -507,86 +497,103 @@ class AddAnnotationAction(Action):
             canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
-        """Remove the added annotation."""
+        """Remove the added annotation.
+
+        Tries several strategies in order of reliability to find the exact
+        object this action added, since older serialized actions may lack a
+        stable object_id. Each `_undo_via_*` helper returns True if it found
+        and removed the object (and emitted objectChanged), stopping the chain.
+        """
         page = self.data.get("page", canvas.current_page)
         obj_id = self.data.get("object_id")
-        
-        # If we have a direct reference to the object, remove it
-        if self._added_object:
-            if page in canvas._page_objects:
-                try:
-                    canvas._page_objects[page].remove(self._added_object)
-                except ValueError:
-                    # Object not found, fallback to LIFO
-                    if canvas._page_objects[page]:
-                        canvas._page_objects[page].pop()
-            
-            # Also remove from canvas's object map if it exists
-            if obj_id is not None and hasattr(canvas, '_object_map'):
-                canvas._object_map.pop(obj_id, None)
-            
-            canvas.objectChanged.emit()
+
+        if self._undo_via_direct_reference(canvas, page, obj_id):
             return
-        
-        # Try to find and remove by object_id first (most reliable)
-        if obj_id is not None and hasattr(canvas, '_object_map') and obj_id in canvas._object_map:
-            obj_to_remove = canvas._object_map[obj_id]
-            if page in canvas._page_objects:
-                try:
-                    canvas._page_objects[page].remove(obj_to_remove)
-                except ValueError:
-                    pass  # Object not on this page
+        if self._undo_via_object_map(canvas, page, obj_id):
+            return
+        if self._undo_via_property_match(canvas, page, obj_id):
+            return
+        self._undo_via_lifo_fallback(canvas, page, obj_id)
+
+    def _undo_via_direct_reference(self, canvas: Any, page: int, obj_id: int | None) -> bool:
+        """Most reliable: remove the exact object reference captured when it was added."""
+        if not self._added_object:
+            return False
+        if page in canvas._page_objects:
+            try:
+                canvas._page_objects[page].remove(self._added_object)
+            except ValueError:
+                # Object not found, fallback to LIFO
+                if canvas._page_objects[page]:
+                    canvas._page_objects[page].pop()
+        if obj_id is not None and hasattr(canvas, '_object_map'):
             canvas._object_map.pop(obj_id, None)
-            canvas.objectChanged.emit()
-            return
-        
-        # Fallback: Try to match by properties. With every producer now assigning a
-        # stable object_id (see canvas.py's _stable_id_for), this should not normally
-        # trigger; log it so any remaining gaps are visible instead of silently
-        # mutating the wrong object.
-        if canvas._page_objects.get(page):
-            # Try to find the object by matching key properties
-            objects_on_page = canvas._page_objects[page]
-            target_x = self.data.get("x")
-            target_y = self.data.get("y")
-            target_type = self.data.get("annotation_type")
-            
-            # Search backwards to find a matching object (likely the most recently added)
-            for i in range(len(objects_on_page) - 1, -1, -1):
-                obj = objects_on_page[i]
-                # Check if this object matches the annotation we added
-                # Support both annotation_type and ann_type attributes
-                obj_type = getattr(obj, 'annotation_type', None) or getattr(obj, 'ann_type', None)
-                if (target_type and obj_type == target_type and
+        canvas.objectChanged.emit()
+        return True
+
+    def _undo_via_object_map(self, canvas: Any, page: int, obj_id: int | None) -> bool:
+        """Look up the object by its stable id in canvas._object_map."""
+        if obj_id is None or not hasattr(canvas, '_object_map') or obj_id not in canvas._object_map:
+            return False
+        obj_to_remove = canvas._object_map[obj_id]
+        if page in canvas._page_objects:
+            try:
+                canvas._page_objects[page].remove(obj_to_remove)
+            except ValueError:
+                pass  # Object not on this page
+        canvas._object_map.pop(obj_id, None)
+        canvas.objectChanged.emit()
+        return True
+
+    def _undo_via_property_match(self, canvas: Any, page: int, obj_id: int | None) -> bool:
+        """Fallback: match by type/position. With every producer now assigning a
+        stable object_id (see canvas.py's _stable_id_for), this should not normally
+        trigger; logs a warning so any remaining gaps are visible instead of
+        silently mutating the wrong object.
+        """
+        objects_on_page = canvas._page_objects.get(page)
+        if not objects_on_page:
+            return False
+        target_x = self.data.get("x")
+        target_y = self.data.get("y")
+        target_type = self.data.get("annotation_type")
+
+        # Search backwards to find a matching object (likely the most recently added)
+        for i in range(len(objects_on_page) - 1, -1, -1):
+            obj = objects_on_page[i]
+            # Check if this object matches the annotation we added
+            # Support both annotation_type and ann_type attributes
+            obj_type = getattr(obj, 'annotation_type', None) or getattr(obj, 'ann_type', None)
+            if (target_type and obj_type == target_type and
                     target_x is not None and target_y is not None and
                     abs(obj.x - target_x) < 0.1 and abs(obj.y - target_y) < 0.1):
-                    # Found a match, remove it
-                    logger.warning(
-                        "AddAnnotationAction.undo(): object_id %r not found; "
-                        "fell back to property matching (type/position)", obj_id,
-                    )
-                    objects_on_page.pop(i)
-                    
-                    # Also remove from canvas's object map if it exists
-                    if obj_id is not None and hasattr(canvas, '_object_map'):
-                        canvas._object_map.pop(obj_id, None)
-                    
-                    canvas.objectChanged.emit()
-                    return
-            
-            # Last fallback: just remove the last object (LIFO - Last In First Out)
-            logger.warning(
-                "AddAnnotationAction.undo(): object_id %r not found and no property "
-                "match; falling back to removing the last object on the page (LIFO), "
-                "which may remove the wrong object", obj_id,
-            )
-            objects_on_page.pop()
-            
-            # Also remove from canvas's object map if it exists
-            if obj_id is not None and hasattr(canvas, '_object_map'):
-                canvas._object_map.pop(obj_id, None)
-            
-            canvas.objectChanged.emit()
+                logger.warning(
+                    "AddAnnotationAction.undo(): object_id %r not found; "
+                    "fell back to property matching (type/position)", obj_id,
+                )
+                objects_on_page.pop(i)
+                if obj_id is not None and hasattr(canvas, '_object_map'):
+                    canvas._object_map.pop(obj_id, None)
+                canvas.objectChanged.emit()
+                return True
+        return False
+
+    def _undo_via_lifo_fallback(self, canvas: Any, page: int, obj_id: int | None) -> None:
+        """Last resort: remove the last object on the page (Last In First Out).
+        May remove the wrong object if none of the more targeted strategies matched.
+        """
+        objects_on_page = canvas._page_objects.get(page)
+        if not objects_on_page:
+            return
+        logger.warning(
+            "AddAnnotationAction.undo(): object_id %r not found and no property "
+            "match; falling back to removing the last object on the page (LIFO), "
+            "which may remove the wrong object", obj_id,
+        )
+        objects_on_page.pop()
+        if obj_id is not None and hasattr(canvas, '_object_map'):
+            canvas._object_map.pop(obj_id, None)
+        canvas.objectChanged.emit()
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> AddAnnotationAction:
@@ -594,6 +601,7 @@ class AddAnnotationAction(Action):
         return cls(data)
 
 
+@Action.register("delete_annotation")
 class DeleteAnnotationAction(Action):
     """Action: Delete an annotation.
 
@@ -662,8 +670,83 @@ class DeleteAnnotationAction(Action):
         )
 
 
-class ChangeColorAction(Action):
+class PropertyChangeAction(Action):
+    """Shared base for "set one attribute on an annotation" actions (color, line
+    width, font size, font family - see the four concrete subclasses below).
+
+    All four historically had near-identical `execute`/`undo`/`from_data` bodies
+    that only differed in the attribute name and data dict keys involved; this
+    base implements that shared shape once. Subclasses configure it via class
+    attributes and small optional hooks:
+      - `action_type_str` / `data_key` / `from_data_key`: the serialized "type"
+        string and the dict keys for the new/previous value (must match the
+        historical names - they're part of the on-disk/fixture format).
+      - `attr_name`: the attribute set on the annotation object.
+      - `calls_canvas_update`: whether to call `canvas.update()` in addition to
+        `canvas.objectChanged.emit()` (matches each action's original behavior).
+      - `_convert(value)`: override to convert the stored value before setting
+        it on the object (e.g. `str` -> `QColor` for color).
+      - `_post_set(obj)`: override to run a side effect after setting the value
+        (e.g. `obj.fit_text_box()` for font changes).
+    Subclasses keep their own `__init__` (preserving their historical keyword
+    argument names for API compatibility) which calls `_init_property_data()`.
+    """
+
+    action_type_str: str = ""
+    data_key: str = ""
+    from_data_key: str = ""
+    attr_name: str = ""
+    calls_canvas_update: bool = True
+
+    def _init_property_data(
+        self,
+        object_id: int | None,
+        value: Any,
+        from_value: Any,
+        include_from: bool | None = None,
+        always_include_object_id: bool = False,
+    ) -> None:
+        data: dict[str, Any] = {self.data_key: value}
+        if object_id is not None or always_include_object_id:
+            data["object_id"] = object_id
+        if include_from is None:
+            include_from = from_value is not None
+        if include_from:
+            data[self.from_data_key] = from_value
+        super().__init__(self.action_type_str, data)
+
+    def _convert(self, value: Any) -> Any:
+        return value
+
+    def _post_set(self, obj: Any) -> None:
+        pass
+
+    def _apply_value(self, canvas: Any, key: str) -> None:
+        if key in self.data and "object_id" in self.data:
+            obj = self.find_object(canvas, self.data["object_id"])
+            if obj is not None and hasattr(obj, self.attr_name):
+                setattr(obj, self.attr_name, self._convert(self.data[key]))
+                self._post_set(obj)
+        if self.calls_canvas_update:
+            canvas.update()
+        canvas.objectChanged.emit()
+
+    def execute(self, canvas: Any) -> None:
+        self._apply_value(canvas, self.data_key)
+
+    def undo(self, canvas: Any) -> None:
+        self._apply_value(canvas, self.from_data_key)
+
+
+@Action.register("change_color")
+class ChangeColorAction(PropertyChangeAction):
     """Action: Change annotation or default color."""
+
+    action_type_str = "change_color"
+    data_key = "color"
+    from_data_key = "from_color"
+    attr_name = "color"
+    calls_canvas_update = False
 
     def __init__(self, object_id: int | None = None, color: str = "", from_color: str | None = None) -> None:
         """Initialize color change action.
@@ -673,34 +756,11 @@ class ChangeColorAction(Action):
             color: New color (hex string)
             from_color: Previous color (for undo)
         """
-        data = {"color": color}
-        if object_id is not None:
-            data["object_id"] = object_id
-        if from_color:
-            data["from_color"] = from_color
-        super().__init__("change_color", data)
+        self._init_property_data(object_id, color, from_color, include_from=bool(from_color))
 
-    def execute(self, canvas: Any) -> None:
-        """Change color."""
-        if "object_id" in self.data:
-            obj_id = self.data["object_id"]
-            obj = self.find_object(canvas, obj_id)
-            if obj is not None:
-                from PySide6.QtGui import QColor
-                obj.color = QColor(self.data["color"])
-        canvas.objectChanged.emit()
-
-    def undo(self, canvas: Any) -> None:
-        """Restore previous color."""
-        if "from_color" in self.data and "object_id" in self.data:
-            obj_id = self.data["object_id"]
-            from_color = self.data["from_color"]
-            
-            obj = self.find_object(canvas, obj_id)
-            if obj is not None:
-                from PySide6.QtGui import QColor
-                obj.color = QColor(from_color)
-        canvas.objectChanged.emit()
+    def _convert(self, value: str) -> Any:
+        from PySide6.QtGui import QColor
+        return QColor(value)
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> ChangeColorAction:
@@ -712,6 +772,7 @@ class ChangeColorAction(Action):
         )
 
 
+@Action.register("set_text")
 class SetTextAnnotationAction(Action):
     """Action: Change text of a text annotation."""
 
@@ -761,6 +822,7 @@ class SetTextAnnotationAction(Action):
         )
 
 
+@Action.register("paste_annotation")
 class PasteAnnotationAction(Action):
     """Action: Paste annotation from clipboard."""
 
@@ -826,6 +888,7 @@ class PasteAnnotationAction(Action):
         return cls(pasted_objects_data=data.get("pasted_objects_data"))
 
 
+@Action.register("change_page")
 class ChangePageAction(Action):
     """Action: Navigate to a different page."""
 
@@ -859,6 +922,7 @@ class ChangePageAction(Action):
         )
 
 
+@Action.register("rotate_page")
 class RotatePageAction(Action):
     """Action: Rotate a page."""
 
@@ -905,6 +969,7 @@ class RotatePageAction(Action):
         )
 
 
+@Action.register("rotate_annotation")
 class RotateAnnotationAction(Action):
     """Rotate and reposition one annotation as part of an object/group rotation."""
 
@@ -963,8 +1028,14 @@ class RotateAnnotationAction(Action):
 
 # v1.2.22: New action classes for annotation properties
 
-class ChangeLineWidthAction(Action):
+@Action.register("change_line_width")
+class ChangeLineWidthAction(PropertyChangeAction):
     """Action: Change line width of vector annotations."""
+
+    action_type_str = "change_line_width"
+    data_key = "line_width_pt"
+    from_data_key = "from_line_width_pt"
+    attr_name = "_line_width_pt"
 
     def __init__(self, object_id: int | None = None, line_width_pt: float = 1.5, from_line_width_pt: float | None = None) -> None:
         """Initialize line width change action.
@@ -974,32 +1045,7 @@ class ChangeLineWidthAction(Action):
             line_width_pt: New line width in points
             from_line_width_pt: Previous line width (for undo)
         """
-        data = {"object_id": object_id, "line_width_pt": line_width_pt}
-        if from_line_width_pt is not None:
-            data["from_line_width_pt"] = from_line_width_pt
-        super().__init__("change_line_width", data)
-
-    def execute(self, canvas: Any) -> None:
-        """Apply line width change."""
-        if "object_id" in self.data:
-            obj_id = self.data["object_id"]
-            obj = self.find_object(canvas, obj_id)
-            if obj is not None and hasattr(obj, '_line_width_pt'):
-                obj._line_width_pt = self.data["line_width_pt"]
-        canvas.update()
-        canvas.objectChanged.emit()
-
-    def undo(self, canvas: Any) -> None:
-        """Restore previous line width."""
-        if "from_line_width_pt" in self.data and "object_id" in self.data:
-            obj_id = self.data["object_id"]
-            from_width = self.data["from_line_width_pt"]
-            
-            obj = self.find_object(canvas, obj_id)
-            if obj is not None and hasattr(obj, '_line_width_pt'):
-                obj._line_width_pt = from_width
-        canvas.update()
-        canvas.objectChanged.emit()
+        self._init_property_data(object_id, line_width_pt, from_line_width_pt, always_include_object_id=True)
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> ChangeLineWidthAction:
@@ -1011,8 +1057,14 @@ class ChangeLineWidthAction(Action):
         )
 
 
-class ChangeFontSizeAction(Action):
+@Action.register("change_font_size")
+class ChangeFontSizeAction(PropertyChangeAction):
     """Action: Change font size of text annotations."""
+
+    action_type_str = "change_font_size"
+    data_key = "font_size_pt"
+    from_data_key = "from_font_size_pt"
+    attr_name = "_font_size_pt"
 
     def __init__(self, object_id: int | None = None, font_size_pt: int = 11, from_font_size_pt: int | None = None) -> None:
         """Initialize font size change action.
@@ -1022,36 +1074,11 @@ class ChangeFontSizeAction(Action):
             font_size_pt: New font size in points
             from_font_size_pt: Previous font size (for undo)
         """
-        data = {"object_id": object_id, "font_size_pt": font_size_pt}
-        if from_font_size_pt is not None:
-            data["from_font_size_pt"] = from_font_size_pt
-        super().__init__("change_font_size", data)
+        self._init_property_data(object_id, font_size_pt, from_font_size_pt, always_include_object_id=True)
 
-    def execute(self, canvas: Any) -> None:
-        """Apply font size change."""
-        if "object_id" in self.data:
-            obj_id = self.data["object_id"]
-            obj = self.find_object(canvas, obj_id)
-            if obj is not None and hasattr(obj, '_font_size_pt'):
-                obj._font_size_pt = self.data["font_size_pt"]
-                if hasattr(obj, 'fit_text_box'):
-                    obj.fit_text_box()
-        canvas.update()
-        canvas.objectChanged.emit()
-
-    def undo(self, canvas: Any) -> None:
-        """Restore previous font size."""
-        if "from_font_size_pt" in self.data and "object_id" in self.data:
-            obj_id = self.data["object_id"]
-            from_size = self.data["from_font_size_pt"]
-            
-            obj = self.find_object(canvas, obj_id)
-            if obj is not None and hasattr(obj, '_font_size_pt'):
-                obj._font_size_pt = from_size
-                if hasattr(obj, 'fit_text_box'):
-                    obj.fit_text_box()
-        canvas.update()
-        canvas.objectChanged.emit()
+    def _post_set(self, obj: Any) -> None:
+        if hasattr(obj, 'fit_text_box'):
+            obj.fit_text_box()
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> ChangeFontSizeAction:
@@ -1063,8 +1090,14 @@ class ChangeFontSizeAction(Action):
         )
 
 
-class ChangeFontFamilyAction(Action):
+@Action.register("change_font_family")
+class ChangeFontFamilyAction(PropertyChangeAction):
     """Action: Change font family of text annotations."""
+
+    action_type_str = "change_font_family"
+    data_key = "font_family"
+    from_data_key = "from_font_family"
+    attr_name = "_font_family"
 
     def __init__(self, object_id: int | None = None, font_family: str = "Arial", from_font_family: str | None = None) -> None:
         """Initialize font family change action.
@@ -1074,36 +1107,14 @@ class ChangeFontFamilyAction(Action):
             font_family: New font family name
             from_font_family: Previous font family (for undo)
         """
-        data = {"object_id": object_id, "font_family": font_family}
-        if from_font_family:
-            data["from_font_family"] = from_font_family
-        super().__init__("change_font_family", data)
+        self._init_property_data(
+            object_id, font_family, from_font_family,
+            include_from=bool(from_font_family), always_include_object_id=True,
+        )
 
-    def execute(self, canvas: Any) -> None:
-        """Apply font family change."""
-        if "object_id" in self.data:
-            obj_id = self.data["object_id"]
-            obj = self.find_object(canvas, obj_id)
-            if obj is not None and hasattr(obj, '_font_family'):
-                obj._font_family = self.data["font_family"]
-                if hasattr(obj, 'fit_text_box'):
-                    obj.fit_text_box()
-        canvas.update()
-        canvas.objectChanged.emit()
-
-    def undo(self, canvas: Any) -> None:
-        """Restore previous font family."""
-        if "from_font_family" in self.data and "object_id" in self.data:
-            obj_id = self.data["object_id"]
-            from_family = self.data["from_font_family"]
-            
-            obj = self.find_object(canvas, obj_id)
-            if obj is not None and hasattr(obj, '_font_family'):
-                obj._font_family = from_family
-                if hasattr(obj, 'fit_text_box'):
-                    obj.fit_text_box()
-        canvas.update()
-        canvas.objectChanged.emit()
+    def _post_set(self, obj: Any) -> None:
+        if hasattr(obj, 'fit_text_box'):
+            obj.fit_text_box()
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> ChangeFontFamilyAction:

@@ -12,9 +12,7 @@ from .constants import (
     DEFAULT_LINE_WIDTH_PT,
     DEFAULT_TEXT_FONT_PT,
 )
-
-# Backward-compatible settings name for the shared text-size default.
-DEFAULT_FONT_SIZE_PT: int = DEFAULT_TEXT_FONT_PT
+from .debug import is_frozen
 
 
 def get_config_dir(app_name: str = "Signer") -> Path:
@@ -27,7 +25,7 @@ def get_config_dir(app_name: str = "Signer") -> Path:
     Returns the directory where config.json should be stored.
     """
     # Get the application directory (where signer.exe/main.py lives)
-    if getattr(sys, 'frozen', False):
+    if is_frozen():
         # Running as PyInstaller executable: sys.executable is signer.exe
         app_dir = Path(sys.executable).parent
     else:
@@ -61,7 +59,7 @@ class AppSettings:
     # Recent font family (font name string)
     recent_font_family: str = DEFAULT_FONT_FAMILY
     # Recent font size (points) - default 11pt per requirements
-    recent_font_size_pt: int = DEFAULT_FONT_SIZE_PT
+    recent_font_size_pt: int = DEFAULT_TEXT_FONT_PT
     
     # LibreOffice path (for Word/ODT support)
     libreoffice_path: str | None = None

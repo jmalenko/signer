@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import inspect
 import os
+import sys
 from pathlib import Path
+
+
+def is_frozen() -> bool:
+    """Return True when running as a PyInstaller-built executable."""
+    return bool(getattr(sys, "frozen", False))
 
 
 def debug_print(message: str, tag: str | os.PathLike[str] | None = None) -> None:

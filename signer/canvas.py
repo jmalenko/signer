@@ -45,6 +45,14 @@ from .objects import (
     step_size,
 )
 
+# Group (multi-selection) rotation handle geometry, in view pixels.
+GROUP_ROTATION_HANDLE_OFFSET: float = 24.0
+GROUP_ROTATION_HANDLE_RADIUS: float = 6.0
+
+# Arrow-key nudge distance for selected annotations, in document points.
+KEYBOARD_MOVE_STEP_PT: float = 12.0
+KEYBOARD_MOVE_FINE_STEP_PT: float = 1.0
+
 
 class DocumentCanvas(QWidget):
     objectChanged = Signal()        # emitted on move/scale/add/remove
@@ -154,19 +162,7 @@ class DocumentCanvas(QWidget):
         transformed = []
         
         for obj in objects:
-            # Calculate the center of the annotation
-            # (x, y) is the top-left corner, so add half the dimensions to get center
-            center_x = obj.x + obj.scaled_width / 2
-            center_y = obj.y + obj.scaled_height / 2
-            
-            # Transform the center coordinates so it stays at the same visual location
-            new_center_x, new_center_y = self._transform_doc_coords_by_rotation(
-                center_x, center_y, rotation, orig_width, orig_height
-            )
-            
-            # Convert back to top-left corner coordinates
-            new_x = new_center_x - obj.scaled_width / 2
-            new_y = new_center_y - obj.scaled_height / 2
+            new_x, new_y = self._rotated_top_left_for_object(obj, rotation, orig_width, orig_height)
             
             # Create a shallow copy of the object with transformed coordinates
             obj_copy = copy.copy(obj)
@@ -188,12 +184,10 @@ class DocumentCanvas(QWidget):
         self._page_objects = {}
         self._object_map = {}  # Clear object map when resetting document
         self._next_object_id = 0  # Reset object ID counter
-        self._selected = None
-        self._selected_multiple.clear()
+        self._clear_selection_state()
         self._recompute_fit()
         self.pageChanged.emit(0, len(self._pages))
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
 
     def restore_objects(
         self,
@@ -214,12 +208,10 @@ class DocumentCanvas(QWidget):
             self._register_object(obj)
             self._page_objects.setdefault(obj.page, []).append(obj)
         self._current_page = max(0, min(current_page, len(self._pages) - 1)) if self._pages else 0
-        self._selected = None
-        self._selected_multiple.clear()
+        self._clear_selection_state()
         self._recompute_fit()
         self.pageChanged.emit(self._current_page, len(self._pages))
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
 
     def goto_page(self, page: int) -> None:
         if not self._pages:
@@ -227,13 +219,11 @@ class DocumentCanvas(QWidget):
         page = max(0, min(page, len(self._pages) - 1))
         if page == self._current_page:
             return
-        self._selected = None
-        self._selected_multiple.clear()
+        self._clear_selection_state()
         self._current_page = page
         self._recompute_fit()
         self.pageChanged.emit(self._current_page, len(self._pages))
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
 
     def _get_rotated_page_image(self, page_index: int) -> Image.Image:
         """Get the PIL image for a page, applying rotation if set."""
@@ -260,8 +250,7 @@ class DocumentCanvas(QWidget):
             self._page_rotations[i] = (self._page_rotations.get(i, 0) + delta) % 360
             self._update_rotated_pixmap(i)
         self._recompute_fit()
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
 
     def rotate_current_page_left(self) -> None:
         """Rotate current page 90 degrees counter-clockwise."""
@@ -345,14 +334,24 @@ class DocumentCanvas(QWidget):
                 return existing_id
         return self._register_object(obj)
 
+    def _invalidate_display(self) -> None:
+        """Notify listeners the canvas content changed and schedule a repaint."""
+        self.objectChanged.emit()
+        self.update()
+
+    def _record_composite_action(self, actions: list) -> None:
+        """Record a list of actions as one undo unit (a single Action if only one)."""
+        if not actions:
+            return
+        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
+
     def add_object(self, obj: CanvasObject) -> None:
         # Assign an auto-incrementing ID and register in _object_map
         obj_id = self._register_object(obj)
 
         self._page_objects.setdefault(self._current_page, []).append(obj)
         self._selected = obj
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
 
         # Record the addition to history for undo support
         annotation_data = obj.to_dict()
@@ -383,8 +382,7 @@ class DocumentCanvas(QWidget):
                 action._deleted_index = obj_idx
                 self.history.record_action(action)
             self._selected = None
-            self.objectChanged.emit()
-            self.update()
+            self._invalidate_display()
 
     def duplicate_selected(self) -> None:
         """Duplicate selected annotation(s). Works with single or multi-selection."""
@@ -427,15 +425,22 @@ class DocumentCanvas(QWidget):
                 # Keep _selected as primary for UI feedback
                 if self._selected is None:
                     self._selected = obj
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
+
+    def _clear_selection_state(self) -> None:
+        """Reset selection fields without emitting signals or repainting.
+
+        Callers that already emit/update as part of a larger state change
+        (e.g. `goto_page`, `restore_objects`) should use this instead of
+        `clear_selection()` to avoid a redundant signal/repaint.
+        """
+        self._selected = None
+        self._selected_multiple.clear()
 
     def clear_selection(self) -> None:
         """Clear all selections."""
-        self._selected = None
-        self._selected_multiple.clear()
-        self.objectChanged.emit()
-        self.update()
+        self._clear_selection_state()
+        self._invalidate_display()
 
     def select_all_on_page(self) -> None:
         """Select all annotations on the current page."""
@@ -446,8 +451,7 @@ class DocumentCanvas(QWidget):
         self._selected_multiple.update(objs)
         if objs:
             self._selected = objs[0]  # Set first as primary
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
 
     def get_selected_annotations(self) -> list[CanvasObject]:
         """Return all selected annotations (sorted for consistency)."""
@@ -474,16 +478,13 @@ class DocumentCanvas(QWidget):
             if self.current_page_image:
                 pw, ph = self.current_page_image.size
                 obj.clamp_to_page(pw, ph)
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
 
     @staticmethod
     def _snap_rotation_angle(angle_deg: float, shift_pressed: bool) -> float:
-        """Normalize an angle, snapping to 15-degree increments unless Shift is held."""
-        normalized = angle_deg % 360.0
-        if shift_pressed:
-            return float(round(normalized)) % 360.0
-        return (round(normalized / 15.0) * 15.0) % 360.0
+        """Normalize an angle, snapping to 15-degree increments unless Shift is held (then 1-degree)."""
+        step = 1.0 if shift_pressed else 15.0
+        return DocumentCanvas._nearest_angle_step(angle_deg, step)
 
     def rotate_selected_to(self, angle_deg: float) -> None:
         """Rotate the selection as a group, using the primary object's angle as reference."""
@@ -506,8 +507,8 @@ class DocumentCanvas(QWidget):
         actions = []
 
         for obj in selected:
-            center_x = obj.x + obj.scaled_width / 2.0
-            center_y = obj.y + obj.scaled_height / 2.0
+            center = self._object_center_doc(obj)
+            center_x, center_y = center.x(), center.y()
             old_x, old_y, old_rotation = obj.x, obj.y, obj.rotation
             offset_x = center_x - pivot_x
             offset_y = center_y - pivot_y
@@ -528,13 +529,12 @@ class DocumentCanvas(QWidget):
                 )
             )
 
-        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
-        self.objectChanged.emit()
-        self.update()
+        self._record_composite_action(actions)
+        self._invalidate_display()
 
     # v1.2.32: Adjust annotation properties (line width, font size) with keyboard,
     # stepping through a fixed list of "usual" sizes instead of a small increment.
-    def _adjust_annotation_property(self, selected, direction: str) -> None:
+    def _adjust_annotation_property(self, selected: list[CanvasObject], direction: str) -> None:
         """Adjust line width for vector annotations or font size for text annotations."""
         actions = []
         for obj in selected:
@@ -562,11 +562,8 @@ class DocumentCanvas(QWidget):
                         from_line_width_pt=old_width,
                     ))
 
-        if actions:
-            self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
-        
-        self.objectChanged.emit()
-        self.update()
+        self._record_composite_action(actions)
+        self._invalidate_display()
 
     def delete_selected(self) -> None:
         """Delete all selected annotations. Single undo unit (one Ctrl+Z restores all)."""
@@ -602,7 +599,6 @@ class DocumentCanvas(QWidget):
             self.history.record_action(CompositeAction(sub_actions))
 
         self.clear_selection()
-        self.objectChanged.emit()
 
     def duplicate_selected_multi(self) -> None:
         """Duplicate all selected annotations. Single undo unit (one Ctrl+Z removes all)."""
@@ -637,8 +633,7 @@ class DocumentCanvas(QWidget):
         self._selected_multiple.clear()
         self._selected_multiple.update(new_objs)
         self._selected = new_objs[0] if new_objs else None
-        self.objectChanged.emit()
-        self.update()
+        self._invalidate_display()
 
     def copy_selected(self) -> None:
         """Copy selected annotations to clipboard as JSON.
@@ -681,67 +676,22 @@ class DocumentCanvas(QWidget):
 
     def paste_selected(self) -> None:
         """Paste annotations from clipboard onto current page.
-        
-        Cache is set on the FIRST paste (when reading from clipboard) and then
-        persists for all subsequent pastes, even if the clipboard is updated by
-        intermediate copy operations. This ensures copy->paste->paste sequences
-        always use the position from the original copy.
-        
+
         The duplicate offset is applied when pasting on the same page to avoid exact overlap.
         No offset is applied when pasting to a different page (already distinct location).
         """
-        # If no cache, read from clipboard and cache it
-        if self._cached_copy_data is None:
-            clipboard = QApplication.clipboard()
-            json_str = clipboard.text()
-            if not json_str:
-                return
-            
-            try:
-                data = json.loads(json_str)
-                if not isinstance(data, list):
-                    data = [data]
-                # Cache this data for all future pastes until a new copy-paste cycle
-                self._cached_copy_data = data
-            except json.JSONDecodeError:
-                # Clipboard doesn't contain valid annotation JSON; ignore
-                return
-        else:
-            # Cache exists, use it
-            data = self._cached_copy_data
-        
+        data = self._get_paste_data()
+        if data is None:
+            return
+
         # Use setdefault to ensure page list exists in _page_objects
         objs = self._page_objects.setdefault(self._current_page, [])
         pasted_objs = []
-        
         for item in data:
-            try:
-                # Use factory function to deserialize based on type
-                original_page = item.get("page")
-                
-                obj = canvas_object_from_dict(item)
-                if obj is None:
-                    # Unknown type; skip
-                    continue
-                
-                obj.page = self._current_page  # Ensure pasted on current page
-                
-                # Apply offset only if pasting on same page as original
-                if original_page == self._current_page:
-                    obj.x += DUPLICATE_OFFSET
-                    obj.y += DUPLICATE_OFFSET
-                
-                if self.current_page_image:
-                    pw, ph = self.current_page_image.size
-                    obj.clamp_to_page(pw, ph)
-                
-                self._register_object(obj)
-                objs.append(obj)
+            obj = self._paste_object(item, objs)
+            if obj is not None:
                 pasted_objs.append(obj)
-            except (KeyError, ValueError, TypeError):
-                # Invalid annotation data; skip
-                continue
-        
+
         # Select pasted annotations
         self._selected_multiple.clear()
         self._selected_multiple.update(pasted_objs)
@@ -761,6 +711,61 @@ class DocumentCanvas(QWidget):
 
         self.update()
 
+    def _get_paste_data(self) -> list[dict] | None:
+        """Return the annotation dicts to paste: the cached copy if present, else parsed clipboard JSON.
+
+        Cache is set on the FIRST paste (when reading from clipboard) and then
+        persists for all subsequent pastes, even if the clipboard is updated by
+        intermediate copy operations. This ensures copy->paste->paste sequences
+        always use the position from the original copy.
+        """
+        if self._cached_copy_data is not None:
+            return self._cached_copy_data
+
+        json_str = QApplication.clipboard().text()
+        if not json_str:
+            return None
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError:
+            # Clipboard doesn't contain valid annotation JSON; ignore
+            return None
+        if not isinstance(data, list):
+            data = [data]
+        # Cache this data for all future pastes until a new copy-paste cycle
+        self._cached_copy_data = data
+        return data
+
+    def _paste_object(self, item: dict, objs: list[CanvasObject]) -> CanvasObject | None:
+        """Deserialize one clipboard item, place it on the current page, and append it to objs.
+
+        Applies the duplicate offset only when pasting onto the same page the
+        item was copied from (a different page is already a distinct location).
+        Returns None (without appending) if the item is invalid or unrecognized.
+        """
+        try:
+            original_page = item.get("page")
+            obj = canvas_object_from_dict(item)
+            if obj is None:
+                return None
+
+            obj.page = self._current_page  # Ensure pasted on current page
+
+            if original_page == self._current_page:
+                obj.x += DUPLICATE_OFFSET
+                obj.y += DUPLICATE_OFFSET
+
+            if self.current_page_image:
+                pw, ph = self.current_page_image.size
+                obj.clamp_to_page(pw, ph)
+
+            self._register_object(obj)
+            objs.append(obj)
+            return obj
+        except (KeyError, ValueError, TypeError):
+            # Invalid annotation data; skip
+            return None
+
     def set_color_selected(self, color: QColor) -> None:
         """Set color for all selected annotations."""
         selected = self.get_selected_annotations()
@@ -778,10 +783,8 @@ class DocumentCanvas(QWidget):
             ))
             obj.color = color
 
-        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
-
-        self.objectChanged.emit()
-        self.update()
+        self._record_composite_action(actions)
+        self._invalidate_display()
 
     def set_line_width_selected(self, width_pt: float) -> None:
         """Set line width in points for selected vector annotations."""
@@ -801,9 +804,8 @@ class DocumentCanvas(QWidget):
                 line_width_pt=width_pt,
                 from_line_width_pt=old_width,
             ))
-        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
-        self.objectChanged.emit()
-        self.update()
+        self._record_composite_action(actions)
+        self._invalidate_display()
 
     def set_font_size_selected(self, font_size_pt: int) -> None:
         """Set font size for all selected text annotations as one undo unit."""
@@ -823,9 +825,8 @@ class DocumentCanvas(QWidget):
                 font_size_pt=font_size_pt,
                 from_font_size_pt=old_size,
             ))
-        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
-        self.objectChanged.emit()
-        self.update()
+        self._record_composite_action(actions)
+        self._invalidate_display()
 
     def set_font_family_selected(self, family: str) -> None:
         """Set font family for all selected text annotations as one undo unit."""
@@ -845,9 +846,8 @@ class DocumentCanvas(QWidget):
                 font_family=family,
                 from_font_family=old_family,
             ))
-        self.history.record_action(actions[0] if len(actions) == 1 else CompositeAction(actions))
-        self.objectChanged.emit()
-        self.update()
+        self._record_composite_action(actions)
+        self._invalidate_display()
 
     # ---------------------------------------------------------------- coordinate helpers
 
@@ -892,25 +892,33 @@ class DocumentCanvas(QWidget):
         else:
             return x, y
 
+    def _object_center_doc(self, obj: CanvasObject) -> QPointF:
+        """Return obj's center point in unrotated document coordinates."""
+        return QPointF(obj.x + obj.scaled_width / 2.0, obj.y + obj.scaled_height / 2.0)
+
+    def _rotated_top_left_for_object(
+        self, obj: CanvasObject, rotation: int, page_width: float, page_height: float
+    ) -> tuple[float, float]:
+        """Return obj's top-left (x, y) transformed for a page rotation, keeping its
+        visual center in the same place. Shared by the export coordinate transform
+        (`page_objects_with_rotation_at`) and the live viewport rect (`_object_view_rect`).
+        """
+        center = self._object_center_doc(obj)
+        new_center_x, new_center_y = self._transform_doc_coords_by_rotation(
+            center.x(), center.y(), rotation, page_width, page_height
+        )
+        return new_center_x - obj.scaled_width / 2.0, new_center_y - obj.scaled_height / 2.0
+
     def _object_view_rect(self, obj: CanvasObject) -> QRectF:
         # Get original page dimensions
         orig_width, orig_height = self._pages[self._current_page].size
         rotation = self._page_rotations.get(self._current_page, 0)
         
-        # Calculate the center of the annotation
-        # (obj.x, obj.y) is the top-left corner, so add half the dimensions to get center
-        center_x = obj.x + obj.scaled_width / 2
-        center_y = obj.y + obj.scaled_height / 2
-        
-        # Transform the center coordinates based on page rotation
-        # so annotation centers remain at the same visual location on the page
-        transformed_center_x, transformed_center_y = self._transform_doc_coords_by_rotation(
-            center_x, center_y, rotation, orig_width, orig_height
+        # Transform the object's top-left based on page rotation so its center
+        # remains at the same visual location on the page.
+        transformed_x, transformed_y = self._rotated_top_left_for_object(
+            obj, rotation, orig_width, orig_height
         )
-        
-        # Convert back to top-left corner coordinates for QRectF
-        transformed_x = transformed_center_x - obj.scaled_width / 2
-        transformed_y = transformed_center_y - obj.scaled_height / 2
         
         return QRectF(
             self._doc_offset_x + transformed_x * self._fit_scale,
@@ -1120,14 +1128,25 @@ class DocumentCanvas(QWidget):
                 painter.setPen(QColor("#00a2ff"))
                 painter.setBrush(Qt.NoBrush)
                 painter.drawRect(bounds)
-                handle_center = QPointF(bounds.center().x(), bounds.top() - 24.0)
+                handle_center = QPointF(bounds.center().x(), bounds.top() - GROUP_ROTATION_HANDLE_OFFSET)
                 painter.drawLine(QPointF(bounds.center().x(), bounds.top()), handle_center)
                 painter.drawEllipse(QRectF(
-                    handle_center.x() - 6.0, handle_center.y() - 6.0, 12.0, 12.0
+                    handle_center.x() - GROUP_ROTATION_HANDLE_RADIUS,
+                    handle_center.y() - GROUP_ROTATION_HANDLE_RADIUS,
+                    GROUP_ROTATION_HANDLE_RADIUS * 2.0,
+                    GROUP_ROTATION_HANDLE_RADIUS * 2.0,
                 ))
                 painter.restore()
 
     # ---------------------------------------------------------------- mouse
+
+    @staticmethod
+    def _is_shift_pressed(event) -> bool:
+        return bool(event.modifiers() & Qt.ShiftModifier)
+
+    @staticmethod
+    def _is_any_modifier_pressed(event) -> bool:
+        return bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
 
     def mousePressEvent(self, event) -> None:
         if event.button() != Qt.LeftButton or not self._pages:
@@ -1156,7 +1175,7 @@ class DocumentCanvas(QWidget):
         clicked_obj = self._hit_test_object_at_point(pt)
         if clicked_obj is not None:
             # Check for Shift+click (multi-select)
-            if event.modifiers() & Qt.ShiftModifier:
+            if self._is_shift_pressed(event):
                 self.select_annotation(clicked_obj, multi=True)
             else:
                 # Regular click (single select)
@@ -1176,7 +1195,7 @@ class DocumentCanvas(QWidget):
             return
 
         # Clicked on empty space
-        if event.modifiers() & Qt.ShiftModifier:
+        if self._is_shift_pressed(event):
             # Shift+click on empty doesn't clear (no change)
             pass
         else:
@@ -1190,8 +1209,13 @@ class DocumentCanvas(QWidget):
             bounds = self._selection_view_bounds()
             if bounds is None:
                 return None
-            center = QPointF(bounds.center().x(), bounds.top() - 24.0)
-            return QRectF(center.x() - 6.0, center.y() - 6.0, 12.0, 12.0)
+            center = QPointF(bounds.center().x(), bounds.top() - GROUP_ROTATION_HANDLE_OFFSET)
+            return QRectF(
+                center.x() - GROUP_ROTATION_HANDLE_RADIUS,
+                center.y() - GROUP_ROTATION_HANDLE_RADIUS,
+                GROUP_ROTATION_HANDLE_RADIUS * 2.0,
+                GROUP_ROTATION_HANDLE_RADIUS * 2.0,
+            )
         rect = self._object_view_rect(self._selected)
         return self._selected.rotation_handle_rect_viewport(
             rect.x(), rect.y(), rect.width(), rect.height(), self._display_rotation(self._selected)
@@ -1216,6 +1240,17 @@ class DocumentCanvas(QWidget):
         self._drag_handle = -1
 
     def _apply_rotation_drag(self, pt: QPointF, shift_pressed: bool) -> None:
+        """Rotate every object in `_rotation_drag_states` by the same delta around
+        the shared pivot (`_rotation_pivot_doc`, the group/selection center).
+
+        The pointer's angle relative to the pivot is compared against its angle
+        at drag start (`_rotation_start_pointer_angle`) to get a raw rotation
+        delta for the primary object; that delta (after snapping via
+        `_snap_rotation_angle`) is then applied rigidly to every selected
+        object's stored start position/rotation, rotating each object's center
+        around the pivot and adding the same delta to its own rotation - this
+        is what keeps relative positions/angles fixed within a multi-selection.
+        """
         pointer_angle = math.degrees(math.atan2(
             pt.y() - self._rotation_pivot_view.y(),
             pt.x() - self._rotation_pivot_view.x(),
@@ -1242,6 +1277,24 @@ class DocumentCanvas(QWidget):
             obj.rotation = (start_rotation + delta) % 360.0
 
     def _start_handle_drag(self, h_idx: int, pt: QPointF) -> None:
+        """Begin a resize/endpoint drag, recording the anchor point the drag is measured from.
+
+        For endpoint handles (line/arrow tip/tail, h_idx 0/1), the anchor is
+        simply the *other* endpoint in document coordinates - see the
+        `_drag_endpoint_handles` branch of `mouseMoveEvent`.
+
+        For regular resize handles, the anchor is the *opposite* handle's point,
+        expressed both as a fixed fractional position (`_hdrag_anchor_fx/fy`,
+        one of `HANDLE_FX`/`HANDLE_FY`) and as a document-space point rotated
+        by the object's current rotation (`_hdrag_anchor_doc`). During the
+        drag, `mouseMoveEvent` measures the new pointer position relative to
+        this anchor (in the object's unrotated local space) to get a signed
+        width/height extent: a negative extent means the pointer crossed past
+        the anchor, so the box's anchor side flips and resizing continues from
+        there. `_hdrag_start_w/h` record the pre-drag size, used both to
+        preserve aspect ratio for non-freely-resizable types and to detect
+        that flip.
+        """
         obj = self._selected
         assert obj is not None
 
@@ -1288,6 +1341,11 @@ class DocumentCanvas(QWidget):
         self._action_recorded_this_drag = False
 
     @staticmethod
+    def _nearest_angle_step(angle_deg: float, step_deg: float) -> float:
+        """Return the nearest multiple of step_deg to angle_deg, normalized to [0, 360)."""
+        return (round((angle_deg % 360.0) / step_deg) * step_deg) % 360.0
+
+    @staticmethod
     def _snap_rect_ellipse_size(new_w: float, new_h: float, handle: int, modifier_pressed: bool) -> tuple[float, float, bool]:
         """Apply square/circle snapping for rectangle/ellipse resizing.
 
@@ -1313,53 +1371,31 @@ class DocumentCanvas(QWidget):
         size = (new_w + new_h) / 2.0
         return size, size, True
 
-    @staticmethod
-    def _snap_line_angle(angle_deg: float, modifier_pressed: bool) -> float:
-        """Snap line/arrow angle to cardinal or intercardinal direction if close enough.
+    # Cardinal/intercardinal directions line/arrow endpoints snap to (§_snap_line_angle).
+    _LINE_SNAP_ANGLES_DEG: tuple[float, ...] = (0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0)
+    _LINE_SNAP_TOLERANCE_DEG: float = 10.0
 
-        Snap is active when angle is within 10° of any of 8 directions:
-        0° (E), 45° (NE), 90° (N), 135° (NW), 180° (W), 225° (SW), 270° (S), 315° (SE)
-        unless any modifier key is pressed.
-        
-        Args:
-            angle_deg: Angle in degrees (from atan2)
-            modifier_pressed: Whether a modifier key (Shift/Ctrl/Alt) is pressed
-            
-        Returns:
-            Snapped angle in degrees
+    @classmethod
+    def _snap_line_angle(cls, angle_deg: float, modifier_pressed: bool) -> float:
+        """Snap line/arrow angle to a cardinal/intercardinal direction if close enough.
+
+        Snap is active when angle is within `_LINE_SNAP_TOLERANCE_DEG` of one of
+        `_LINE_SNAP_ANGLES_DEG`, unless a modifier key (Shift/Ctrl/Alt) is pressed.
+
+        Note: unlike `_snap_rotation_angle` (rotation handle drag, which always
+        snaps to the nearest 15/1-degree step), this only snaps near a target and
+        otherwise returns the angle unchanged — the two aren't merged into one
+        function because their modifier-key behavior differs.
         """
         if modifier_pressed:
             return angle_deg
-        
-        # Normalize angle to 0-360 range for easier comparison
+
         normalized = angle_deg % 360.0
-        
-        # Check if within 10° of the 8 cardinal/intercardinal directions
-        # 0° (horizontal right / East)
-        if normalized <= 10.0 or normalized >= 350.0:
-            return 0.0
-        # 45° (diagonal up-right / Northeast)
-        if 35.0 <= normalized <= 55.0:
-            return 45.0
-        # 90° (vertical up / North)
-        if 80.0 <= normalized <= 100.0:
-            return 90.0
-        # 135° (diagonal up-left / Northwest)
-        if 125.0 <= normalized <= 145.0:
-            return 135.0
-        # 180° (horizontal left / West)
-        if 170.0 <= normalized <= 190.0:
-            return 180.0
-        # 225° (diagonal down-left / Southwest)
-        if 215.0 <= normalized <= 235.0:
-            return 225.0
-        # 270° (vertical down / South)
-        if 260.0 <= normalized <= 280.0:
-            return 270.0
-        # 315° (diagonal down-right / Southeast)
-        if 305.0 <= normalized <= 325.0:
-            return 315.0
-        
+        for target in cls._LINE_SNAP_ANGLES_DEG:
+            diff = abs(normalized - target)
+            diff = min(diff, 360.0 - diff)
+            if diff <= cls._LINE_SNAP_TOLERANCE_DEG:
+                return target
         return angle_deg
 
     def mouseMoveEvent(self, event) -> None:
@@ -1367,185 +1403,11 @@ class DocumentCanvas(QWidget):
 
         if self._dragging and self._selected is not None:
             if self._rotating:
-                self._apply_rotation_drag(pt, bool(event.modifiers() & Qt.ShiftModifier))
+                self._apply_rotation_drag(pt, self._is_shift_pressed(event))
             elif self._drag_handle == -1:
-                # MOVE operation
-                doc_pt = self._view_to_doc(pt)
-                self._selected.x = doc_pt.x() - self._drag_doc_offset_x
-                self._selected.y = doc_pt.y() - self._drag_doc_offset_y
-                
-                # Record move action with coalescing using stable object ID
-                obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
-                if obj_id >= 0:
-                    if not self._action_recorded_this_drag:
-                        # First move: create full-format action with initial state
-                        action = MoveAnnotationAction(
-                            object_id=obj_id,
-                            from_x=self._drag_start_x,
-                            from_y=self._drag_start_y,
-                            to_x=self._selected.x,
-                            to_y=self._selected.y,
-                        )
-                        self._action_recorded_this_drag = True
-                    else:
-                        # Subsequent moves: create partial-format action for merging
-                        action = MoveAnnotationAction(
-                            object_id=obj_id,
-                            x=self._selected.x,
-                            y=self._selected.y,
-                        )
-                    self.history.record_action(action)
+                self._handle_move_drag(pt)
             else:
-                # RESIZE operation
-                doc_pt = self._view_to_doc(pt)
-
-                if self._drag_endpoint_handles and self._selected.supports_endpoint_handles():
-                    anchor = self._hdrag_anchor_doc
-                    if self._drag_handle == 0:
-                        tail = doc_pt
-                        tip = anchor
-                    else:
-                        tail = anchor
-                        tip = doc_pt
-
-                    dx = tip.x() - tail.x()
-                    dy = tip.y() - tail.y()
-                    visual_len = max(8.0, math.hypot(dx, dy))
-
-                    if getattr(self._selected, 'ann_type', None).value == 'arrow':
-                        # Arrow tip/tail distance is 0.66 * bbox side in drawing code.
-                        side = visual_len / 0.66
-                    else:
-                        side = visual_len
-                    side = max(8.0, side)
-
-                    cx = (tail.x() + tip.x()) / 2.0
-                    cy = (tail.y() + tip.y()) / 2.0
-                    self._selected.set_scaled_size(side, side)
-                    self._selected.x = cx - self._selected.scaled_width / 2.0
-                    self._selected.y = cy - self._selected.scaled_height / 2.0
-
-                    if hasattr(self._selected, '_angle'):
-                        ann_type_val = getattr(getattr(self._selected, 'ann_type', None), 'value', None)
-                        if ann_type_val == 'line':
-                            raw_angle = math.degrees(math.atan2(dy, dx))
-                            # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
-                            modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
-                            effective_angle = self._snap_line_angle(raw_angle, modifier_pressed)
-                            self._selected._angle = effective_angle - self._selected.rotation
-                        elif ann_type_val == 'arrow':
-                            raw_angle = math.degrees(math.atan2(-dy, dx))
-                            # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
-                            modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
-                            effective_angle = self._snap_line_angle(raw_angle, modifier_pressed)
-                            self._selected._angle = effective_angle + self._selected.rotation
-                        else:
-                            self._selected._angle = math.degrees(math.atan2(-dy, dx))
-
-                    # Keep the non-dragged endpoint exactly fixed at the anchor.
-                    # This avoids visible drift caused by floating-point roundoff
-                    # while repeatedly recomputing size/angle from endpoint vectors.
-                    pts = self._selected.endpoint_points_doc()
-                    if len(pts) == 2:
-                        fixed_idx = 1 if self._drag_handle == 0 else 0
-                        fixed_pt = pts[fixed_idx]
-                        self._selected.x += anchor.x() - fixed_pt.x()
-                        self._selected.y += anchor.y() - fixed_pt.y()
-                else:
-                    ax = self._hdrag_anchor_doc.x()
-                    ay = self._hdrag_anchor_doc.y()
-                    h = self._drag_handle
-                    fx = HANDLE_FX[h]
-                    fy = HANDLE_FY[h]
-                    local_doc_pt = self._selected._rotate_point(
-                        doc_pt, self._hdrag_anchor_doc, -self._hdrag_rotation
-                    )
-
-                    # Signed extents from the fixed anchor. A negative extent means
-                    # the handle was dragged past the anchor: the box flips to the
-                    # other side and the drag keeps resizing from there.
-                    if fx != self._hdrag_anchor_fx:
-                        signed_w = (
-                            local_doc_pt.x() - ax
-                            if fx > self._hdrag_anchor_fx
-                            else ax - local_doc_pt.x()
-                        )
-                        signed_w /= abs(fx - self._hdrag_anchor_fx)
-                    else:
-                        signed_w = self._hdrag_start_w
-                    if fy != self._hdrag_anchor_fy:
-                        signed_h = (
-                            local_doc_pt.y() - ay
-                            if fy > self._hdrag_anchor_fy
-                            else ay - local_doc_pt.y()
-                        )
-                        signed_h /= abs(fy - self._hdrag_anchor_fy)
-                    else:
-                        signed_h = self._hdrag_start_h
-
-                    anchor_fx = 1.0 - self._hdrag_anchor_fx if signed_w < 0 else self._hdrag_anchor_fx
-                    anchor_fy = 1.0 - self._hdrag_anchor_fy if signed_h < 0 else self._hdrag_anchor_fy
-                    new_w = abs(signed_w)
-                    new_h = abs(signed_h)
-
-                    if self._selected.supports_free_resize():
-                        new_w = max(8.0, new_w)
-                        new_h = max(8.0, new_h)
-                    else:
-                        sx = new_w / max(1.0, self._hdrag_start_w)
-                        sy = new_h / max(1.0, self._hdrag_start_h)
-                        if fx == self._hdrag_anchor_fx:
-                            factor = sy
-                        elif fy == self._hdrag_anchor_fy:
-                            factor = sx
-                        else:
-                            factor = max(sx, sy)
-                        factor = max(0.05, min(10.0, factor))
-                        new_w = self._hdrag_start_w * factor
-                        new_h = self._hdrag_start_h * factor
-
-                    # Square/circle snap: if ratio is within +/-20%, snap to 1:1.
-                    # Modifier keys (Shift/Ctrl/Alt) disable snapping.
-                    ann_type_val = getattr(getattr(self._selected, 'ann_type', None), 'value', None)
-                    is_rect_ellipse = ann_type_val in ('rectangle', 'ellipse')
-                    modifier_pressed = bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
-                    if is_rect_ellipse:
-                        new_w, new_h, _ = self._snap_rect_ellipse_size(new_w, new_h, h, modifier_pressed)
-
-                    self._selected.resize_to_bounds(new_w, new_h)
-                    local_anchor_offset = QPointF(
-                        (anchor_fx - 0.5) * self._selected.scaled_width,
-                        (anchor_fy - 0.5) * self._selected.scaled_height,
-                    )
-                    rotated_offset = self._selected._rotate_point(
-                        local_anchor_offset, QPointF(), self._hdrag_rotation
-                    )
-                    center_x = ax - rotated_offset.x()
-                    center_y = ay - rotated_offset.y()
-                    self._selected.x = center_x - self._selected.scaled_width / 2.0
-                    self._selected.y = center_y - self._selected.scaled_height / 2.0
-                
-                # Record resize action with coalescing using stable object ID
-                obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
-                if obj_id >= 0:
-                    if not self._action_recorded_this_drag:
-                        # First resize: create full-format action with initial state
-                        action = ResizeAnnotationAction(
-                            object_id=obj_id,
-                            from_width=self._drag_start_w,
-                            from_height=self._drag_start_h,
-                            to_width=self._selected.scaled_width,
-                            to_height=self._selected.scaled_height,
-                        )
-                        self._action_recorded_this_drag = True
-                    else:
-                        # Subsequent resizes: create partial-format action for merging
-                        action = ResizeAnnotationAction(
-                            object_id=obj_id,
-                            width=self._selected.scaled_width,
-                            height=self._selected.scaled_height,
-                        )
-                    self.history.record_action(action)
+                self._handle_resize_drag(pt, event)
 
             is_endpoint_drag = self._drag_endpoint_handles and self._selected.supports_endpoint_handles()
             if (
@@ -1556,12 +1418,205 @@ class DocumentCanvas(QWidget):
             ):
                 pw, ph = self.current_page_image.size
                 self._selected.clamp_to_page(pw, ph)
-            self.objectChanged.emit()
-            self.update()
+            self._invalidate_display()
             return
 
-        # Cursor hover
-        objects = self.current_page_objects()
+        self._update_hover_cursor(pt)
+
+    def _handle_move_drag(self, pt: QPointF) -> None:
+        """Move the selected object to follow the pointer, recording a coalescing MoveAnnotationAction."""
+        doc_pt = self._view_to_doc(pt)
+        self._selected.x = doc_pt.x() - self._drag_doc_offset_x
+        self._selected.y = doc_pt.y() - self._drag_doc_offset_y
+
+        # Record move action with coalescing using stable object ID
+        obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
+        if obj_id >= 0:
+            if not self._action_recorded_this_drag:
+                # First move: create full-format action with initial state
+                action = MoveAnnotationAction(
+                    object_id=obj_id,
+                    from_x=self._drag_start_x,
+                    from_y=self._drag_start_y,
+                    to_x=self._selected.x,
+                    to_y=self._selected.y,
+                )
+                self._action_recorded_this_drag = True
+            else:
+                # Subsequent moves: create partial-format action for merging
+                action = MoveAnnotationAction(
+                    object_id=obj_id,
+                    x=self._selected.x,
+                    y=self._selected.y,
+                )
+            self.history.record_action(action)
+
+    def _handle_resize_drag(self, pt: QPointF, event) -> None:
+        """Resize/reshape the selected object per the active handle drag, then record
+        a coalescing ResizeAnnotationAction (shared by both endpoint and corner/edge drags)."""
+        doc_pt = self._view_to_doc(pt)
+
+        if self._drag_endpoint_handles and self._selected.supports_endpoint_handles():
+            self._apply_endpoint_drag(doc_pt, event)
+        else:
+            self._apply_corner_edge_resize_drag(doc_pt, event)
+
+        # Record resize action with coalescing using stable object ID
+        obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
+        if obj_id >= 0:
+            if not self._action_recorded_this_drag:
+                # First resize: create full-format action with initial state
+                action = ResizeAnnotationAction(
+                    object_id=obj_id,
+                    from_width=self._drag_start_w,
+                    from_height=self._drag_start_h,
+                    to_width=self._selected.scaled_width,
+                    to_height=self._selected.scaled_height,
+                )
+                self._action_recorded_this_drag = True
+            else:
+                # Subsequent resizes: create partial-format action for merging
+                action = ResizeAnnotationAction(
+                    object_id=obj_id,
+                    width=self._selected.scaled_width,
+                    height=self._selected.scaled_height,
+                )
+            self.history.record_action(action)
+
+    def _apply_endpoint_drag(self, doc_pt: QPointF, event) -> None:
+        """Resize a line/arrow by dragging one endpoint, keeping the other endpoint fixed at its anchor."""
+        anchor = self._hdrag_anchor_doc
+        if self._drag_handle == 0:
+            tail = doc_pt
+            tip = anchor
+        else:
+            tail = anchor
+            tip = doc_pt
+
+        dx = tip.x() - tail.x()
+        dy = tip.y() - tail.y()
+        visual_len = max(8.0, math.hypot(dx, dy))
+
+        if getattr(self._selected, 'ann_type', None).value == 'arrow':
+            # Arrow tip/tail distance is 0.66 * bbox side in drawing code.
+            side = visual_len / 0.66
+        else:
+            side = visual_len
+        side = max(8.0, side)
+
+        cx = (tail.x() + tip.x()) / 2.0
+        cy = (tail.y() + tip.y()) / 2.0
+        self._selected.set_scaled_size(side, side)
+        self._selected.x = cx - self._selected.scaled_width / 2.0
+        self._selected.y = cy - self._selected.scaled_height / 2.0
+
+        if hasattr(self._selected, '_angle'):
+            ann_type_val = getattr(getattr(self._selected, 'ann_type', None), 'value', None)
+            if ann_type_val == 'line':
+                raw_angle = math.degrees(math.atan2(dy, dx))
+                # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
+                modifier_pressed = self._is_any_modifier_pressed(event)
+                effective_angle = self._snap_line_angle(raw_angle, modifier_pressed)
+                self._selected._angle = effective_angle - self._selected.rotation
+            elif ann_type_val == 'arrow':
+                raw_angle = math.degrees(math.atan2(-dy, dx))
+                # v1.2.23: Apply smart angle snapping to 8 cardinal/intercardinal directions
+                modifier_pressed = self._is_any_modifier_pressed(event)
+                effective_angle = self._snap_line_angle(raw_angle, modifier_pressed)
+                self._selected._angle = effective_angle + self._selected.rotation
+            else:
+                self._selected._angle = math.degrees(math.atan2(-dy, dx))
+
+        # Keep the non-dragged endpoint exactly fixed at the anchor.
+        # This avoids visible drift caused by floating-point roundoff
+        # while repeatedly recomputing size/angle from endpoint vectors.
+        pts = self._selected.endpoint_points_doc()
+        if len(pts) == 2:
+            fixed_idx = 1 if self._drag_handle == 0 else 0
+            fixed_pt = pts[fixed_idx]
+            self._selected.x += anchor.x() - fixed_pt.x()
+            self._selected.y += anchor.y() - fixed_pt.y()
+
+    def _apply_corner_edge_resize_drag(self, doc_pt: QPointF, event) -> None:
+        """Resize via a corner/edge handle relative to the fixed opposite anchor.
+
+        See `_start_handle_drag`'s docstring for the anchor/signed-extent model.
+        """
+        ax = self._hdrag_anchor_doc.x()
+        ay = self._hdrag_anchor_doc.y()
+        h = self._drag_handle
+        fx = HANDLE_FX[h]
+        fy = HANDLE_FY[h]
+        local_doc_pt = self._selected._rotate_point(
+            doc_pt, self._hdrag_anchor_doc, -self._hdrag_rotation
+        )
+
+        # Signed extents from the fixed anchor. A negative extent means
+        # the handle was dragged past the anchor: the box flips to the
+        # other side and the drag keeps resizing from there.
+        if fx != self._hdrag_anchor_fx:
+            signed_w = (
+                local_doc_pt.x() - ax
+                if fx > self._hdrag_anchor_fx
+                else ax - local_doc_pt.x()
+            )
+            signed_w /= abs(fx - self._hdrag_anchor_fx)
+        else:
+            signed_w = self._hdrag_start_w
+        if fy != self._hdrag_anchor_fy:
+            signed_h = (
+                local_doc_pt.y() - ay
+                if fy > self._hdrag_anchor_fy
+                else ay - local_doc_pt.y()
+            )
+            signed_h /= abs(fy - self._hdrag_anchor_fy)
+        else:
+            signed_h = self._hdrag_start_h
+
+        anchor_fx = 1.0 - self._hdrag_anchor_fx if signed_w < 0 else self._hdrag_anchor_fx
+        anchor_fy = 1.0 - self._hdrag_anchor_fy if signed_h < 0 else self._hdrag_anchor_fy
+        new_w = abs(signed_w)
+        new_h = abs(signed_h)
+
+        if self._selected.supports_free_resize():
+            new_w = max(8.0, new_w)
+            new_h = max(8.0, new_h)
+        else:
+            sx = new_w / max(1.0, self._hdrag_start_w)
+            sy = new_h / max(1.0, self._hdrag_start_h)
+            if fx == self._hdrag_anchor_fx:
+                factor = sy
+            elif fy == self._hdrag_anchor_fy:
+                factor = sx
+            else:
+                factor = max(sx, sy)
+            factor = max(0.05, min(10.0, factor))
+            new_w = self._hdrag_start_w * factor
+            new_h = self._hdrag_start_h * factor
+
+        # Square/circle snap: if ratio is within +/-20%, snap to 1:1.
+        # Modifier keys (Shift/Ctrl/Alt) disable snapping.
+        ann_type_val = getattr(getattr(self._selected, 'ann_type', None), 'value', None)
+        is_rect_ellipse = ann_type_val in ('rectangle', 'ellipse')
+        modifier_pressed = self._is_any_modifier_pressed(event)
+        if is_rect_ellipse:
+            new_w, new_h, _ = self._snap_rect_ellipse_size(new_w, new_h, h, modifier_pressed)
+
+        self._selected.resize_to_bounds(new_w, new_h)
+        local_anchor_offset = QPointF(
+            (anchor_fx - 0.5) * self._selected.scaled_width,
+            (anchor_fy - 0.5) * self._selected.scaled_height,
+        )
+        rotated_offset = self._selected._rotate_point(
+            local_anchor_offset, QPointF(), self._hdrag_rotation
+        )
+        center_x = ax - rotated_offset.x()
+        center_y = ay - rotated_offset.y()
+        self._selected.x = center_x - self._selected.scaled_width / 2.0
+        self._selected.y = center_y - self._selected.scaled_height / 2.0
+
+    def _update_hover_cursor(self, pt: QPointF) -> None:
+        """Set the mouse cursor shape for hovering over handles/objects when not dragging."""
         if self._selected is not None:
             rotation_handle = self._rotation_handle_rect_for_selection()
             if rotation_handle is not None and rotation_handle.contains(pt):
@@ -1610,16 +1665,17 @@ class DocumentCanvas(QWidget):
                             to_rotation=obj.rotation,
                         ))
                 if actions:
-                    self.history.record_action(
-                        actions[0] if len(actions) == 1 else CompositeAction(actions)
-                    )
-            self._dragging = False
-            self._rotating = False
-            self._rotation_drag_states = []
-            self._drag_handle = -1
-            self._drag_endpoint_handles = False
-            # Reset drag action tracking
-            self._action_recorded_this_drag = False
+                    self._record_composite_action(actions)
+            self._reset_drag_state()
+
+    def _reset_drag_state(self) -> None:
+        """Clear all mouse-drag/rotation bookkeeping after a drag ends."""
+        self._dragging = False
+        self._rotating = False
+        self._rotation_drag_states = []
+        self._drag_handle = -1
+        self._drag_endpoint_handles = False
+        self._action_recorded_this_drag = False
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.LeftButton and self._selected is not None:
@@ -1630,42 +1686,63 @@ class DocumentCanvas(QWidget):
     def keyPressEvent(self, event) -> None:
         key = event.key()
         modifiers = event.modifiers()
-        
-        # Get selected annotations
         selected = self.get_selected_annotations()
-        
-        # ================================================================ Page navigation
-        # Page Up / Page Down
+
+        if self._handle_navigation_and_selection_keys(key, modifiers, selected):
+            return
+
+        is_ctrl_key = bool(modifiers & Qt.ControlModifier)
+        is_shift_key = bool(modifiers & Qt.ShiftModifier)
+
+        if is_ctrl_key:
+            if self._handle_ctrl_shortcuts(key, is_shift_key, selected):
+                return
+        else:
+            if self._handle_single_key_shortcuts(key, is_shift_key, selected):
+                return
+
+        # v1.2.22: Width/font size adjustment with [ and ] keys
+        if not is_ctrl_key and not is_shift_key:
+            if self._handle_bracket_property_keys(key, selected):
+                return
+
+        super().keyPressEvent(event)
+
+    def _handle_navigation_and_selection_keys(
+        self, key: int, modifiers, selected: list[CanvasObject]
+    ) -> bool:
+        """Handle Page Up/Down/Home/End, Escape, Delete, and arrow keys (move
+        selection, or page navigation when nothing is selected).
+
+        Returns True if the key was fully handled (caller should stop processing).
+        """
         if key == Qt.Key_PageDown:
             self.goto_page(self._current_page + 1)
-            return
+            return True
         elif key == Qt.Key_PageUp:
             self.goto_page(self._current_page - 1)
-            return
+            return True
         elif key == Qt.Key_Home:
             self.goto_page(0)
-            return
+            return True
         elif key == Qt.Key_End:
             self.goto_page(len(self._pages) - 1)
-            return
-        
-        # ================================================================ Escape: Deselect all
+            return True
+
         if key == Qt.Key_Escape:
             self.clear_selection()
-            return
-        
-        # ================================================================ Delete annotation(s)
+            return True
+
         if key in (Qt.Key_Delete, Qt.Key_Backspace):
             if selected:
                 self.delete_selected()
-            return
-        
-        # ================================================================ Arrow keys
+            return True
+
         if key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
             if selected:
                 # Movement: 12pt normal, 1px with Shift (per V1.2.18)
-                increment = 1.0 if modifiers & Qt.ShiftModifier else 12.0
-                
+                increment = KEYBOARD_MOVE_FINE_STEP_PT if modifiers & Qt.ShiftModifier else KEYBOARD_MOVE_STEP_PT
+
                 if key == Qt.Key_Up:
                     self.move_selected(0, -increment)
                 elif key == Qt.Key_Down:
@@ -1674,170 +1751,171 @@ class DocumentCanvas(QWidget):
                     self.move_selected(-increment, 0)
                 elif key == Qt.Key_Right:
                     self.move_selected(increment, 0)
-                return
+                return True
             else:
                 # Page navigation without annotation selected: left/right arrows
                 if key == Qt.Key_Left:
                     self.goto_page(self._current_page - 1)
-                    return
+                    return True
                 elif key == Qt.Key_Right:
                     self.goto_page(self._current_page + 1)
-                    return
-        
-        # ================================================================ Copy / Cut / Paste / Duplicate
-        # Both Ctrl variants (Ctrl+C/X/V/D/A/Z/Y) and single-key variants (C/X/V/D/A/Z/Y)
-        is_ctrl_key = modifiers & Qt.ControlModifier
-        is_shift_key = modifiers & Qt.ShiftModifier
-        
-        if is_ctrl_key:
-            if key == Qt.Key_C:
-                if selected:
-                    self.copy_selected()
-                return
-            elif key == Qt.Key_X:
-                if selected:
-                    self.cut_selected()
-                return
-            elif key == Qt.Key_V:
-                self.paste_selected()
-                return
-            elif key == Qt.Key_D:
-                if selected:
-                    self.duplicate_selected()
-                return
-            elif key == Qt.Key_A:
-                self.select_all_on_page()
-                return
-            elif key == Qt.Key_Z:
-                # Undo (Ctrl+Z) - delegate to parent window
-                self.parent().undo() if hasattr(self.parent(), 'undo') else None
-                return
-            elif key in (Qt.Key_Y, Qt.Key_Plus):  # Ctrl+Y for Redo
-                # Redo (Ctrl+Y or Ctrl+Shift+Z) - delegate to parent window
-                self.parent().redo() if hasattr(self.parent(), 'redo') else None
-                return
-            # ================================================================ Rotation with Ctrl
-            elif key == Qt.Key_L:
-                if is_shift_key:
-                    # Shift+Ctrl+L: Rotate current page left
-                    self.rotate_current_page_left()
-                else:
-                    # Ctrl+L: Rotate all pages left
-                    self.rotate_all_pages_left()
-                return
-            elif key == Qt.Key_R:
-                if is_shift_key:
-                    # Shift+Ctrl+R: Rotate current page right
-                    self.rotate_current_page_right()
-                else:
-                    # Ctrl+R: Rotate all pages right
-                    self.rotate_all_pages_right()
-                return
-            # ================================================================ Document operations (delegate to parent)
-            elif key == Qt.Key_O:
-                # Ctrl+O: Open document
-                if hasattr(self.parent(), 'open_document'):
-                    self.parent().open_document()
-                return
-            elif key == Qt.Key_S:
-                # Ctrl+S: Save As dialog
-                if hasattr(self.parent(), 'save_document_as'):
-                    self.parent().save_document_as()
-                return
-            elif key == Qt.Key_P:
-                # Ctrl+P: Print
-                if hasattr(self.parent(), 'print_document'):
-                    self.parent().print_document()
-                return
-        else:
-            # ================================================================ Single-key hotkey variants (no Ctrl)
-            # These are available only in default document view (no Ctrl modifier)
-            if key == Qt.Key_Plus:
-                # +: Open the toolbar annotation menu
-                if hasattr(self.parent(), 'show_annotation_menu'):
-                    self.parent().show_annotation_menu()
-                return
-            elif key == Qt.Key_O:
-                # O: Open document
-                if hasattr(self.parent(), 'open_document'):
-                    self.parent().open_document()
-                return
-            elif key == Qt.Key_S:
-                # S: Save As dialog
-                if hasattr(self.parent(), 'save_document_as'):
-                    self.parent().save_document_as()
-                return
-            elif key == Qt.Key_P:
-                # P: Print
-                if hasattr(self.parent(), 'print_document'):
-                    self.parent().print_document()
-                return
-            elif key == Qt.Key_C:
-                # C: Copy
-                if selected:
-                    self.copy_selected()
-                return
-            elif key == Qt.Key_X:
-                # X: Cut
-                if selected:
-                    self.cut_selected()
-                return
-            elif key == Qt.Key_V:
-                # V: Paste
-                self.paste_selected()
-                return
-            elif key == Qt.Key_D:
-                # D: Duplicate
-                if selected:
-                    self.duplicate_selected()
-                return
-            elif key == Qt.Key_A:
-                # A: Select all
-                self.select_all_on_page()
-                return
-            elif key == Qt.Key_Z:
-                # Z: Undo
-                if hasattr(self.parent(), 'undo'):
-                    self.parent().undo()
-                return
-            elif key == Qt.Key_Y:
-                # Y: Redo
-                if hasattr(self.parent(), 'redo'):
-                    self.parent().redo()
-                return
-            elif key == Qt.Key_L:
-                # L or Shift+L: Rotate
-                if is_shift_key:
-                    # Shift+L: Rotate current page left
-                    self.rotate_current_page_left()
-                else:
-                    # L: Rotate all pages left
-                    self.rotate_all_pages_left()
-                return
-            elif key == Qt.Key_R:
-                # R or Shift+R: Rotate
-                if is_shift_key:
-                    # Shift+R: Rotate current page right
-                    self.rotate_current_page_right()
-                else:
-                    # R: Rotate all pages right
-                    self.rotate_all_pages_right()
-                return
-        
-        # v1.2.22: Width/font size adjustment with [ and ] keys
-        if not is_ctrl_key and not is_shift_key:
-            if key == Qt.Key_BracketLeft:  # [
-                # Decrease line width or font size
-                if selected:
-                    self._adjust_annotation_property(selected, 'decrease')
-                return
-            elif key == Qt.Key_BracketRight:  # ]
-                # Increase line width or font size
-                if selected:
-                    self._adjust_annotation_property(selected, 'increase')
-                return
-        
-        super().keyPressEvent(event)
+                    return True
+        return False
+
+    def _handle_ctrl_shortcuts(self, key: int, is_shift_key: bool, selected: list[CanvasObject]) -> bool:
+        """Handle Ctrl+<key> shortcuts (copy/cut/paste/duplicate/select-all/undo/redo,
+        rotation, and document operations). Returns True if the key was handled.
+        """
+        if key == Qt.Key_C:
+            if selected:
+                self.copy_selected()
+            return True
+        elif key == Qt.Key_X:
+            if selected:
+                self.cut_selected()
+            return True
+        elif key == Qt.Key_V:
+            self.paste_selected()
+            return True
+        elif key == Qt.Key_D:
+            if selected:
+                self.duplicate_selected()
+            return True
+        elif key == Qt.Key_A:
+            self.select_all_on_page()
+            return True
+        elif key == Qt.Key_Z:
+            # Undo (Ctrl+Z) - delegate to parent window
+            self.parent().undo() if hasattr(self.parent(), 'undo') else None
+            return True
+        elif key in (Qt.Key_Y, Qt.Key_Plus):  # Ctrl+Y for Redo
+            # Redo (Ctrl+Y or Ctrl+Shift+Z) - delegate to parent window
+            self.parent().redo() if hasattr(self.parent(), 'redo') else None
+            return True
+        # ================================================================ Rotation with Ctrl
+        elif key == Qt.Key_L:
+            if is_shift_key:
+                # Shift+Ctrl+L: Rotate current page left
+                self.rotate_current_page_left()
+            else:
+                # Ctrl+L: Rotate all pages left
+                self.rotate_all_pages_left()
+            return True
+        elif key == Qt.Key_R:
+            if is_shift_key:
+                # Shift+Ctrl+R: Rotate current page right
+                self.rotate_current_page_right()
+            else:
+                # Ctrl+R: Rotate all pages right
+                self.rotate_all_pages_right()
+            return True
+        # ================================================================ Document operations (delegate to parent)
+        elif key == Qt.Key_O:
+            # Ctrl+O: Open document
+            if hasattr(self.parent(), 'open_document'):
+                self.parent().open_document()
+            return True
+        elif key == Qt.Key_S:
+            # Ctrl+S: Save As dialog
+            if hasattr(self.parent(), 'save_document_as'):
+                self.parent().save_document_as()
+            return True
+        elif key == Qt.Key_P:
+            # Ctrl+P: Print
+            if hasattr(self.parent(), 'print_document'):
+                self.parent().print_document()
+            return True
+        return False
+
+    def _handle_single_key_shortcuts(self, key: int, is_shift_key: bool, selected: list[CanvasObject]) -> bool:
+        """Handle single-key hotkey variants available with no Ctrl modifier
+        (copy/cut/paste/duplicate/select-all/undo/redo/rotation/document ops
+        without needing Ctrl). Returns True if the key was handled.
+        """
+        if key == Qt.Key_Plus:
+            # +: Open the toolbar annotation menu
+            if hasattr(self.parent(), 'show_annotation_menu'):
+                self.parent().show_annotation_menu()
+            return True
+        elif key == Qt.Key_O:
+            # O: Open document
+            if hasattr(self.parent(), 'open_document'):
+                self.parent().open_document()
+            return True
+        elif key == Qt.Key_S:
+            # S: Save As dialog
+            if hasattr(self.parent(), 'save_document_as'):
+                self.parent().save_document_as()
+            return True
+        elif key == Qt.Key_P:
+            # P: Print
+            if hasattr(self.parent(), 'print_document'):
+                self.parent().print_document()
+            return True
+        elif key == Qt.Key_C:
+            # C: Copy
+            if selected:
+                self.copy_selected()
+            return True
+        elif key == Qt.Key_X:
+            # X: Cut
+            if selected:
+                self.cut_selected()
+            return True
+        elif key == Qt.Key_V:
+            # V: Paste
+            self.paste_selected()
+            return True
+        elif key == Qt.Key_D:
+            # D: Duplicate
+            if selected:
+                self.duplicate_selected()
+            return True
+        elif key == Qt.Key_A:
+            # A: Select all
+            self.select_all_on_page()
+            return True
+        elif key == Qt.Key_Z:
+            # Z: Undo
+            if hasattr(self.parent(), 'undo'):
+                self.parent().undo()
+            return True
+        elif key == Qt.Key_Y:
+            # Y: Redo
+            if hasattr(self.parent(), 'redo'):
+                self.parent().redo()
+            return True
+        elif key == Qt.Key_L:
+            # L or Shift+L: Rotate
+            if is_shift_key:
+                # Shift+L: Rotate current page left
+                self.rotate_current_page_left()
+            else:
+                # L: Rotate all pages left
+                self.rotate_all_pages_left()
+            return True
+        elif key == Qt.Key_R:
+            # R or Shift+R: Rotate
+            if is_shift_key:
+                # Shift+R: Rotate current page right
+                self.rotate_current_page_right()
+            else:
+                # R: Rotate all pages right
+                self.rotate_all_pages_right()
+            return True
+        return False
+
+    def _handle_bracket_property_keys(self, key: int, selected: list[CanvasObject]) -> bool:
+        """[ / ] decrease/increase line width (vector types) or font size (text)."""
+        if key == Qt.Key_BracketLeft:
+            if selected:
+                self._adjust_annotation_property(selected, 'decrease')
+            return True
+        elif key == Qt.Key_BracketRight:
+            if selected:
+                self._adjust_annotation_property(selected, 'increase')
+            return True
+        return False
 
     # ---------------------------------------------------------------- Drag and drop events
     

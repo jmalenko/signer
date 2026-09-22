@@ -29,24 +29,14 @@ from .constants import (
     DEFAULT_FONT_FAMILY,
     DEFAULT_LINE_WIDTH_PT,
     DEFAULT_TEXT_FONT_PT,
+    DPI_SCALE,
+    FONT_SIZE_STEPS_PT,
+    LINE_WIDTH_STEPS_PT,
 )
 
 logger = logging.getLogger(__name__)
 
-
-# Document is internally rendered at 300 DPI, PDF standard is 72 DPI
-# DPI_SCALE is used to convert PDF points to 300 DPI pixels for rendering
-DPI_SCALE: float = 300.0 / 72.0  # 4.16667
 DUPLICATE_OFFSET: float = 20.0
-
-# v1.2.32: Discrete step lists for the `[` / `]` keyboard shortcuts, so each press
-# jumps to a "usual" size rather than a small fixed increment.
-FONT_SIZE_STEPS_PT: tuple[float, ...] = (
-    6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 54, 60, 66, 72,
-)
-LINE_WIDTH_STEPS_PT: tuple[float, ...] = (
-    0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16,
-)
 
 
 def step_size(value: float, steps: tuple[float, ...], direction: str) -> float:
@@ -109,6 +99,14 @@ HANDLE_SIZE = 10.0
 ROTATION_HANDLE_SIZE = 12.0
 ROTATION_HANDLE_OFFSET = 24.0
 VISIBLE_ALPHA_RUN = re.compile(rb"[^\x00]+")
+
+# _draw_symbol() geometry constants (fractions of min(vw, vh) unless noted).
+SYMBOL_MARGIN_FACTOR = 0.12  # Checkmark/crossmark inset from the bounding box edge.
+CHECKMARK_LOWER_VERTEX_Y_FACTOR = 0.55  # Checkmark's left vertex, as a fraction of vh.
+CHECKMARK_MIDDLE_VERTEX_X_FACTOR = 0.38  # Checkmark's bottom vertex, as a fraction of vw.
+ARROW_SHAFT_LENGTH_FACTOR = 0.33  # Arrow shaft half-length from center.
+ARROW_HEAD_LENGTH_FACTOR = 0.18  # Arrowhead barb length.
+ARROW_HEAD_ANGLE_DEG = 35  # Arrowhead barb angle from the reversed shaft direction.
 
 
 class CanvasObject:
@@ -545,6 +543,9 @@ class VectorAnnotation(CanvasObject):
         size_factor = min(width_factor, height_factor)
         old_font_size = self._font_size_pt
         requested_font_size = round(old_font_size * size_factor)
+        # Clamp to the supported font-size range (not snapped to individual steps -
+        # only the min/max bounds of FONT_SIZE_STEPS_PT are enforced here; the
+        # `[` / `]` keyboard shortcuts are what step through the discrete sizes).
         self._font_size_pt = max(
             FONT_SIZE_STEPS_PT[0],
             min(FONT_SIZE_STEPS_PT[-1], requested_font_size),
@@ -691,106 +692,119 @@ class VectorAnnotation(CanvasObject):
         return pen
 
     def _draw_symbol(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float = 1.0) -> None:
-        m = min(vw, vh) * 0.12
-        t = self.ann_type
+        drawers = {
+            AnnotationType.CHECKMARK: self._draw_checkmark,
+            AnnotationType.CROSSMARK: self._draw_crossmark,
+            AnnotationType.LINE: self._draw_line,
+            AnnotationType.RECTANGLE: self._draw_rectangle,
+            AnnotationType.ELLIPSE: self._draw_ellipse,
+            AnnotationType.TEXT: self._draw_text,
+            AnnotationType.ARROW: self._draw_arrow,
+        }
+        drawer = drawers.get(self.ann_type)
+        if drawer is not None:
+            drawer(painter, vx, vy, vw, vh, doc_scale)
 
-        if t == AnnotationType.CHECKMARK:
-            painter.setPen(self._pen(doc_scale))
-            painter.setBrush(Qt.NoBrush)
-            path = QPainterPath()
-            path.moveTo(vx + m, vy + vh * 0.55)
-            path.lineTo(vx + vw * 0.38, vy + vh - m)
-            path.lineTo(vx + vw - m, vy + m)
-            painter.drawPath(path)
+    def _draw_checkmark(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
+        m = min(vw, vh) * SYMBOL_MARGIN_FACTOR
+        painter.setPen(self._pen(doc_scale))
+        painter.setBrush(Qt.NoBrush)
+        path = QPainterPath()
+        path.moveTo(vx + m, vy + vh * CHECKMARK_LOWER_VERTEX_Y_FACTOR)
+        path.lineTo(vx + vw * CHECKMARK_MIDDLE_VERTEX_X_FACTOR, vy + vh - m)
+        path.lineTo(vx + vw - m, vy + m)
+        painter.drawPath(path)
 
-        elif t == AnnotationType.CROSSMARK:
-            painter.setPen(self._pen(doc_scale))
-            painter.setBrush(Qt.NoBrush)
-            painter.drawLine(QPointF(vx + m, vy + m), QPointF(vx + vw - m, vy + vh - m))
-            painter.drawLine(QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m))
+    def _draw_crossmark(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
+        m = min(vw, vh) * SYMBOL_MARGIN_FACTOR
+        painter.setPen(self._pen(doc_scale))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawLine(QPointF(vx + m, vy + m), QPointF(vx + vw - m, vy + vh - m))
+        painter.drawLine(QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m))
 
-        elif t == AnnotationType.LINE:
-            pen = QPen(self.color)
-            pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
-            pen.setCapStyle(Qt.RoundCap)
-            painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
-            angle = getattr(self, '_angle', None)
-            if angle is not None:
-                # Draw a rotated line through the center of the bounding box.
-                # Use min(vw, vh)/2 so the line always fits inside the box
-                # regardless of angle.  The bounding box should be square for
-                # full-length lines in all directions.
-                cx, cy = vx + vw / 2.0, vy + vh / 2.0
-                half_len = min(vw, vh) / 2.0
-                a_rad = math.radians(angle)
-                cos_a = math.cos(a_rad)
-                sin_a = math.sin(a_rad)
-                painter.drawLine(
-                    QPointF(cx - cos_a * half_len, cy - sin_a * half_len),
-                    QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
-                )
-            else:
-                # Default: diagonal line from bottom-left to top-right (like /)
-                painter.drawLine(QPointF(vx, vy + vh), QPointF(vx + vw, vy))
-
-        elif t == AnnotationType.RECTANGLE:
-            pen = QPen(self.color)
-            pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
-            pen.setJoinStyle(Qt.MiterJoin)
-            painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
-            half_pw = pen.widthF() / 2.0
-            painter.drawRect(QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF()))
-
-        elif t == AnnotationType.ELLIPSE:
-            pen = QPen(self.color)
-            pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
-            painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
-            half_pw = pen.widthF() / 2.0
-            painter.drawEllipse(QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF()))
-
-        elif t == AnnotationType.TEXT:
-            factor = min(
-                self.scaled_width / max(1.0, self._natural_width),
-                self.scaled_height / max(1.0, self._natural_height),
+    def _draw_line(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
+        pen = QPen(self.color)
+        pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
+        pen.setCapStyle(Qt.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        angle = getattr(self, '_angle', None)
+        if angle is not None:
+            # Draw a rotated line through the center of the bounding box.
+            # Use min(vw, vh)/2 so the line always fits inside the box
+            # regardless of angle.  The bounding box should be square for
+            # full-length lines in all directions.
+            cx, cy = vx + vw / 2.0, vy + vh / 2.0
+            half_len = min(vw, vh) / 2.0
+            a_rad = math.radians(angle)
+            cos_a = math.cos(a_rad)
+            sin_a = math.sin(a_rad)
+            painter.drawLine(
+                QPointF(cx - cos_a * half_len, cy - sin_a * half_len),
+                QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
             )
-            font = self._make_font()
-            # Font size already includes DPI_SCALE from _make_font(), multiply by factor and doc_scale
-            font.setPixelSize(max(1, round(font.pixelSize() * factor * doc_scale)))
-            painter.setFont(font)
-            painter.setPen(self.color)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawText(QRectF(vx, vy, vw, vh), Qt.AlignLeft | Qt.AlignTop, self.text or "")
+        else:
+            # Default: diagonal line from bottom-left to top-right (like /)
+            painter.drawLine(QPointF(vx, vy + vh), QPointF(vx + vw, vy))
 
-        elif t == AnnotationType.ARROW:
-            # ARROW uses _angle for free rotation
-            angle_deg = getattr(self, '_angle', None)
-            if angle_deg is None:
-                angle_deg = 0.0
-            angle_rad = math.radians(angle_deg)
-            cx, cy = vx + vw / 2, vy + vh / 2
-            shaft = min(vw, vh) * 0.33
-            head = min(vw, vh) * 0.18
-            cos_a = math.cos(angle_rad)
-            sin_a = math.sin(angle_rad)
-            tip = QPointF(cx + cos_a * shaft, cy - sin_a * shaft)
-            tail = QPointF(cx - cos_a * shaft, cy + sin_a * shaft)
-            pen = QPen(self.color)
-            pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
-            pen.setCapStyle(Qt.RoundCap)
-            pen.setJoinStyle(Qt.RoundJoin)
-            painter.setPen(pen)
-            painter.setBrush(Qt.NoBrush)
-            painter.drawLine(tail, tip)
-            la = angle_rad + math.radians(145)
-            ra = angle_rad - math.radians(145)
-            left_tip = QPointF(tip.x() + math.cos(la) * head, tip.y() - math.sin(la) * head)
-            right_tip = QPointF(tip.x() + math.cos(ra) * head, tip.y() - math.sin(ra) * head)
-            # Draw all arrowheads as stroked segments so head width matches stem.
-            painter.drawLine(tip, left_tip)
-            painter.drawLine(tip, right_tip)
+    def _draw_rectangle(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
+        pen = QPen(self.color)
+        pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
+        pen.setJoinStyle(Qt.MiterJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        half_pw = pen.widthF() / 2.0
+        painter.drawRect(QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF()))
+
+    def _draw_ellipse(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
+        pen = QPen(self.color)
+        pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        half_pw = pen.widthF() / 2.0
+        painter.drawEllipse(QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF()))
+
+    def _draw_text(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
+        factor = min(
+            self.scaled_width / max(1.0, self._natural_width),
+            self.scaled_height / max(1.0, self._natural_height),
+        )
+        font = self._make_font()
+        # Font size already includes DPI_SCALE from _make_font(), multiply by factor and doc_scale
+        font.setPixelSize(max(1, round(font.pixelSize() * factor * doc_scale)))
+        painter.setFont(font)
+        painter.setPen(self.color)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawText(QRectF(vx, vy, vw, vh), Qt.AlignLeft | Qt.AlignTop, self.text or "")
+
+    def _draw_arrow(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
+        # ARROW uses _angle for free rotation
+        angle_deg = getattr(self, '_angle', None)
+        if angle_deg is None:
+            angle_deg = 0.0
+        angle_rad = math.radians(angle_deg)
+        cx, cy = vx + vw / 2, vy + vh / 2
+        shaft = min(vw, vh) * ARROW_SHAFT_LENGTH_FACTOR
+        head = min(vw, vh) * ARROW_HEAD_LENGTH_FACTOR
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        tip = QPointF(cx + cos_a * shaft, cy - sin_a * shaft)
+        tail = QPointF(cx - cos_a * shaft, cy + sin_a * shaft)
+        pen = QPen(self.color)
+        pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawLine(tail, tip)
+        # Barbs point back from the tip, offset by ARROW_HEAD_ANGLE_DEG from the reversed shaft.
+        la = angle_rad + math.pi - math.radians(ARROW_HEAD_ANGLE_DEG)
+        ra = angle_rad - math.pi + math.radians(ARROW_HEAD_ANGLE_DEG)
+        left_tip = QPointF(tip.x() + math.cos(la) * head, tip.y() - math.sin(la) * head)
+        right_tip = QPointF(tip.x() + math.cos(ra) * head, tip.y() - math.sin(ra) * head)
+        # Draw all arrowheads as stroked segments so head width matches stem.
+        painter.drawLine(tip, left_tip)
+        painter.drawLine(tip, right_tip)
 
     # ------------------------------------------------------------------ PIL render
 

@@ -131,17 +131,19 @@ class ExportQualityOptionsPanel(QDialog):
         self.ok_button.clicked.connect(self._on_ok_clicked)
         self.cancel_button.clicked.connect(self._on_cancel_clicked)
         
+    @staticmethod
+    def _set_value_silently(widget, value: int) -> None:
+        widget.blockSignals(True)
+        widget.setValue(value)
+        widget.blockSignals(False)
+
     def _on_slider_changed(self, value: int) -> None:
         """Handle slider value changes."""
-        self.quality_spinbox.blockSignals(True)
-        self.quality_spinbox.setValue(value)
-        self.quality_spinbox.blockSignals(False)
+        self._set_value_silently(self.quality_spinbox, value)
         
     def _on_spinbox_changed(self, value: int) -> None:
         """Handle spinbox value changes."""
-        self.quality_slider.blockSignals(True)
-        self.quality_slider.setValue(value)
-        self.quality_slider.blockSignals(False)
+        self._set_value_silently(self.quality_slider, value)
         
     def _on_ok_clicked(self) -> None:
         """Handle OK button click."""

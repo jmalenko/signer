@@ -7,6 +7,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from .cli import parse_args
+from .debug import is_frozen
 from .main_window import MainWindow
 from .settings import SettingsStore
 
@@ -18,13 +19,14 @@ except ImportError:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Build the QApplication, load settings, show the main window, and run the event loop."""
     args = parse_args(argv)
 
     app = QApplication(sys.argv if argv is None else [sys.argv[0], *argv])
     
     # Set application icon (prefer transparent PNG for UI consistency)
     # Handle both source and PyInstaller modes
-    if getattr(sys, 'frozen', False):
+    if is_frozen():
         # Running as PyInstaller executable - resources are in sys._MEIPASS
         resources_dir = Path(sys._MEIPASS) / "signer" / "resources"
     else:

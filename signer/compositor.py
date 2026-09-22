@@ -10,6 +10,13 @@ from .objects import CanvasObject
 
 logger = logging.getLogger(__name__)
 
+# Placeholder character replaced with the page number in multi-page per-file exports.
+MULTIPAGE_PLACEHOLDER = "#"
+
+# Default lossy-compression quality (1-100) used when the caller doesn't override it.
+DEFAULT_JPG_QUALITY = 95
+DEFAULT_PDF_QUALITY = 95
+
 
 class ExportFormat(Enum):
     """Supported export formats."""
@@ -178,7 +185,7 @@ def build_suggested_filename_for_dialog(
         return f"{base}{ext}"
     
     # Rule 3: Multi-page per-file format
-    return f"{base}-p#{ext}"
+    return f"{base}-p{MULTIPAGE_PLACEHOLDER}{ext}"
 
 
 def replace_placeholder_with_page_number(
@@ -191,12 +198,12 @@ def replace_placeholder_with_page_number(
     
     Example: "document-p#.jpg" → "document-p01.jpg" (for 98-page doc, page 0)
     """
-    if "#" not in filename:
+    if MULTIPAGE_PLACEHOLDER not in filename:
         return filename
     
     pad_width = len(str(total_pages))
     page_num = f"{page_index + 1:0{pad_width}d}"
-    return filename.replace("#", page_num)
+    return filename.replace(MULTIPAGE_PLACEHOLDER, page_num)
 
 
 def validate_placeholder_for_multipage_export(
@@ -218,7 +225,7 @@ def validate_placeholder_for_multipage_export(
         return True, ""
     
     # Multi-page per-file format MUST have placeholder
-    if "#" not in filename_stem:
+    if MULTIPAGE_PLACEHOLDER not in filename_stem:
         return False, (
             "File format cannot store multiple pages in one file. "
             "Each page will be in a separate file. "
@@ -296,7 +303,7 @@ def detect_older_page_files(
     ext = export_format.extension()
     
     # Remove placeholder from filename_stem to get the actual base name
-    base_filename = filename_stem.replace("#", "")
+    base_filename = filename_stem.replace(MULTIPAGE_PLACEHOLDER, "")
     
     # Build a glob pattern to find all page files
     # Since base_filename already has the suffix pattern (e.g., "doc-p" from "doc-p#")
@@ -450,7 +457,7 @@ def composite_objects_to_jpg(
     page_image: Image.Image,
     objects: list[CanvasObject],
     output_path: str | Path,
-    jpg_quality: int = 95,
+    jpg_quality: int = DEFAULT_JPG_QUALITY,
 ) -> None:
     """Composite all objects over the page image and save as JPEG.
     """
@@ -488,7 +495,7 @@ def composite_pages_to_pdf(
     page_images: list[Image.Image],
     page_objects: list[list[CanvasObject]],
     output_path: str | Path,
-    pdf_quality: int = 95,
+    pdf_quality: int = DEFAULT_PDF_QUALITY,
 ) -> None:
     """Composite objects over pages and save as PDF (raster images).
     
@@ -543,7 +550,7 @@ def composite_objects_to_format(
     objects: list[CanvasObject],
     output_path: str | Path,
     export_format: ExportFormat,
-    jpg_quality: int = 95,
+    jpg_quality: int = DEFAULT_JPG_QUALITY,
 ) -> None:
     """Composite objects to specified format. For single-page export.
     

@@ -26,6 +26,7 @@ def render_all_pages(
         
     Raises:
         ValueError: If the document cannot be loaded or format is unsupported
+            (raised by and propagated unchanged from the underlying loader).
     """
     loader_registry = DocumentLoaderRegistry(libreoffice_path)
     

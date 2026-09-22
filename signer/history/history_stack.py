@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .action import Action, MoveAnnotationAction, ResizeAnnotationAction
+from .action import Action, MergeableAction
 
 
 class HistoryStack:
@@ -31,7 +31,7 @@ class HistoryStack:
             action: The action to record
         
         Coalescing Rules:
-        - Only move/resize actions coalesce
+        - Only actions that support merging (MergeableAction, e.g. move/resize) coalesce
         - Last action must be same type and operate on same object
         - If compatible, merge() is called to update target state in-place
         - Otherwise, action is pushed to undo_stack as normal
@@ -39,7 +39,7 @@ class HistoryStack:
         """
         # Check if this action can coalesce with the last action
         if (
-            isinstance(action, (MoveAnnotationAction, ResizeAnnotationAction))
+            isinstance(action, MergeableAction)
             and self.undo_stack
             and self.can_coalesce(self.undo_stack[-1], action)
         ):

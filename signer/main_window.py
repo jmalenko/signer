@@ -62,11 +62,14 @@ from .compositor import (
     validate_placeholder_for_multipage_export,
 )
 from .export_quality_dialog import ExportQualityOptionsPanel
-from .notification import NotificationToast
-from .objects import (
+from .constants import (
     DEFAULT_FONT_FAMILY,
     DEFAULT_LINE_WIDTH_PT,
     DEFAULT_TEXT_FONT_PT,
+    SUPPORTED_SIGNATURE_EXT,
+)
+from .notification import NotificationToast
+from .objects import (
     AnnotationType,
     ProjectFile,
     SignatureObject,
@@ -76,7 +79,8 @@ from .pdf_utils import render_all_pages
 from .prepare_signature_dialog import PrepareSignatureDialog
 from .settings import AppSettings, SettingsStore
 
-SUPPORTED_SIGNATURE_EXT = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff", ".tif", ".webp", ".ico"}
+# Max number of entries kept in each "recent items" list (documents, signatures, texts).
+MAX_RECENT_ITEMS = 10
 
 
 class _SaveDialogWithFilterDetection(QFileDialog):
@@ -685,36 +689,33 @@ class MainWindow(QMainWindow):
         can_paste = has_doc and self.canvas.has_pasteable_data()
 
         if self._auto_save_project_action is not None:
-            self._auto_save_project_action.blockSignals(True)
-            self._auto_save_project_action.setChecked(self._settings.auto_save_project)
-            self._auto_save_project_action.blockSignals(False)
+            self._set_value_silently(
+                self._auto_save_project_action, self._settings.auto_save_project, setter="setChecked"
+            )
 
-        if self._print_action is not None:
-            self._print_action.setEnabled(has_doc)
-        if self._menu_undo_action is not None:
-            self._menu_undo_action.setEnabled(self.canvas.can_undo())
-        if self._menu_redo_action is not None:
-            self._menu_redo_action.setEnabled(self.canvas.can_redo())
-        if self._menu_cut_action is not None:
-            self._menu_cut_action.setEnabled(has_selection)
-        if self._menu_copy_action is not None:
-            self._menu_copy_action.setEnabled(has_selection)
-        if self._menu_paste_action is not None:
-            self._menu_paste_action.setEnabled(can_paste)
-        if self._menu_duplicate_action is not None:
-            self._menu_duplicate_action.setEnabled(has_selection)
-        if self._menu_select_all_action is not None:
-            self._menu_select_all_action.setEnabled(has_page_objects)
-        if self._menu_delete_action is not None:
-            self._menu_delete_action.setEnabled(has_selection)
-        for action in (
+        # Declarative action -> enabled-condition mapping so adding a new menu
+        # action doesn't require another `if action is not None: action.setEnabled(...)` block.
+        rotation_actions = (
             self._menu_rotate_page_left_action,
             self._menu_rotate_page_right_action,
             self._menu_rotate_all_left_action,
             self._menu_rotate_all_right_action,
-        ):
+        )
+        action_conditions = [
+            (self._print_action, has_doc),
+            (self._menu_undo_action, self.canvas.can_undo()),
+            (self._menu_redo_action, self.canvas.can_redo()),
+            (self._menu_cut_action, has_selection),
+            (self._menu_copy_action, has_selection),
+            (self._menu_paste_action, can_paste),
+            (self._menu_duplicate_action, has_selection),
+            (self._menu_select_all_action, has_page_objects),
+            (self._menu_delete_action, has_selection),
+            *((action, has_doc) for action in rotation_actions),
+        ]
+        for action, enabled in action_conditions:
             if action is not None:
-                action.setEnabled(has_doc)
+                action.setEnabled(enabled)
 
     def _update_document_workflow_state(self) -> None:
         """Enable/disable document-dependent workflow controls."""
@@ -771,11 +772,40 @@ class MainWindow(QMainWindow):
         paths = self._settings.recent_signature_paths
         if paths:
             self._sig_ann_menu.addSeparator()
-            for p in paths:
-                self._sig_ann_menu.addAction(
-                    Path(p).name,
-                    lambda checked=False, path=p: self._load_signature_file(path, at_default_position=False),
-                )
+            self._rebuild_menu_items(
+                self._sig_ann_menu, [], paths,
+                label_fn=lambda p: Path(p).name,
+                callback=lambda p: self._load_signature_file(p, at_default_position=False),
+            )
+
+    @staticmethod
+    def _truncate_for_menu(text: str, max_len: int = 50) -> str:
+        return text[:max_len] + "…" if len(text) > max_len else text
+
+    @staticmethod
+    def _rebuild_menu_items(menu: QMenu, tracked_actions: list, items: list, label_fn, callback) -> list:
+        """Remove previously-tracked actions from `menu`, then add one action per
+        item in `items` (calling `callback(item)` when triggered). Returns the new
+        list of tracked actions for the caller to store and pass in next time.
+        """
+        for act in tracked_actions:
+            menu.removeAction(act)
+        return [
+            menu.addAction(label_fn(item), lambda checked=False, i=item: callback(i))
+            for item in items
+        ]
+
+    def _rebuild_tracked_menu_section(self, menu: QMenu, tracked_actions: list, items: list, label_fn, callback) -> list:
+        """Like `_rebuild_menu_items`, but also manages a leading separator: adds one
+        before the item actions when `items` is non-empty, and tracks/removes it
+        along with them. Used for recent-items sections appended after static menu
+        items (e.g. recent documents at the bottom of the File menu).
+        """
+        for act in tracked_actions:
+            menu.removeAction(act)
+        if not items:
+            return []
+        return [menu.addSeparator()] + self._rebuild_menu_items(menu, [], items, label_fn, callback)
 
     def _rebuild_recent_documents_menu(self) -> None:
         """Rebuild the recent documents menu in the toolbar."""
@@ -784,95 +814,47 @@ class MainWindow(QMainWindow):
         self._recent_docs_menu.clear()
         paths = self._settings.recent_document_paths
         if paths:
-            for p in paths:
-                self._recent_docs_menu.addAction(
-                    Path(p).name,
-                    lambda checked=False, path=p: self.open_document(path),
-                )
+            self._rebuild_menu_items(
+                self._recent_docs_menu, [], paths,
+                label_fn=lambda p: Path(p).name,
+                callback=self.open_document,
+            )
         else:
             act = self._recent_docs_menu.addAction("(none)")
             act.setEnabled(False)
 
-    def _rebuild_file_recent_documents_menu(self) -> None:
-        """Rebuild the recent documents menu in the File menu (hamburger)."""
-        if not hasattr(self, '_file_recent_docs_menu') or self._file_recent_docs_menu is None:
-            return
-        self._file_recent_docs_menu.clear()
-        paths = self._settings.recent_document_paths
-        if paths:
-            for p in paths:
-                self._file_recent_docs_menu.addAction(
-                    Path(p).name,
-                    lambda checked=False, path=p: self.open_document(path),
-                )
-        else:
-            act = self._file_recent_docs_menu.addAction("(none)")
-            act.setEnabled(False)
-
     def _rebuild_file_recent_documents_top_level(self, file_menu: QMenu) -> None:
         """Rebuild recent documents at the top level of File menu, after static items, separated by a horizontal rule."""
-        # Remove old recent document actions
-        for act in self._file_recent_docs_actions:
-            file_menu.removeAction(act)
-        self._file_recent_docs_actions.clear()
-        
-        paths = self._settings.recent_document_paths
-        if paths:
-            # Add separator before recent items
-            sep = file_menu.addSeparator()
-            self._file_recent_docs_actions.append(sep)
-            for p in paths:
-                act = file_menu.addAction(
-                    Path(p).name,
-                    lambda checked=False, path=p: self.open_document(path),
-                )
-                self._file_recent_docs_actions.append(act)
+        self._file_recent_docs_actions = self._rebuild_tracked_menu_section(
+            file_menu, self._file_recent_docs_actions,
+            self._settings.recent_document_paths,
+            label_fn=lambda p: Path(p).name,
+            callback=self.open_document,
+        )
 
     def _rebuild_recent_texts_top_level(self, text_submenu: QMenu) -> None:
         """Rebuild recent texts at the top level of Text submenu, after static items, separated by a horizontal rule."""
-        # Remove old recent text actions
-        for act in self._annotations_recent_text_actions:
-            text_submenu.removeAction(act)
-        self._annotations_recent_text_actions.clear()
-        
-        texts = self._settings.recent_text_strings
-        if texts:
-            # Add separator before recent items
-            sep = text_submenu.addSeparator()
-            self._annotations_recent_text_actions.append(sep)
-            for text in texts:
-                # Truncate long text for display
-                display_text = text[:50] + "…" if len(text) > 50 else text
-                act = text_submenu.addAction(
-                    display_text,
-                    lambda checked=False, t=text: self._add_text_annotation(t),
-                )
-                self._annotations_recent_text_actions.append(act)
+        self._annotations_recent_text_actions = self._rebuild_tracked_menu_section(
+            text_submenu, self._annotations_recent_text_actions,
+            self._settings.recent_text_strings,
+            label_fn=self._truncate_for_menu,
+            callback=self._add_text_annotation,
+        )
 
     def _rebuild_toolbar_recent_texts(self) -> None:
         """Rebuild recent texts in the toolbar's Text menu."""
         if not hasattr(self, '_toolbar_text_menu') or self._toolbar_text_menu is None:
             return
-        # Remove old recent text actions
-        for act in self._toolbar_recent_text_actions:
-            self._toolbar_text_menu.removeAction(act)
-        self._toolbar_recent_text_actions.clear()
-        
-        texts = self._settings.recent_text_strings
-        if texts:
-            for text in texts:
-                # Truncate long text for display
-                display_text = text[:50] + "…" if len(text) > 50 else text
-                act = self._toolbar_text_menu.addAction(
-                    display_text,
-                    lambda checked=False, t=text: self._add_text_annotation(t),
-                )
-                self._toolbar_recent_text_actions.append(act)
+        self._toolbar_recent_text_actions = self._rebuild_menu_items(
+            self._toolbar_text_menu, self._toolbar_recent_text_actions,
+            self._settings.recent_text_strings,
+            label_fn=self._truncate_for_menu,
+            callback=self._add_text_annotation,
+        )
 
     def _rebuild_recent_menus(self) -> None:
         """Rebuild all recent items menus."""
         self._rebuild_recent_documents_menu()
-        self._rebuild_file_recent_documents_menu()
         self._rebuild_sig_ann_menu()
         self._rebuild_toolbar_recent_texts()
         # Rebuild top-level recent items in hamburger menus
@@ -888,8 +870,17 @@ class MainWindow(QMainWindow):
         self._update_color_btn()
         self._has_unsaved_changes = True
 
+    @staticmethod
+    def _set_value_silently(widget, value, setter: str = "setValue") -> None:
+        """Call widget.<setter>(value) with signals blocked, to avoid triggering
+        the widget's own valueChanged/toggled handler while syncing UI state."""
+        widget.blockSignals(True)
+        getattr(widget, setter)(value)
+        widget.blockSignals(False)
+
     def _update_annotation_action_state(self) -> None:
-        from .objects import AnnotationType
+        """Show/hide and sync the selection-dependent toolbar controls (Duplicate/Delete,
+        color, width, font, angle) for the currently selected annotation(s)."""
         selected = self.canvas.selected
         has_selection = selected is not None
         self._dup_action.setEnabled(has_selection)
@@ -897,60 +888,10 @@ class MainWindow(QMainWindow):
         self._dup_action.setVisible(has_selection)
         self._del_action.setVisible(has_selection)
 
-        # Color control applies to vector annotations only; Signature/Image has no color control.
-        color_visible = has_selection and isinstance(selected, VectorAnnotation)
-        self._color_btn.setVisible(color_visible)
-        self._color_btn.setEnabled(color_visible)
-        self._color_btn_action.setVisible(color_visible)
-
-        # v1.2.22: Context-sensitive control visibility based on annotation type
-        # Width spinner and label: visible for vector types (not TEXT, not Signature/Image)
-        width_visible = (
-            has_selection and
-            isinstance(selected, VectorAnnotation) and
-            selected.ann_type != AnnotationType.TEXT
-        )
-        self._width_spinner.setVisible(width_visible)
-        self._width_label.setVisible(width_visible)
-        self._width_spinner_action.setVisible(width_visible)
-        self._width_label_action.setVisible(width_visible)
-        if width_visible:
-            # Reflect the selected annotation's actual width (e.g. after a [ / ] shortcut).
-            self._width_spinner.blockSignals(True)
-            self._width_spinner.setValue(selected._line_width_pt)
-            self._width_spinner.blockSignals(False)
-
-        # Font controls and labels: visible only for TEXT
-        font_visible = (
-            has_selection and
-            isinstance(selected, VectorAnnotation) and
-            selected.ann_type == AnnotationType.TEXT
-        )
-        self._font_size_spinner.setVisible(font_visible)
-        self._font_size_label.setVisible(font_visible)
-        if font_visible:
-            # Reflect the selected annotation's actual font size (e.g. after a [ / ] shortcut).
-            self._font_size_spinner.blockSignals(True)
-            self._font_size_spinner.setValue(selected._font_size_pt)
-            self._font_size_spinner.blockSignals(False)
-        self._font_family_combo.setVisible(font_visible)
-        self._font_label.setVisible(font_visible)
-        self._font_size_spinner_action.setVisible(font_visible)
-        self._font_size_label_action.setVisible(font_visible)
-        self._font_family_combo_action.setVisible(font_visible)
-        self._font_label_action.setVisible(font_visible)
-
-        angle_visible = has_selection
-        self._angle_label.setVisible(angle_visible)
-        self._angle_spinner.setVisible(angle_visible)
-        self._reset_angle_btn.setVisible(angle_visible)
-        self._angle_label_action.setVisible(angle_visible)
-        self._angle_spinner_action.setVisible(angle_visible)
-        self._reset_angle_action.setVisible(angle_visible)
-        if angle_visible:
-            self._angle_spinner.blockSignals(True)
-            self._angle_spinner.setValue(round(selected.rotation) % 360)
-            self._angle_spinner.blockSignals(False)
+        color_visible = self._update_color_control_visibility(selected, has_selection)
+        width_visible = self._update_width_control_visibility(selected, has_selection)
+        font_visible = self._update_font_control_visibility(selected, has_selection)
+        angle_visible = self._update_angle_control_visibility(selected, has_selection)
 
         # Single separator before the whole property group; shown only if something in it is visible.
         self._properties_separator_action.setVisible(
@@ -965,6 +906,62 @@ class MainWindow(QMainWindow):
 
         self._refresh_toolbar_layout()
 
+    def _update_color_control_visibility(self, selected, has_selection: bool) -> bool:
+        """Color control applies to vector annotations only; Signature/Image has no color control."""
+        color_visible = has_selection and isinstance(selected, VectorAnnotation)
+        self._color_btn.setVisible(color_visible)
+        self._color_btn.setEnabled(color_visible)
+        self._color_btn_action.setVisible(color_visible)
+        return color_visible
+
+    def _update_width_control_visibility(self, selected, has_selection: bool) -> bool:
+        """Width spinner/label: visible for vector types except TEXT (v1.2.22)."""
+        width_visible = (
+            has_selection and
+            isinstance(selected, VectorAnnotation) and
+            selected.ann_type != AnnotationType.TEXT
+        )
+        self._width_spinner.setVisible(width_visible)
+        self._width_label.setVisible(width_visible)
+        self._width_spinner_action.setVisible(width_visible)
+        self._width_label_action.setVisible(width_visible)
+        if width_visible:
+            # Reflect the selected annotation's actual width (e.g. after a [ / ] shortcut).
+            self._set_value_silently(self._width_spinner, selected._line_width_pt)
+        return width_visible
+
+    def _update_font_control_visibility(self, selected, has_selection: bool) -> bool:
+        """Font size/family controls: visible only for TEXT annotations (v1.2.22)."""
+        font_visible = (
+            has_selection and
+            isinstance(selected, VectorAnnotation) and
+            selected.ann_type == AnnotationType.TEXT
+        )
+        self._font_size_spinner.setVisible(font_visible)
+        self._font_size_label.setVisible(font_visible)
+        if font_visible:
+            # Reflect the selected annotation's actual font size (e.g. after a [ / ] shortcut).
+            self._set_value_silently(self._font_size_spinner, selected._font_size_pt)
+        self._font_family_combo.setVisible(font_visible)
+        self._font_label.setVisible(font_visible)
+        self._font_size_spinner_action.setVisible(font_visible)
+        self._font_size_label_action.setVisible(font_visible)
+        self._font_family_combo_action.setVisible(font_visible)
+        self._font_label_action.setVisible(font_visible)
+        return font_visible
+
+    def _update_angle_control_visibility(self, selected, has_selection: bool) -> bool:
+        """Angle spinner/reset: visible for any selected annotation (all types support rotation)."""
+        angle_visible = has_selection
+        self._angle_label.setVisible(angle_visible)
+        self._angle_spinner.setVisible(angle_visible)
+        self._reset_angle_btn.setVisible(angle_visible)
+        self._angle_label_action.setVisible(angle_visible)
+        self._angle_spinner_action.setVisible(angle_visible)
+        self._reset_angle_action.setVisible(angle_visible)
+        if angle_visible:
+            self._set_value_silently(self._angle_spinner, round(selected.rotation) % 360)
+        return angle_visible
 
     def _on_page_changed(self, current: int, total: int) -> None:
         self._update_document_workflow_state()
@@ -1075,34 +1072,38 @@ class MainWindow(QMainWindow):
     # ---------------------------------------------------------------- date/time helpers
 
     @staticmethod
-    def _locale_date() -> str:
+    def _ensure_locale_set() -> None:
         try:
             locale.setlocale(locale.LC_TIME, "")
         except locale.Error:
-            logger.debug("Could not set the system locale for date formatting", exc_info=True)
+            logger.debug("Could not set the system locale for date/time formatting", exc_info=True)
+
+    @staticmethod
+    def _locale_date() -> str:
+        MainWindow._ensure_locale_set()
         return datetime.now(timezone.utc).astimezone().strftime("%x")
 
     @staticmethod
     def _locale_time() -> str:
-        try:
-            locale.setlocale(locale.LC_TIME, "")
-        except locale.Error:
-            logger.debug("Could not set the system locale for time formatting", exc_info=True)
+        MainWindow._ensure_locale_set()
         return datetime.now(timezone.utc).astimezone().strftime("%X")
 
     @staticmethod
     def _locale_datetime() -> str:
-        try:
-            locale.setlocale(locale.LC_TIME, "")
-        except locale.Error:
-            logger.debug("Could not set the system locale for datetime formatting", exc_info=True)
+        MainWindow._ensure_locale_set()
         return datetime.now(timezone.utc).astimezone().strftime("%x %X")
 
     # ---------------------------------------------------------------- annotation actions
 
-    def _add_vector(self, ann_type: AnnotationType) -> None:
+    def _ensure_document_open(self) -> bool:
+        """Show a warning and return False if no document is open; True otherwise."""
         if not self.canvas.has_document:
             QMessageBox.warning(self, "No document", "Open a document first.")
+            return False
+        return True
+
+    def _add_vector(self, ann_type: AnnotationType) -> None:
+        if not self._ensure_document_open():
             return
         obj = VectorAnnotation(
             ann_type, 0, 0, self.canvas.current_page,
@@ -1116,8 +1117,7 @@ class MainWindow(QMainWindow):
         self.canvas.add_object(obj)
 
     def _add_text_annotation(self, preset_text: str) -> None:
-        if not self.canvas.has_document:
-            QMessageBox.warning(self, "No document", "Open a document first.")
+        if not self._ensure_document_open():
             return
         if preset_text == "":
             dlg = _TextInputDialog(self, "Text Annotation")
@@ -1594,11 +1594,9 @@ class MainWindow(QMainWindow):
         return True
 
     def _update_recent_signatures(self, path: str) -> None:
-        paths = self._settings.recent_signature_paths
-        if path in paths:
-            paths.remove(path)
-        paths.insert(0, path)
-        self._settings.recent_signature_paths = paths[:10]
+        self._settings.recent_signature_paths = self._update_lru_list(
+            self._settings.recent_signature_paths, path
+        )
 
     def _remove_recent_signature(self, path: str) -> None:
         """Prune a signature path (e.g. no longer found on disk) from the recent list."""
@@ -1609,6 +1607,14 @@ class MainWindow(QMainWindow):
             self._save_settings_safe()
             self._rebuild_sig_ann_menu()
 
+    @staticmethod
+    def _update_lru_list(items: list, item, max_size: int = MAX_RECENT_ITEMS) -> list:
+        """Return `items` with `item` moved to the front (most-recent-first), capped at max_size."""
+        if item in items:
+            items.remove(item)
+        items.insert(0, item)
+        return items[:max_size]
+
     def _update_recent_text_strings(self, text: str) -> None:
         """Add a text string to recent texts (LRU, max 10). Excludes predefined date/time strings."""
         if not text or not text.strip():
@@ -1617,19 +1623,15 @@ class MainWindow(QMainWindow):
         predefined = {self._locale_date(), self._locale_time(), self._locale_datetime()}
         if text in predefined:
             return
-        texts = self._settings.recent_text_strings
-        if text in texts:
-            texts.remove(text)
-        texts.insert(0, text)
-        self._settings.recent_text_strings = texts[:10]
+        self._settings.recent_text_strings = self._update_lru_list(
+            self._settings.recent_text_strings, text
+        )
 
     def _update_recent_documents(self, path: str) -> None:
         """Add a document path to recent documents (LRU, max 10)."""
-        paths = self._settings.recent_document_paths
-        if path in paths:
-            paths.remove(path)
-        paths.insert(0, path)
-        self._settings.recent_document_paths = paths[:10]
+        self._settings.recent_document_paths = self._update_lru_list(
+            self._settings.recent_document_paths, path
+        )
 
     def _remove_recent_document(self, path: str) -> None:
         """Prune a document path (e.g. no longer found on disk) from the recent list."""
@@ -1859,108 +1861,9 @@ class MainWindow(QMainWindow):
             # ================================================================
             # CHECK FOR OVERWRITE AND SHOW CONFIRMATION DIALOG (v1.2.13)
             # ================================================================
-            
-            # Detect which files would be overwritten
-            existing_files = detect_existing_files(output, total, export_format, filename_stem)
-            older_files = detect_older_page_files(output.parent, filename_stem, total, export_format)
-            
-            # Get dialog info based on scenario
-            dialog_title, dialog_message, show_cleanup_checkbox = build_overwrite_dialog_info(
-                existing_files, older_files, total, export_format, output
-            )
-            
-            # If there are files to overwrite, show confirmation dialog
-            if existing_files:  # noqa: SIM102
-                if not self._in_test_mode:
-                    cleanup_checkbox_result = False
-                    
-                    if show_cleanup_checkbox:
-                        # Scenario E: Show dialog with cleanup checkbox for older files
-                        dialog = QDialog(self)
-                        dialog.setWindowTitle(dialog_title)
-                        dialog.setModal(True)
-                        dialog.setMinimumWidth(450)
-                        
-                        layout = QVBoxLayout(dialog)
-                        
-                        # Add message label
-                        message_label = QLabel(dialog_message)
-                        message_label.setWordWrap(True)
-                        layout.addWidget(message_label)
-                        
-                        # Add cleanup checkbox
-                        cleanup_checkbox = QCheckBox("Delete older page files")
-                        cleanup_checkbox.setChecked(False)  # Unchecked by default
-                        layout.addWidget(cleanup_checkbox)
-                        
-                        # Add buttons
-                        button_layout = QVBoxLayout()
-                        replace_button = QPushButton("Replace")
-                        cancel_button = QPushButton("Cancel")
-                        button_layout.addWidget(replace_button)
-                        button_layout.addWidget(cancel_button)
-                        layout.addLayout(button_layout)
-                        
-                        # Connect button signals
-                        user_clicked_replace = False
-                        
-                        def update_replace_button_text(
-                            state=None,
-                            checkbox=cleanup_checkbox,
-                            button=replace_button,
-                        ):
-                            """Update Replace button text based on checkbox state."""
-                            if checkbox.isChecked():
-                                button.setText("Replace and delete older page files")
-                            else:
-                                button.setText("Replace")
-                        
-                        def on_replace(target_dialog=dialog):
-                            nonlocal user_clicked_replace
-                            user_clicked_replace = True
-                            target_dialog.accept()
-                        
-                        def on_cancel(target_dialog=dialog):
-                            target_dialog.reject()
-                        
-                        # Connect checkbox state change to update button text
-                        cleanup_checkbox.toggled.connect(update_replace_button_text)
-                        replace_button.clicked.connect(on_replace)
-                        cancel_button.clicked.connect(on_cancel)
-                        
-                        # Initialize button text
-                        update_replace_button_text()
-                        
-                        # Show dialog
-                        result = dialog.exec()
-                        cleanup_checkbox_result = cleanup_checkbox.isChecked()
-                        
-                        # User clicked Cancel - return to file dialog
-                        if result == QDialog.Rejected:
-                            # Don't clear last_user_chosen_path/format - keep them for restoration
-                            continue  # Go back to file dialog with same values
-                    else:
-                        # Scenarios A-D: Simple yes/no confirmation dialog
-                        user_choice = QMessageBox.question(
-                            self, dialog_title, dialog_message,
-                            QMessageBox.StandardButtons(QMessageBox.Yes | QMessageBox.No),
-                            QMessageBox.No
-                        )
-                        
-                        # User clicked No - return to file dialog
-                        if user_choice == QMessageBox.No:
-                            # Don't clear last_user_chosen_path/format - keep them for restoration
-                            continue  # Go back to file dialog with same values
-                    
-                    # User clicked Replace - proceed with export
-                    # If cleanup checkbox was checked, delete older files
-                    if show_cleanup_checkbox and cleanup_checkbox_result:
-                        for old_file in older_files:
-                            try:
-                                old_file.unlink()
-                            except OSError as e:
-                                # Log but don't fail - user still wants to export
-                                logger.warning("Could not delete %s: %s", old_file, e)
+            if not self._confirm_overwrite_and_cleanup(output, total, export_format, filename_stem):
+                # Don't clear last_user_chosen_path/format - keep them for restoration
+                continue  # Go back to file dialog with same values
             
             # All checks passed, proceed with export
             break
@@ -1996,29 +1899,8 @@ class MainWindow(QMainWindow):
                         composite_pages_to_pdf(list(page_images), list(page_objects_list), output, pdf_quality)
                         saved = total
                         exported_files = [output]
-                    except PermissionError:
-                        if not self._in_test_mode:
-                            QMessageBox.critical(
-                                self, "Save failed",
-                                f"Permission denied. Check write permissions for:\n{directory}\n\n"
-                                "Try saving to a different location."
-                            )
-                        return False
-                    except OSError as exc:
-                        if "No space left" in str(exc):
-                            if not self._in_test_mode:
-                                QMessageBox.critical(
-                                    self, "Save failed",
-                                    "Insufficient disk space. Free up space and try again."
-                                )
-                            return False
-                        else:
-                            if not self._in_test_mode:
-                                QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
-                            return False
-                    except (RuntimeError, TypeError, ValueError) as exc:
-                        if not self._in_test_mode:
-                            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                    except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                        self._show_save_error_dialog(exc, directory)
                         return False
             
             elif export_format == ExportFormat.TIFF:
@@ -2034,29 +1916,8 @@ class MainWindow(QMainWindow):
                         composite_pages_to_tiff(list(page_images), list(page_objects_list), output)
                         saved = total
                         exported_files = [output]
-                    except PermissionError:
-                        if not self._in_test_mode:
-                            QMessageBox.critical(
-                                self, "Save failed",
-                                f"Permission denied. Check write permissions for:\n{directory}\n\n"
-                                "Try saving to a different location."
-                            )
-                        return False
-                    except OSError as exc:
-                        if "No space left" in str(exc):
-                            if not self._in_test_mode:
-                                QMessageBox.critical(
-                                    self, "Save failed",
-                                    "Insufficient disk space. Free up space and try again."
-                                )
-                            return False
-                        else:
-                            if not self._in_test_mode:
-                                QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
-                            return False
-                    except (RuntimeError, TypeError, ValueError) as exc:
-                        if not self._in_test_mode:
-                            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+                    except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                        self._show_save_error_dialog(exc, directory)
                         return False
             
             else:
@@ -2138,6 +1999,93 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Save failed", f"Unexpected error:\n{exc}")
             return False
 
+    def _confirm_overwrite_and_cleanup(
+        self, output: Path, total: int, export_format: ExportFormat, filename_stem: str
+    ) -> bool:
+        """Show an overwrite confirmation dialog if any target files already exist.
+
+        Returns True if the export should proceed (nothing to overwrite, running in
+        test mode, or the user confirmed), False if the user cancelled (caller
+        should return to the save dialog to let them pick a different name).
+        Deletes older per-page files first if the user opted into cleanup.
+        """
+        existing_files = detect_existing_files(output, total, export_format, filename_stem)
+        older_files = detect_older_page_files(output.parent, filename_stem, total, export_format)
+
+        if not existing_files or self._in_test_mode:
+            return True
+
+        dialog_title, dialog_message, show_cleanup_checkbox = build_overwrite_dialog_info(
+            existing_files, older_files, total, export_format, output
+        )
+
+        if show_cleanup_checkbox:
+            proceed, cleanup_old_files = self._show_overwrite_cleanup_dialog(dialog_title, dialog_message)
+        else:
+            proceed = self._show_overwrite_confirm_dialog(dialog_title, dialog_message)
+            cleanup_old_files = False
+
+        if not proceed:
+            return False
+
+        if cleanup_old_files:
+            for old_file in older_files:
+                try:
+                    old_file.unlink()
+                except OSError as e:
+                    # Log but don't fail - user still wants to export
+                    logger.warning("Could not delete %s: %s", old_file, e)
+        return True
+
+    def _show_overwrite_confirm_dialog(self, title: str, message: str) -> bool:
+        """Simple Yes/No overwrite confirmation. Returns True if the user chose to proceed."""
+        choice = QMessageBox.question(
+            self, title, message,
+            QMessageBox.StandardButtons(QMessageBox.Yes | QMessageBox.No),
+            QMessageBox.No,
+        )
+        return choice == QMessageBox.Yes
+
+    def _show_overwrite_cleanup_dialog(self, title: str, message: str) -> tuple[bool, bool]:
+        """Overwrite confirmation with a 'delete older page files' checkbox.
+
+        Returns (proceed, cleanup_old_files).
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setModal(True)
+        dialog.setMinimumWidth(450)
+
+        layout = QVBoxLayout(dialog)
+        message_label = QLabel(message)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
+
+        cleanup_checkbox = QCheckBox("Delete older page files")
+        cleanup_checkbox.setChecked(False)
+        layout.addWidget(cleanup_checkbox)
+
+        button_layout = QVBoxLayout()
+        replace_button = QPushButton("Replace")
+        cancel_button = QPushButton("Cancel")
+        button_layout.addWidget(replace_button)
+        button_layout.addWidget(cancel_button)
+        layout.addLayout(button_layout)
+
+        def update_replace_button_text(state=None) -> None:
+            if cleanup_checkbox.isChecked():
+                replace_button.setText("Replace and delete older page files")
+            else:
+                replace_button.setText("Replace")
+
+        cleanup_checkbox.toggled.connect(update_replace_button_text)
+        replace_button.clicked.connect(dialog.accept)
+        cancel_button.clicked.connect(dialog.reject)
+        update_replace_button_text()
+
+        result = dialog.exec()
+        return result == QDialog.Accepted, cleanup_checkbox.isChecked()
+
     def print_document(self) -> None:
         """Print the current document with all annotations."""
         
@@ -2217,6 +2165,21 @@ class MainWindow(QMainWindow):
             logger.exception("Unexpected error during printing")
 
     # ---------------------------------------------------------------- helpers
+
+    def _show_save_error_dialog(self, exc: Exception, directory: Path) -> None:
+        """Show the appropriate 'Save failed' dialog for an export/save exception (no-op in test mode)."""
+        if self._in_test_mode:
+            return
+        if isinstance(exc, PermissionError):
+            QMessageBox.critical(
+                self, "Save failed",
+                f"Permission denied. Check write permissions for:\n{directory}\n\n"
+                "Try saving to a different location."
+            )
+        elif isinstance(exc, OSError) and "No space left" in str(exc):
+            QMessageBox.critical(self, "Save failed", "Insufficient disk space. Free up space and try again.")
+        else:
+            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
 
     def _save_settings_safe(self) -> None:
         try:

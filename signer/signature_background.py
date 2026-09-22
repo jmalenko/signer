@@ -119,6 +119,7 @@ def remove_background_by_color(
             else:
                 hue_distance = abs(hue - target_h)
                 if hue_distance > 0.5:
+                    # Hue is cyclic on [0, 1]; take the shorter way around the circle.
                     hue_distance = 1.0 - hue_distance
                 hue_distance_deg = hue_distance * 360.0
                 if hue_distance_deg <= lo:
@@ -375,6 +376,7 @@ def estimate_regular_character_band(
             100.0 * cumulative_alpha / total_alpha if total_alpha else 0.0
         )
         incremental_percent = cumulative_percent - previous_cumulative_percent
+        # Debug-only histogram bar: one "*" per 0.1% of cumulative alpha mass.
         star_count = max(0, round(incremental_percent / 0.1))
         stars = "*" * star_count
         debug_print(
