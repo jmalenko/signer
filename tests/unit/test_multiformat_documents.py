@@ -83,9 +83,6 @@ class TestWordDocumentLoading:
 
     def test_load_docx_document(self, docx_path, libreoffice_path):
         """Test loading a DOCX document."""
-        if not docx_path.exists():
-            pytest.skip(f"Test DOCX not found at {docx_path}")
-        
         try:
             pages = render_all_pages(str(docx_path), libreoffice_path=libreoffice_path)
             assert isinstance(pages, list)
@@ -98,9 +95,6 @@ class TestWordDocumentLoading:
 
     def test_docx_pages_are_rgb(self, docx_path, libreoffice_path):
         """Test that DOCX pages are converted to RGB."""
-        if not docx_path.exists():
-            pytest.skip(f"Test DOCX not found at {docx_path}")
-        
         try:
             pages = render_all_pages(str(docx_path), libreoffice_path=libreoffice_path)
             for page in pages:
@@ -117,9 +111,6 @@ class TestWordDocumentLoading:
 
     def test_load_doc_document(self, doc_path, libreoffice_path):
         """Test loading a DOC document."""
-        if not doc_path.exists():
-            pytest.skip(f"Test DOC not found at {doc_path}")
-        
         try:
             pages = render_all_pages(str(doc_path), libreoffice_path=libreoffice_path)
             assert isinstance(pages, list)
@@ -140,9 +131,6 @@ class TestODTDocumentLoading:
 
     def test_load_odt_document(self, odt_path, libreoffice_path):
         """Test loading an ODT document."""
-        if not odt_path.exists():
-            pytest.skip(f"Test ODT not found at {odt_path}")
-        
         try:
             pages = render_all_pages(str(odt_path), libreoffice_path=libreoffice_path)
             assert isinstance(pages, list)
@@ -155,9 +143,6 @@ class TestODTDocumentLoading:
 
     def test_odt_pages_are_rgb(self, odt_path, libreoffice_path):
         """Test that ODT pages are converted to RGB."""
-        if not odt_path.exists():
-            pytest.skip(f"Test ODT not found at {odt_path}")
-        
         try:
             pages = render_all_pages(str(odt_path), libreoffice_path=libreoffice_path)
             for page in pages:
@@ -192,9 +177,6 @@ class TestImageDocumentLoading:
 
     def test_load_jpg_image(self, jpg_path):
         """Test loading a JPG image."""
-        if not jpg_path.exists():
-            pytest.skip(f"Test JPG not found at {jpg_path}")
-        
         pages = render_all_pages(str(jpg_path))
         assert isinstance(pages, list)
         assert len(pages) == 1  # JPG is single frame
@@ -203,9 +185,6 @@ class TestImageDocumentLoading:
 
     def test_load_png_image(self, png_path):
         """Test loading a PNG image."""
-        if not png_path.exists():
-            pytest.skip(f"Test PNG not found at {png_path}")
-        
         pages = render_all_pages(str(png_path))
         assert isinstance(pages, list)
         assert len(pages) == 1  # PNG is single frame
@@ -215,9 +194,6 @@ class TestImageDocumentLoading:
 
     def test_load_multiframe_tiff(self, tiff_path):
         """Test loading a multi-frame TIFF image."""
-        if not tiff_path.exists():
-            pytest.skip(f"Test TIFF not found at {tiff_path}")
-        
         pages = render_all_pages(str(tiff_path))
         assert isinstance(pages, list)
         assert len(pages) >= 2  # Should have multiple frames
@@ -226,9 +202,6 @@ class TestImageDocumentLoading:
 
     def test_image_dimensions(self, jpg_path):
         """Test that loaded images have reasonable dimensions."""
-        if not jpg_path.exists():
-            pytest.skip(f"Test JPG not found at {jpg_path}")
-        
         pages = render_all_pages(str(jpg_path))
         page = pages[0]
         # Image should have reasonable dimensions (at least 100x100)
@@ -284,9 +257,7 @@ class TestLibreOfficePath:
         """Test that render_all_pages accepts libreoffice_path parameter."""
         # Create a simple PDF for testing
         pdf_path = Path(__file__).parent.parent.parent / "examples" / "document.pdf"
-        if not pdf_path.exists():
-            pytest.skip("Test PDF not found")
-        
+
         # This should not raise an error even if the path doesn't exist
         # (PDF doesn't need LibreOffice anyway)
         pages = render_all_pages(str(pdf_path), libreoffice_path="/fake/path")
@@ -299,9 +270,6 @@ class TestDocumentLoaderRegistryDelegation:
     def test_registry_load_with_password_for_pdf(self):
         """Test that registry.load() accepts password parameter."""
         pdf_path = Path(__file__).parent.parent.parent / "examples" / "document.pdf"
-        if not pdf_path.exists():
-            pytest.skip("Test PDF not found")
-        
         registry = DocumentLoaderRegistry()
         pages = registry.load(str(pdf_path), password="")
         assert pages is not None
@@ -310,9 +278,6 @@ class TestDocumentLoaderRegistryDelegation:
     def test_registry_load_without_password_for_image(self):
         """Test that registry.load() works without password for images."""
         img_path = Path(__file__).parent.parent.parent / "examples" / "document1.jpg"
-        if not img_path.exists():
-            pytest.skip("Test image not found")
-        
         registry = DocumentLoaderRegistry()
         pages = registry.load(str(img_path))
         assert pages is not None

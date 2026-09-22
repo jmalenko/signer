@@ -1,7 +1,6 @@
 """Feature tests for copy/paste across pages and documents."""
 
 import sys
-from shutil import copy2
 
 import pytest
 from PySide6.QtWidgets import QApplication
@@ -42,20 +41,10 @@ def test_copy_paste_workflow_pixel_perfect(
         else [output_path]
     )
     expected_dir = FIXTURES_DIR / fixture_name
-    expected_dir.mkdir(exist_ok=True)
-
-    missing_baselines = [
-        (actual_path, expected_dir / actual_path.name)
-        for actual_path in actual_paths
-        if not (expected_dir / actual_path.name).exists()
-    ]
-    if missing_baselines:
-        for actual_path, expected_path in missing_baselines:
-            copy2(actual_path, expected_path)
-        pytest.skip(f"Created {len(missing_baselines)} baseline image(s)")
 
     for page, actual_path in zip(page_numbers or (None,), actual_paths):
         expected_path = expected_dir / actual_path.name
+        assert expected_path.exists(), f"Reference image not found: {expected_path}"
         result_name = (
             fixture_name if page is None else f"{fixture_name}_page{page}"
         )
@@ -68,8 +57,5 @@ def test_copy_paste_workflow_pixel_perfect(
             )
         except AssertionError:
             if sys.platform == "darwin":
-                pytest.skip(
-                    "Pixel-perfect rendering differs on macOS; "
-                    "comparison saved to the report"
-                )
+                pytest.skip("Pixel-perfect rendering differs on macOS; comparison saved to the report")
             raise
