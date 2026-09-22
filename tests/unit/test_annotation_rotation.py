@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 import pytest
 from PIL import Image
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QPainter
-from PySide6.QtPrintSupport import QPrintDialog
+from PySide6.QtPrintSupport import QPrintDialog, QPrinter
 from PySide6.QtWidgets import QDialog
 
 from signer.history import RotateAnnotationAction
@@ -307,6 +307,10 @@ def test_print_uses_rotated_page_and_annotation_geometry(main_window):
         patch.object(QPainter, "begin", return_value=True),
         patch.object(QPainter, "drawPixmap"),
         patch.object(QPainter, "end"),
+        # Real page metrics need an actual system printer/print backend, which
+        # isn't guaranteed to exist on CI runners (esp. Windows without a
+        # configured printer); fix the page size instead of querying it.
+        patch.object(QPrinter, "pageRect", return_value=QRectF(0, 0, 595.0, 842.0)),
         patch.object(
             main_window.canvas,
             "get_page_image_with_rotation",

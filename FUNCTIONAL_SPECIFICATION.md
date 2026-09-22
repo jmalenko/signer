@@ -178,8 +178,11 @@ rendered internally at **300 DPI**.
 
 **LibreOffice path resolution** (first match wins):
 1. `libreoffice_path` in `config.json` (user-configured).
-2. LibreOffice found on system `PATH`.
-3. Otherwise, show: *"LibreOffice is required to open Word and ODT documents. Please either
+2. A well-known install location for the current OS (e.g. `Program Files\LibreOffice` on
+   Windows, `/Applications/LibreOffice.app` or Homebrew paths on macOS, `/usr/bin/soffice` or
+   `/snap/bin/libreoffice` on Linux).
+3. LibreOffice found on system `PATH`.
+4. Otherwise, show: *"LibreOffice is required to open Word and ODT documents. Please either
    install LibreOffice, configure the LibreOffice path in the settings file
    (`config.json`, field `libreoffice_path`), or use a PDF or image file instead."*
 

@@ -1,7 +1,5 @@
 """Feature tests for export functionality with new annotation types."""
 
-import sys
-
 import pytest
 from PIL import Image
 
@@ -114,7 +112,6 @@ class TestEllipseExport:
         assert img.height > 0
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="Qt font metrics crash on macOS in headless environment")
 class TestTextExport:
     """Test exporting Text annotation."""
     

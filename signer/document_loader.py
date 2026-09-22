@@ -188,6 +188,18 @@ class LibreOfficeLoader(DocumentLoader):
             for path in macos_paths:
                 if os.path.exists(path):
                     return path
+        else:
+            # Linux and other Unix-like systems: package managers normally put
+            # soffice on PATH already (see shutil.which() fallback below), but
+            # check a few common non-PATH install locations defensively.
+            linux_paths = [
+                "/usr/bin/soffice",
+                "/usr/lib/libreoffice/program/soffice",
+                "/snap/bin/libreoffice",
+            ]
+            for path in linux_paths:
+                if os.path.exists(path):
+                    return path
         
         # Try system PATH (works on all platforms)
         lo_exe = shutil.which("soffice")
