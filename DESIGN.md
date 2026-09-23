@@ -137,10 +137,18 @@ flowchart TD
 - **Group rotation as one history operation**: multi-selection rotation uses the center of the
   complete selection boundary, applying one angular delta to positions and intrinsic angles.
   Its per-object state changes are grouped in a `CompositeAction`, preserving exact undo/redo.
-- **One shared action/entity model for undo/redo, action recording, and project files**: avoids
-  three parallel serialization formats. The same `Action` classes and the same annotation JSON
-  shape are used by `HistoryStack` (undo/redo), `tests/recording/` (feature-test fixtures), and
-  `.signer` project files — a fix or extension to one applies to all three.
+- **One shared action/entity model for undo/redo and action recording**: avoids two parallel
+  serialization formats. The same `Action` classes and the same annotation JSON shape
+  (`CanvasObject.to_dict()`/`from_dict()`) are used by `HistoryStack` (undo/redo) and
+  `tests/recording/` (feature-test fixtures) - a fix or extension to one applies to both.
+  `.signer` project files (`ProjectFile.from_annotations()`/`load_annotations()` in
+  `objects.py`) intentionally use a related but distinct, hand-maintained schema (e.g.
+  `"type": "add_annotation"` instead of `"type": "VectorAnnotation"`) rather than calling
+  `to_dict()`/`from_dict()` directly, so any field added to the annotation model that must
+  survive a project save/reload (e.g. `rotation`, line/arrow `angle`, `natural_width`/
+  `natural_height`) has to be added to `ProjectFile.from_annotations()` explicitly too - it
+  is not automatic. A prior code review missed this, causing rotation/angle/custom text
+  size to be silently reset to their defaults on project reload (fixed 2026-09-23).
 - **Non-native Save As dialog**: Qt's native file dialogs don't expose their filename `QLineEdit`
   for real-time monitoring. Using a Qt-rendered dialog (`DontUseNativeDialog`) trades the native
   OS look for the ability to auto-correct the filename (page placeholder, extension) as the user

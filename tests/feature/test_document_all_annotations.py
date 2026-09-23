@@ -1,7 +1,6 @@
 """Feature test for comprehensive multi-annotation workflow."""
 
 import json
-import sys
 from unittest.mock import patch
 
 import pytest
@@ -71,7 +70,6 @@ class TestDocumentAllAnnotations:
                 comparison_results[page_num] = str(e)
                 all_passed = False
         
-        # Keep macOS rendering differences visible in the report without failing the test.
         if not all_passed:
             failed_pages = [p for p, result in comparison_results.items() if result != "PASSED"]
             details = "\n".join(
@@ -79,8 +77,6 @@ class TestDocumentAllAnnotations:
                 for p in sorted(comparison_results.keys())
             )
             message = f"Pages {failed_pages} do not match. Details:\n{details}"
-            if sys.platform == "darwin":
-                pytest.skip(f"Pixel-perfect rendering differs on macOS; comparison saved to the report. {message}")
             raise AssertionError(message)
 
     def test_document_all_annotations_actions_file_structure(self):

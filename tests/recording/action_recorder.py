@@ -4,6 +4,7 @@ This module integrates with the Signer application to record user actions
 when the SIGNER_RECORD_ACTIONS environment variable is set.
 """
 
+import logging
 import os
 import time
 from pathlib import Path
@@ -13,6 +14,8 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QColor
 
 from tests.utils.test_helpers import get_recorder
+
+logger = logging.getLogger(__name__)
 
 
 class ApplicationActionRecorder(QObject):
@@ -51,8 +54,10 @@ class ApplicationActionRecorder(QObject):
         try:
             canvas.objectChanged.disconnect(self._on_object_changed)
             canvas.pageChanged.disconnect(self._on_page_changed)
-        except TypeError:
-            pass  # Already disconnected
+        except TypeError as exc:
+            # Qt raises TypeError when a signal has no matching connection to
+            # remove; log it so an unrelated wiring bug wouldn't be masked.
+            logger.debug("disconnect_from_application(): %s", exc)
         
         self._connected = False
     

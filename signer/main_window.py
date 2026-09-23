@@ -1206,12 +1206,6 @@ class MainWindow(QMainWindow):
             target = Path(self.project_path)
         else:
             return self.save_project_as()
-        previous = None
-        if target.exists():
-            try:
-                previous = ProjectFile.read(target)
-            except (OSError, json.JSONDecodeError):
-                previous = None
         project = ProjectFile.from_annotations(
             document_path=self.document_path,
             export_path=self._last_export_path,
@@ -1579,10 +1573,10 @@ class MainWindow(QMainWindow):
 
         obj = SignatureObject(loaded, str(p), 0, 0, self.canvas.current_page)
         obj.color = QColor(self._current_color)
-        if at_default_position or not self.canvas.has_document:
-            x, y = self.canvas.default_position_for(obj)
-        else:
-            x, y = self.canvas.default_position_for(obj)
+        # FUNCTIONAL_SPECIFICATION.md #7.7: signatures added via the -signature CLI
+        # argument or the Signature submenu default to 80% down the page, not the
+        # generic center-of-page position used for other annotation types.
+        x, y = self.canvas.default_signature_position_for(obj)
         obj.x, obj.y = x, y
 
         if self.canvas.has_document:
@@ -1773,9 +1767,6 @@ class MainWindow(QMainWindow):
             # If they explicitly selected a different format filter, that takes precedence
             filter_based_format = ExportFormat.from_filter_string(selected_filter)
             
-            # Save the detected format for restoration if user cancels overwrite
-            last_user_chosen_format = export_format
-            
             # If file extension and filter don't match, user likely selected a different format in dropdown
             # The filter selection is explicit user action, so trust that
             if filter_based_format != export_format and selected_filter and "supported" not in selected_filter.lower():
@@ -1787,6 +1778,11 @@ class MainWindow(QMainWindow):
             # Ensure correct extension
             if output.suffix.lower() != export_format.extension():
                 output = output.with_suffix(export_format.extension())
+            
+            # Save the detected/finalized format for restoration if user cancels overwrite.
+            # Captured only now (not before the filter-override above) so a restore
+            # doesn't reintroduce the pre-filter-selection format.
+            last_user_chosen_format = export_format
             
             # AUTO-CORRECT FILENAME WHEN FORMAT CHANGES VIA FILTER
             # If the format changed from what we suggested, check if user just selected a different filter
@@ -1805,6 +1801,10 @@ class MainWindow(QMainWindow):
                     # Update tracking for next iteration if needed
                     last_export_format = export_format
                     last_export_folder = str(output.parent)
+                    # Keep last_user_chosen_path in sync with the corrected filename,
+                    # otherwise the "restore user's choice" branch at the top of the
+                    # next iteration would reintroduce the stale, pre-correction name.
+                    last_user_chosen_path = output
                     # Continue loop to validate the auto-corrected filename
                     continue
             

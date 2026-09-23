@@ -426,7 +426,9 @@ def _composite_objects(
     """Composite all objects over the base RGBA image using alpha_composite.
 
     Each object's render is clamped to the image bounds before compositing.
-    Render failures are silently skipped (matching the per-format behavior).
+    A render failure raises RuntimeError instead of being silently skipped, so the
+    caller's existing "Save failed" error dialogs surface it instead of producing a
+    signed document that's silently missing an annotation.
     """
     pw, ph = base.size
     for obj in objects:
@@ -437,8 +439,7 @@ def _composite_objects(
                 overlay = obj.render_to_pil().convert("RGBA")
                 overlay_x, overlay_y = obj.x, obj.y
         except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
-            logger.warning("Could not render annotation during compositing: %s", exc)
-            continue
+            raise RuntimeError(f"Could not render annotation for export: {exc}") from exc
         x = round(overlay_x)
         y = round(overlay_y)
         right = x + overlay.width
@@ -568,5 +569,7 @@ def composite_objects_to_format(
     elif export_format == ExportFormat.BMP:
         composite_objects_to_bmp(page_image, objects, output_path)
     else:
-        # Default to JPG for unknown formats
-        composite_objects_to_jpg(page_image, objects, output_path, jpg_quality)
+        raise ValueError(
+            f"composite_objects_to_format() does not support {export_format!r}; "
+            "PDF/TIFF must use composite_pages_to_pdf()/composite_pages_to_tiff()."
+        )

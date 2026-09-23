@@ -54,3 +54,40 @@ def test_format_switch_auto_corrects_filename_to_single_file_form(main_window, t
 
     assert result is True
     assert captured["output"].name == corrected_suggested
+
+
+def test_format_switch_reshows_dialog_with_corrected_default_filename(main_window, tmp_path):
+    """Regression test (silent-failure review finding #4): once the filename has been
+    auto-corrected for the new format, the re-shown dialog's pre-filled default must
+    reflect that corrected name - not the stale, pre-correction one.
+    """
+    doc_path = tmp_path / "document.pdf"
+    doc_path.write_bytes(b"%PDF-1.4 fake")
+    main_window.document_path = str(doc_path)
+
+    main_window.canvas.set_pages([Image.new("RGB", (600, 800)) for _ in range(3)])
+    main_window.canvas.add_object(VectorAnnotation(AnnotationType.CHECKMARK, 50, 50, page=0))
+
+    main_window._settings.last_export_format = "jpg"
+    main_window._settings.last_export_folder = str(tmp_path)
+
+    total_pages = 3
+    old_suggested = build_suggested_filename_for_dialog(str(doc_path), total_pages, ExportFormat.JPG)
+    corrected_suggested = build_suggested_filename_for_dialog(str(doc_path), total_pages, ExportFormat.PDF)
+    pdf_filter = ExportFormat.PDF.file_filter()
+
+    default_paths_seen: list[str] = []
+
+    def fake_dialog(*args, **kwargs):
+        default_paths_seen.append(args[2])
+        if len(default_paths_seen) == 1:
+            return (str(tmp_path / old_suggested), pdf_filter)
+        return (str(tmp_path / corrected_suggested), pdf_filter)
+
+    with patch("signer.main_window.QFileDialog.getSaveFileName", side_effect=fake_dialog), \
+         patch("signer.main_window.composite_pages_to_pdf"), \
+         patch("signer.main_window.QMessageBox.information"):
+        main_window.save_document_as()
+
+    assert len(default_paths_seen) == 2
+    assert Path(default_paths_seen[1]).name == corrected_suggested

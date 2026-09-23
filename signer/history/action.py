@@ -519,13 +519,16 @@ class AddAnnotationAction(Action):
         """Most reliable: remove the exact object reference captured when it was added."""
         if not self._added_object:
             return False
-        if page in canvas._page_objects:
+        objects_on_page = canvas._page_objects.get(page)
+        if objects_on_page is not None:
             try:
-                canvas._page_objects[page].remove(self._added_object)
+                objects_on_page.remove(self._added_object)
             except ValueError:
-                # Object not found, fallback to LIFO
-                if canvas._page_objects[page]:
-                    canvas._page_objects[page].pop()
+                # Tracked reference is no longer on this page; use the same logged
+                # LIFO fallback as the last-resort strategy below instead of
+                # silently popping an unrelated object here.
+                self._undo_via_lifo_fallback(canvas, page, obj_id)
+                return True
         if obj_id is not None and hasattr(canvas, '_object_map'):
             canvas._object_map.pop(obj_id, None)
         canvas.objectChanged.emit()

@@ -967,8 +967,9 @@ class ProjectFile:
                 "height": obj.scaled_height,
                 "color": obj.color.name(),
             }
-            if obj.page:
-                data["page"] = obj.page
+            data["page"] = obj.page
+            if obj.rotation:
+                data["rotation"] = obj.rotation % 360.0
             if isinstance(obj, SignatureObject):
                 data["path"] = obj.path
                 data["image_data"] = obj.to_dict()["image_data"]
@@ -983,6 +984,10 @@ class ProjectFile:
                     data["text"] = obj.text
                     data["font_family"] = obj._font_family
                     data["font_size_pt"] = obj._font_size_pt
+                data["natural_width"] = obj._natural_width
+                data["natural_height"] = obj._natural_height
+                if obj._angle is not None:
+                    data["angle"] = obj._angle
             serialized_annotations.append(data)
 
         return {

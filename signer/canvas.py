@@ -54,6 +54,14 @@ KEYBOARD_MOVE_STEP_PT: float = 12.0
 KEYBOARD_MOVE_FINE_STEP_PT: float = 1.0
 
 
+def _normalize_page_rotation(angle: int) -> int:
+    """Clamp a stored page rotation to the nearest of the four supported
+    orientations (0/90/180/270) - the only values the coordinate-transform code
+    understands. Guards against malformed/hand-edited project file data.
+    """
+    return round((angle % 360) / 90) % 4 * 90
+
+
 class DocumentCanvas(QWidget):
     objectChanged = Signal()        # emitted on move/scale/add/remove
     pageChanged = Signal(int, int)  # (current_page_0indexed, total_pages)
@@ -200,7 +208,7 @@ class DocumentCanvas(QWidget):
         self._object_map = {}
         self._next_object_id = 0
         self._page_rotations = {
-            int(page): int(angle) % 360
+            int(page): _normalize_page_rotation(int(angle))
             for page, angle in (rotations or {}).items()
             if str(page).lstrip("-").isdigit()
         }

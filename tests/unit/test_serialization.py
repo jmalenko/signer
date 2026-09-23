@@ -349,6 +349,24 @@ class TestSerializationEdgeCases:
         assert restored[0].page == 1
         assert restored[1].path == "sig.png"
 
+    def test_from_annotations_explicitly_serializes_page_zero(self):
+        """Regression test (silent-failure review finding #8): page 0 must be written
+        explicitly rather than relying on `if obj.page:` (falsy for 0) plus a matching
+        default on the read side - two independently-written defaults silently
+        agreeing is fragile, not an explicit contract.
+        """
+        check = VectorAnnotation(AnnotationType.CHECKMARK, 42, 24, 0)
+
+        project = ProjectFile.from_annotations(
+            document_path="/tmp/form.pdf",
+            export_path="/tmp/form-signed.jpg",
+            annotations=[check],
+            current_page=0,
+            page_count=1,
+        )
+
+        assert project["annotations"][0]["page"] == 0
+
     def test_project_file_roundtrip_preserves_object_state(self):
         """Round-tripping through the project file should keep the stored object data intact."""
         text = VectorAnnotation(AnnotationType.TEXT, 12, 18, 0, text="Hello")
@@ -369,6 +387,32 @@ class TestSerializationEdgeCases:
         assert restored[0].text == "Hello"
         assert restored[0].color.name() == "#123456"
         assert restored[0].scale == 2.0
+
+    def test_project_file_roundtrip_preserves_rotation_and_angle(self):
+        """Regression test (silent-failure review finding #1): rotating an annotation,
+        then saving/reopening the project, must keep the rotation - not silently reset it.
+        """
+        checkmark = VectorAnnotation(AnnotationType.CHECKMARK, 10, 20, 0)
+        checkmark.rotation = 45.0
+
+        line = VectorAnnotation(AnnotationType.LINE, 30, 40, 0)
+        line._angle = 30.0
+
+        sig = SignatureObject(Image.new("RGBA", (20, 10), (0, 0, 0, 255)), "sig.png", 5, 5, 0)
+        sig.rotation = 90.0
+
+        project = ProjectFile.from_annotations(
+            document_path="/tmp/example.pdf",
+            export_path="/tmp/example-signed.jpg",
+            annotations=[checkmark, line, sig],
+            current_page=0,
+            page_count=1,
+        )
+
+        restored = ProjectFile.load_annotations(project)
+        assert restored[0].rotation == 45.0
+        assert restored[1]._angle == 30.0
+        assert restored[2].rotation == 90.0
 
 
 if __name__ == "__main__":

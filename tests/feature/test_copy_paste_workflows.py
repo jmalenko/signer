@@ -1,7 +1,5 @@
 """Feature tests for copy/paste across pages and documents."""
 
-import sys
-
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -48,14 +46,9 @@ def test_copy_paste_workflow_pixel_perfect(
         result_name = (
             fixture_name if page is None else f"{fixture_name}_page{page}"
         )
-        try:
-            assert_images_equal_with_results(
-                actual_path,
-                expected_path,
-                test_name=result_name,
-                save_results=True,
-            )
-        except AssertionError:
-            if sys.platform == "darwin":
-                pytest.skip("Pixel-perfect rendering differs on macOS; comparison saved to the report")
-            raise
+        assert_images_equal_with_results(
+            actual_path,
+            expected_path,
+            test_name=result_name,
+            save_results=True,
+        )

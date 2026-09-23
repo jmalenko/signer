@@ -9,7 +9,6 @@ features by replaying recorded JSON action sequences and comparing pixel-perfect
 """
 
 import json
-import sys
 
 import pytest
 from PySide6.QtWidgets import QApplication
@@ -72,17 +71,12 @@ class TestRecordedWorkflows:
 
         # Verify output matches reference (pixel-perfect)
         assert expected_image.exists(), f"Reference image not found: {expected_image}"
-        try:
-            assert_images_equal_with_results(
-                output_image,
-                expected_image,
-                test_name=fixture_name,
-                save_results=True
-            )
-        except AssertionError:
-            if sys.platform == "darwin":
-                pytest.skip("Pixel-perfect rendering differs on macOS; comparison saved to the report")
-            raise
+        assert_images_equal_with_results(
+            output_image,
+            expected_image,
+            test_name=fixture_name,
+            save_results=True
+        )
 
     @pytest.mark.parametrize("workflow_type,fixture_name,annotation_prefix,description", WORKFLOW_TEST_CASES)
     def test_actions_file_structure(self, workflow_type, fixture_name, annotation_prefix, description):

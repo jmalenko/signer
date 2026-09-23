@@ -185,6 +185,30 @@ def test_open_project_restores_page_rotations(main_window, tmp_path):
     assert main_window.canvas._page_rotations == {2: 90}
 
 
+def test_open_project_normalizes_invalid_page_rotation(main_window, tmp_path):
+    """Regression test (silent-failure review finding #7): a malformed/hand-edited
+    rotation value that isn't a multiple of 90 must be normalized to the nearest
+    supported orientation instead of being silently accepted and then silently
+    ignored by the coordinate-transform code (which only handles 0/90/180/270).
+    """
+    source = tmp_path / "form.pdf"
+    source.touch()
+    project_path = tmp_path / "form.signer"
+    project_path.write_text(json.dumps({
+        "version": 1,
+        "document_path": "form.pdf",
+        "rotations": {"1": 100},
+        "annotations": [],
+    }), encoding="utf-8")
+
+    with patch("signer.main_window.render_all_pages", return_value=[
+        Image.new("RGB", (600, 800), "white") for _ in range(3)
+    ]):
+        assert main_window.open_document(str(project_path)) is True
+
+    assert main_window.canvas._page_rotations == {1: 90}
+
+
 def test_open_project_returns_keyboard_focus_to_canvas(main_window, tmp_path):
     source = tmp_path / "form.pdf"
     source.touch()
