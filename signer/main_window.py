@@ -58,6 +58,7 @@ from .compositor import (
     composite_pages_to_tiff,
     detect_existing_files,
     detect_older_page_files,
+    ensure_export_extension,
     replace_placeholder_with_page_number,
     validate_placeholder_for_multipage_export,
 )
@@ -384,6 +385,7 @@ class MainWindow(QMainWindow):
         self.canvas.pageChanged.connect(self._on_page_changed)
         self.canvas.editRequested.connect(self._on_edit_requested)
         self.canvas.fileDrop.connect(self._on_file_drop)
+        self.canvas.pasteIncomplete.connect(self._on_paste_incomplete)
 
         # Ensure color button reflects the persisted color after full initialization
         # Use QTimer to ensure the widget is fully initialized and shown
@@ -972,6 +974,16 @@ class MainWindow(QMainWindow):
             else:
                 self._page_nav_label.setText("  Page — / —  ")
 
+    def _on_paste_incomplete(self, skipped: int, total: int) -> None:
+        """Tell the user when some clipboard items could not be pasted."""
+        if self._in_test_mode:
+            return
+        QMessageBox.warning(
+            self, "Paste incomplete",
+            f"{skipped} of {total} copied annotations could not be pasted because their "
+            "data could not be read. The remaining annotations were pasted.",
+        )
+
     def _on_edit_requested(self, obj: object) -> None:
         from .objects import CanvasObject, VectorAnnotation
         if not isinstance(obj, CanvasObject):
@@ -1208,10 +1220,7 @@ class MainWindow(QMainWindow):
             return self.save_project_as()
         project = ProjectFile.from_annotations(
             document_path=self.document_path,
-            export_path=self._last_export_path,
             annotations=[obj for page in range(self.canvas.page_count) for obj in self.canvas.page_objects_at(page)],
-            current_page=self.canvas.current_page,
-            page_count=self.canvas.page_count,
         )
         project["rotations"] = dict(self.canvas._page_rotations)
         try:
@@ -1438,36 +1447,41 @@ class MainWindow(QMainWindow):
             return
         
         # Check if it's an image or document
-        is_image = ext in image_extensions
-        is_small_image = False
-        
-        if is_image:
-            is_small_image = self._is_small_image(file_path)
-        
-        # Handle small image drop
-        if is_small_image:
-            self._handle_small_image_drop(file_path)
-        else:
-            # Handle big image or PDF drop (document load)
-            self._handle_document_drop(file_path)
-    
-    def _is_small_image(self, file_path: str) -> bool:
-        """Check if image fits on A6 paper at 300 DPI (1240 × 1748 pixels).
-        
-        A6 dimensions: 105mm × 148mm (4.1" × 5.8")
-        At 300 DPI: 1240 × 1748 pixels
-        Small image: max(width, height) ≤ 1748 pixels (fits A6 in any orientation)
-        """
+        if ext in image_extensions:
+            if self._image_size_or_none(file_path) is None:
+                QMessageBox.critical(
+                    self, "Unsupported File Format",
+                    f"Cannot open file: Unsupported format or corrupted file.\n\nFile: {file_path_obj.name}"
+                )
+                return
+            if self._is_small_image(file_path):
+                self._handle_small_image_drop(file_path)
+                return
+
+        # Big image or PDF: open as a document
+        self._handle_document_drop(file_path)
+
+    # A6 at 300 DPI is 1240x1748 px; an image fitting that in either orientation
+    # becomes an annotation rather than a new document.
+    A6_MAX_DIMENSION_PX = 1748
+
+    def _image_size_or_none(self, file_path: str) -> tuple[int, int] | None:
+        """Return the image's (width, height), or None if it cannot be read."""
         try:
-            img = Image.open(file_path)
-            width, height = img.size
-            # A6 at 300 DPI: 1240 × 1748 pixels
-            # Allow both orientations - image must fit on A6 in either orientation
-            a6_max_dimension = 1748
-            return max(width, height) <= a6_max_dimension
+            with Image.open(file_path) as img:
+                return img.size
         except (OSError, UnidentifiedImageError, ValueError) as exc:
-            logger.error("Error checking image size: %s", exc)
-            return False
+            logger.error("Could not read image %s: %s", file_path, exc)
+            return None
+
+    def _is_small_image(self, file_path: str) -> bool:
+        """Whether the image fits on A6 paper at 300 DPI, in either orientation.
+
+        False for unreadable files; `_on_file_drop` checks readability first so a
+        corrupt file is reported rather than treated as an oversized document.
+        """
+        size = self._image_size_or_none(file_path)
+        return size is not None and max(size) <= self.A6_MAX_DIMENSION_PX
     
     def _handle_small_image_drop(self, file_path: str) -> None:
         """Handle dropping a small image - create Signature/Image annotation at drop position."""
@@ -1773,11 +1787,10 @@ class MainWindow(QMainWindow):
                 # User selected a specific format filter
                 export_format = filter_based_format
                 # Update the filename extension to match what they selected
-                output = output.with_suffix(export_format.extension())
+                output = ensure_export_extension(output, export_format.extension())
             
             # Ensure correct extension
-            if output.suffix.lower() != export_format.extension():
-                output = output.with_suffix(export_format.extension())
+            output = ensure_export_extension(output, export_format.extension())
             
             # Save the detected/finalized format for restoration if user cancels overwrite.
             # Captured only now (not before the filter-override above) so a restore
@@ -1890,35 +1903,25 @@ class MainWindow(QMainWindow):
                 # Export all pages as PDF
                 page_images = [self.canvas.get_page_image_with_rotation(idx) for idx in range(total)]
                 page_objects_list = [self.canvas.page_objects_with_rotation_at(idx) for idx in range(total)]
-                
-                # Filter out None pages
-                valid_pages = [(img, objs) for img, objs in zip(page_images, page_objects_list) if img is not None]
-                if valid_pages:
-                    page_images, page_objects_list = zip(*valid_pages)
-                    try:
-                        composite_pages_to_pdf(list(page_images), list(page_objects_list), output, pdf_quality)
-                        saved = total
-                        exported_files = [output]
-                    except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
-                        self._show_save_error_dialog(exc, directory)
-                        return False
+                try:
+                    composite_pages_to_pdf(page_images, page_objects_list, output, pdf_quality)
+                    saved = len(page_images)
+                    exported_files = [output]
+                except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                    self._show_save_error_dialog(exc, directory)
+                    return False
             
             elif export_format == ExportFormat.TIFF:
                 # Export all pages as TIFF
                 page_images = [self.canvas.get_page_image_with_rotation(idx) for idx in range(total)]
                 page_objects_list = [self.canvas.page_objects_with_rotation_at(idx) for idx in range(total)]
-                
-                # Filter out None pages
-                valid_pages = [(img, objs) for img, objs in zip(page_images, page_objects_list) if img is not None]
-                if valid_pages:
-                    page_images, page_objects_list = zip(*valid_pages)
-                    try:
-                        composite_pages_to_tiff(list(page_images), list(page_objects_list), output)
-                        saved = total
-                        exported_files = [output]
-                    except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
-                        self._show_save_error_dialog(exc, directory)
-                        return False
+                try:
+                    composite_pages_to_tiff(page_images, page_objects_list, output)
+                    saved = len(page_images)
+                    exported_files = [output]
+                except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                    self._show_save_error_dialog(exc, directory)
+                    return False
             
             else:
                 # For JPG, PNG, BMP: export per-page or single page
@@ -1926,8 +1929,6 @@ class MainWindow(QMainWindow):
                 for idx in range(total):
                     page_image = self.canvas.get_page_image_with_rotation(idx)
                     objects = self.canvas.page_objects_with_rotation_at(idx)
-                    if page_image is None:
-                        continue
                     
                     # Replace placeholder with actual page number if needed
                     actual_filename = replace_placeholder_with_page_number(filename_stem, idx, total)
@@ -1952,7 +1953,8 @@ class MainWindow(QMainWindow):
                     except (RuntimeError, TypeError, ValueError) as exc:
                         failed_pages.append((idx, str(exc)))
                 
-                # If some pages failed, show error
+                # A partial export is a failed save: the document on disk is
+                # incomplete, so don't report success or mark the work as saved.
                 if failed_pages:
                     if not self._in_test_mode:
                         failed_list = "\n".join([f"Page {p+1}: {e}" for p, e in failed_pages])
@@ -1961,9 +1963,7 @@ class MainWindow(QMainWindow):
                             f"Failed to save some pages:\n{failed_list}\n\n"
                             "Check write permissions and disk space, then try again."
                         )
-                    # Even if some pages failed, return success if at least one was saved
-                    if saved == 0:
-                        return False
+                    return False
             
             if saved == 0:
                 if not self._in_test_mode:
@@ -2012,7 +2012,10 @@ class MainWindow(QMainWindow):
         existing_files = detect_existing_files(output, total, export_format, filename_stem)
         older_files = detect_older_page_files(output.parent, filename_stem, total, export_format)
 
-        if not existing_files or self._in_test_mode:
+        # Leftover pages from a longer previous export also need confirming, even
+        # when nothing is being overwritten - otherwise the directory silently
+        # ends up mixing two exports.
+        if (not existing_files and not older_files) or self._in_test_mode:
             return True
 
         dialog_title, dialog_message, show_cleanup_checkbox = build_overwrite_dialog_info(
@@ -2121,9 +2124,6 @@ class MainWindow(QMainWindow):
             try:
                 for page_idx in range(total):
                     page_image = self.canvas.get_page_image_with_rotation(page_idx)
-                    if page_image is None:
-                        continue
-
                     objects = self.canvas.page_objects_with_rotation_at(page_idx)
                     composite_image = page_image.convert("RGBA")
                     _composite_objects(composite_image, objects)
@@ -2159,10 +2159,11 @@ class MainWindow(QMainWindow):
             if not self._in_test_mode:
                 NotificationToast(self, "Document sent to printer successfully.")
         
-        except Exception as exc:
-            if not self._in_test_mode:
-                QMessageBox.critical(self, "Print error", f"Unexpected error during printing:\n{exc}")
+        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
             logger.exception("Unexpected error during printing")
+            if self._in_test_mode:
+                raise
+            QMessageBox.critical(self, "Print error", f"Unexpected error during printing:\n{exc}")
 
     # ---------------------------------------------------------------- helpers
 

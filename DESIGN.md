@@ -109,7 +109,7 @@ flowchart TD
 | `notification.py` | Toast notification widget (success/error variants) |
 | `settings.py` | `AppSettings` dataclass, `SettingsStore` (load/save JSON), portable-vs-installed config resolution |
 | `history/action.py` | One `Action` subclass per undoable operation (move, resize, add, delete, color/width/font change, cut/paste, rotate, …) |
-| `history/history_stack.py` | `HistoryStack`: undo/redo stacks with move/resize coalescing |
+| `history/history_stack.py` | `HistoryStack`: undo/redo stacks with move/resize coalescing, scoped to one drag gesture via `end_coalescing()` |
 
 ### 3.2 Data model
 
@@ -132,8 +132,26 @@ flowchart TD
   while giving crisp rendering; a single `DPI_SCALE` constant converts between the two.
 - **Rotation composed around annotation centers**: each annotation retains an unrotated local
   bounding box and an intrinsic clockwise angle. Canvas painting, hit-testing, handles, and
-  export apply the angle around the center; page rotation is a separate session-only transform
+  export apply the angle around the center; page rotation is a separate per-document transform
   composed on top, so saving a project never bakes page orientation into annotation geometry.
+  Page rotation lives in `DocumentCanvas._page_rotations` and drives a matching rotated entry in
+  the `_page_pixmaps` cache; the two are updated together (`set_pages`, `restore_objects`,
+  `_rotate_pages`), since a mismatch would draw an unrotated page into a transposed rect.
+- **Coalescing is scoped to one drag gesture**: `HistoryStack` merges consecutive move/resize
+  actions on the same object, but `DocumentCanvas` calls `end_coalescing()` on mouse release
+  (and the stack closes the window on undo/redo/clear). Without that boundary a second drag
+  would rewrite the first action's target and one Ctrl+Z would revert both gestures.
+- **History actions target the annotation's own page**: undo/redo resolves the page from the
+  annotation rather than from `current_page_objects()`, which returns a throwaway `[]` for pages
+  with no entry yet and would otherwise discard the annotation if the user navigated away.
+  `Action.page_object_list()` is the single place that resolves a page to its mutable list.
+- **Page rotation history stores per-page angles**: `RotatePageAction` records the before/after
+  angle of every page it touched, rather than one shared angle plus a "-1 means all pages"
+  sentinel, so undoing a "rotate all" after a single-page rotation restores each page's own
+  orientation instead of flattening them.
+- **Failures are reported, not absorbed**: operations that can partially succeed surface that to
+  the user — a paste that could not read every clipboard item emits `pasteIncomplete`, and an
+  export that lost pages returns failure instead of clearing the unsaved-changes flag.
 - **Group rotation as one history operation**: multi-selection rotation uses the center of the
   complete selection boundary, applying one angular delta to positions and intrinsic angles.
   Its per-object state changes are grouped in a `CompositeAction`, preserving exact undo/redo.

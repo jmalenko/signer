@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from enum import Enum
 from pathlib import Path
 
@@ -42,6 +43,17 @@ class ExportFormat(Enum):
             if ext in metadata["extensions"]:
                 return export_format
         return ExportFormat.JPG
+
+    @staticmethod
+    def is_known_extension(ext: str) -> bool:
+        """Whether `ext` is an extension of a supported export format.
+
+        Needed because `from_extension()` answers JPG for anything it doesn't
+        recognise, which can't distinguish "the user typed .png" from "the user
+        typed a filename that merely contains a dot".
+        """
+        ext = ext.lower()
+        return any(ext in metadata["extensions"] for metadata in _FORMAT_METADATA.values())
 
     @staticmethod
     def all_formats_filter() -> str:
@@ -118,6 +130,20 @@ def _page_suffix(page_index: int, total_pages: int) -> str:
         return ""
     pad = len(str(total_pages))
     return f"-p{page_index + 1:0{pad}d}"
+
+
+def ensure_export_extension(path: Path, extension: str) -> Path:
+    """Return `path` carrying `extension`.
+
+    Appends instead of replacing when the current suffix isn't a known export
+    extension: `Path.with_suffix()` would turn "contract v1.2-signed" into
+    "contract v1.jpg", silently losing part of the name the user typed.
+    """
+    if path.suffix.lower() == extension.lower():
+        return path
+    if ExportFormat.is_known_extension(path.suffix):
+        return path.with_suffix(extension)
+    return path.with_name(path.name + extension)
 
 
 def build_default_output_path(
@@ -298,35 +324,29 @@ def detect_older_page_files(
     if export_format.is_single_file_format():
         # Single-file formats don't have older files
         return []
-    
+
+    if MULTIPAGE_PLACEHOLDER not in filename_stem:
+        return []
+
     older_files = []
     ext = export_format.extension()
-    
-    # Remove placeholder from filename_stem to get the actual base name
-    base_filename = filename_stem.replace(MULTIPAGE_PLACEHOLDER, "")
-    
-    # Build a glob pattern to find all page files
-    # Since base_filename already has the suffix pattern (e.g., "doc-p" from "doc-p#")
-    # we just look for files matching base_filename + digits + extension
-    pad_width = len(str(total_pages))
-    
-    for file_path in directory.glob(f"{base_filename}[0-9]*{ext}"):
-        # Extract page number from filename
-        # Example: "doc-p042.jpg" → extract "42"
-        try:
-            # Get the part between base_filename and the extension
-            name_without_ext = file_path.stem  # "doc-p042"
-            if name_without_ext.startswith(base_filename):
-                page_str = name_without_ext[len(base_filename):]  # "042"
-                page_num = int(page_str)
-                
-                # If page number is beyond our export range, it's an "older" file
-                if page_num > total_pages:
-                    older_files.append(file_path)
-        except (ValueError, IndexError):
-            # Skip files that don't match the pattern
+
+    # Match the same names the export would produce, for any page number, so the
+    # placeholder does not have to be the last character of the stem.
+    prefix, _, suffix = filename_stem.partition(MULTIPAGE_PLACEHOLDER)
+    pattern = re.compile(
+        f"^{re.escape(prefix)}(\\d+){re.escape(suffix)}$", re.IGNORECASE
+    )
+
+    for file_path in directory.glob(f"*{ext}"):
+        match = pattern.match(file_path.stem)
+        if not match:
             continue
-    
+        page_num = int(match.group(1))
+        # If page number is beyond our export range, it's an "older" file
+        if page_num > total_pages:
+            older_files.append(file_path)
+
     return sorted(older_files)
 
 
@@ -342,8 +362,6 @@ def build_overwrite_dialog_info(
     
     Returns: (dialog_title, message, show_cleanup_checkbox)
     """
-    show_cleanup_checkbox = False
-    
     if not existing_files and not older_files:
         # No overwrite needed
         return "", "", False
@@ -356,21 +374,29 @@ def build_overwrite_dialog_info(
         return title, message, False
     
     # Scenario E: Older files detected (multi-page export)
-    if older_files and existing_files and export_format.is_per_file_format():
-        title = "Replace Files and Clean Up Old Pages?"
-        
-        # Build existing files list
-        existing_names = [f.name for f in sorted(existing_files)]
-        files_text = "\n".join(f"• {name}" for name in existing_names[:3])
-        if len(existing_names) > 3:
-            files_text += f"\n• ... ({len(existing_names) - 3} more files)"
+    if older_files and export_format.is_per_file_format():
+        title = "Replace Files and Clean Up Old Pages?" if existing_files else "Clean Up Old Pages?"
         
         # Build older files list
         older_names = [f.name for f in sorted(older_files)]
         older_text = "\n".join(f"• {name}" for name in older_names[:3])
         if len(older_names) > 3:
             older_text += f"\n• ... ({len(older_names) - 3} more files)"
-        
+
+        if not existing_files:
+            message = (
+                "These page files are left over from a previous, longer export "
+                "and can be deleted:\n\n"
+                f"{older_text}"
+            )
+            return title, message, True
+
+        # Build existing files list
+        existing_names = [f.name for f in sorted(existing_files)]
+        files_text = "\n".join(f"• {name}" for name in existing_names[:3])
+        if len(existing_names) > 3:
+            files_text += f"\n• ... ({len(existing_names) - 3} more files)"
+
         message = (
             "These files will be overwritten:\n\n"
             f"{files_text}\n\n"

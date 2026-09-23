@@ -300,6 +300,22 @@ without manually reconstructing the previous state.
 2. Consecutive move/resize operations on the same annotation(s) shall be coalesced into a single history entry, so a single undo reverts an entire drag.
 3. Undo/redo, action recording, and project-file persistence shall share one underlying action model, avoiding duplicate serialization logic.
 
+Clarifications after implementation: several operations silently escaped the history or undid the
+wrong thing, which is worse than an operation simply not being undoable — the user cannot tell
+that the document no longer reflects what they did.
+
+4. Undo and redo shall always act on the page the affected annotation belongs to, regardless of
+   which page is currently displayed. Navigating between an edit and its undo shall never move an
+   annotation to another page or discard it.
+5. The coalescing in item 2 shall be bounded by the editing gesture: a drag from mouse press to
+   release, or an uninterrupted run of arrow-key nudges. Repeating the gesture shall produce a
+   separate undo step rather than extending the previous one.
+6. Redo shall also be available through the conventional Ctrl+Shift+Z.
+7. Where an operation cannot be completed in full, the application shall say so instead of
+   reporting success: a paste that could not read every copied annotation, and an export that
+   could not write every page, shall both be reported to the user, and a failed export shall
+   leave the document marked as having unsaved changes.
+
 See [FUNCTIONAL_SPECIFICATION.md §11](FUNCTIONAL_SPECIFICATION.md#11-undoredo-history).
 
 ## Version 1.2.22 - More annotation types and properties

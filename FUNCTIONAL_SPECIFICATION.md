@@ -480,7 +480,10 @@ The clipboard uses the same JSON annotation schema as project files and action r
 - Actions (Edit menu, see [§13](#13-keyboard-shortcuts-reference) for shortcuts): Rotate Current
   Page Left/Right, Rotate All Pages Left/Right (90° increments; cumulative — 4× in one direction
   returns to 0°).
-- **Session-only**: rotation is not persisted to disk or to project files.
+- **Per document**: rotation belongs to the document it was applied to. Opening another
+  document resets every page back to 0°.
+- Rotation is stored in project files (the `rotations` map, see [§16](#16-project-files-signer))
+  and restored when the project is opened, with the rendered pages re-rotated to match.
 - Page rotation applies the same rigid transform to the complete geometry of every annotation,
   including its center, local axes, boundary, and Line/Arrow endpoints. An annotation therefore
   remains attached to the same page content and rotates visually with that content.
@@ -513,9 +516,12 @@ The clipboard uses the same JSON annotation schema as project files and action r
 
 - Unlimited history for the current session; **not persisted** — cleared when a new document is
   opened or the app closes.
-- **Coalescing**: consecutive move/resize/rotation updates from one drag on the same
-  annotation(s), with no other action in between, merge into a single undo entry (only the
-  initial and final states are kept).
+- **Coalescing**: one continuous adjustment of the same annotation is a single undo entry — a
+  drag from mouse press to release, or a run of consecutive arrow-key nudges. Only the state
+  before and after the run is kept, not the intermediate positions it passed through. The
+  gesture is the unit, not the number of moves: two separate drags are two undo entries, just
+  like any other two edits. Nudging a multi-selection records one entry per key press, since
+  the group move is a single compound entry that cannot absorb the next one.
 - **Action model**: a partial format (used by action recording / test fixtures, e.g. `{type:
   "move_annotation", object_id: 0, x: 300, y: 400}`) is promoted to a full format at undo-stack
   finalization time (adds `from_x`/`from_y` etc.) — both formats use the same action classes and
@@ -524,7 +530,12 @@ The clipboard uses the same JSON annotation schema as project files and action r
   set text, duplicate, cut/copy/paste (incl. multi-selection), select, rotate annotation or page
   (current or all), and multi-selection variants of delete/duplicate/color/width/rotation change
   as single units.
+- Undoing a page rotation restores each affected page's own previous angle, so rotating one page
+  and then all pages does not collapse them to a single shared orientation.
 - Performing a new action while in an undone state clears the redo stack.
+- Undo/redo always applies to the page the affected annotation belongs to, not to the page
+  currently on screen; navigating between the action and the undo does not move the annotation
+  to another page.
 
 ---
 
@@ -562,7 +573,7 @@ text input field currently has focus (this avoids accidental triggers while typi
 | Delete | — | Delete selection |
 | Escape | — | Deselect all |
 | Ctrl+Z | Z | Undo |
-| Ctrl+Y | Y | Redo |
+| Ctrl+Y / Ctrl+Shift+Z | Y | Redo |
 | Ctrl+L | L | Rotate all pages left |
 | Ctrl+R | R | Rotate all pages right |
 | Shift+Ctrl+L | Shift+L | Rotate current page left |
@@ -596,7 +607,10 @@ Neither toast steals focus from the main window.
 - Save failure: modal dialog with cause + recovery suggestion, Retry/Cancel.
 - Invalid export path: validated before export, error shown with a corrected suggestion.
 - Partial multi-page export failure: export stops, dialog lists failed pages and reason,
-  Retry/Cancel; already-written pages remain on disk.
+  Retry/Cancel; already-written pages remain on disk. The export is reported as failed, so the
+  document still counts as having unsaved changes.
+- Partially unreadable clipboard data on paste: the readable annotations are pasted and a dialog
+  reports how many were skipped, rather than the paste appearing to have succeeded in full.
 - Directory-link failure: red toast, "Unable to open directory", logged, does not crash.
 
 ---
@@ -655,12 +669,12 @@ UTF-8 JSON. Root object contains exactly:
 {
   "version": 1,
   "document_path": "C:/path/to/document.pdf",
-  "annotations": { "0": [ { "type": "add_annotation", "annotation_type": "text", "x": 100, "y": 200, "width": 150, "height": 40, "...": "..." } ] }
+  "annotations": { "0": [ { "type": "add_annotation", "annotation_type": "text", "x": 100, "y": 200, "width": 150, "height": 40, "...": "..." } ] },
+  "rotations": { "0": 90 }
 }
 ```
 
-- No `schema`, timestamps, `current_page`, `rotations`, or `settings` fields — intentionally
-  minimal.
+- No `schema`, timestamps, `current_page`, or `settings` fields — intentionally minimal.
 - Each annotation entry reuses the **same action entity shape** used by action recording and
   feature-test JSON fixtures: `type` is `add_annotation` or `open_signature`, with
   `annotation_type`, `x`, `y`, `width`, `height`, optional `page`, and only the type-specific
@@ -670,7 +684,9 @@ UTF-8 JSON. Root object contains exactly:
   project-only annotation schema.
 - `width`/`height` are current rendered dimensions; when a `scale` field is present, base
   (unscaled) dimensions are derived by dividing by it, so scaling applies exactly once on load.
-- Per-page rotations (session-only, §10) are **not** part of the project file.
+- Per-page rotations (§10) are stored in the optional `rotations` map (page index → angle),
+  omitted keys meaning 0°. Annotation coordinates stay unrotated, so the page orientation is
+  never baked into them.
 - Page keys in `annotations` are normalized back to integer page indexes on load.
 
 ### 16.3 Naming & location

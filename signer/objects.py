@@ -666,7 +666,11 @@ class VectorAnnotation(CanvasObject):
             self.scale = 1.0
         except (RuntimeError, AttributeError, TypeError):
             # Fallback for unavailable Qt font metrics on headless platforms.
-            logger.debug("fit_text_box(): QFontMetricsF unavailable, using approximate sizing", exc_info=True)
+            logger.warning(
+                "fit_text_box(): QFontMetricsF unavailable, falling back to approximate "
+                "character-count sizing; text boxes will not match the rendered text",
+                exc_info=True,
+            )
             font_pixel_size = self._make_font().pixelSize()
             avg_char_width = max(8.0, float(font_pixel_size))
             widest_line = max((line.replace("\t", "    ") for line in lines or [""]), key=len)
@@ -951,11 +955,15 @@ class ProjectFile:
         cls,
         *,
         document_path: str | Path | None,
-        export_path: str | Path | None,
         annotations: list[CanvasObject],
-        current_page: int,
-        page_count: int,
+        export_path: str | Path | None = None,
+        current_page: int = 0,
+        page_count: int = 0,
     ) -> dict[str, Any]:
+        """Build the project payload. `export_path`, `current_page` and `page_count`
+        are accepted but deliberately not stored - see FUNCTIONAL_SPECIFICATION §16.2
+        (a project always opens on page 1 and owns no export/page metadata).
+        """
         doc_path = str(document_path) if document_path is not None else ""
         serialized_annotations = []
         for obj in annotations:
@@ -1023,10 +1031,7 @@ class ProjectFile:
                 scale = float(object_data["scale"])
                 object_data.setdefault("base_width", object_data["width"] / scale)
                 object_data.setdefault("base_height", object_data["height"] / scale)
-                if image is not None:
-                    object_data.setdefault("base_width", image.width)
-                    object_data.setdefault("base_height", image.height)
-                    image.close()
+                image.close()
                 obj = canvas_object_from_dict(object_data)
             elif item.get("type") == "add_annotation":
                 object_data = dict(item)

@@ -226,8 +226,11 @@ class ActionPlayer:
         self.canvas.update()
         
         # Record to history with full format (from_ and to_)
+        # The history id is the canvas's stable id, which is not the same number
+        # space as the fixture's object_id - using the latter would point undo at
+        # a different object whenever the two counters diverge.
         move_action = MoveAnnotationAction(
-            object_id=obj_id,
+            object_id=self.canvas._stable_id_for(obj),
             from_x=from_x,
             from_y=from_y,
             to_x=x,
@@ -359,7 +362,7 @@ class ActionPlayer:
         self.canvas.update()
         from signer.history.action import ResizeAnnotationAction
         resize_action = ResizeAnnotationAction(
-            object_id=obj_id,
+            object_id=self.canvas._stable_id_for(obj),
             from_width=from_width,
             from_height=from_height,
             to_width=width,
@@ -456,7 +459,7 @@ class ActionPlayer:
             
             # Record to history
             change_color_action = ChangeColorAction(
-                object_id=obj_id,
+                object_id=self.canvas._stable_id_for(obj),
                 color=color_str,
                 from_color=from_color
             )

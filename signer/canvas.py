@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import math
 
 from PIL import Image
@@ -30,6 +31,7 @@ from .history import (
     PasteAnnotationAction,
     ResizeAnnotationAction,
     RotateAnnotationAction,
+    RotatePageAction,
 )
 from .objects import (
     ANCHOR_HANDLE,
@@ -49,6 +51,8 @@ from .objects import (
 GROUP_ROTATION_HANDLE_OFFSET: float = 24.0
 GROUP_ROTATION_HANDLE_RADIUS: float = 6.0
 
+logger = logging.getLogger(__name__)
+
 # Arrow-key nudge distance for selected annotations, in document points.
 KEYBOARD_MOVE_STEP_PT: float = 12.0
 KEYBOARD_MOVE_FINE_STEP_PT: float = 1.0
@@ -67,6 +71,7 @@ class DocumentCanvas(QWidget):
     pageChanged = Signal(int, int)  # (current_page_0indexed, total_pages)
     editRequested = Signal(object)  # CanvasObject — double-click
     fileDrop = Signal(str)          # emitted when file is dropped (file path)
+    pasteIncomplete = Signal(int, int)  # (skipped_count, total_count) — some items couldn't be pasted
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -162,10 +167,11 @@ class DocumentCanvas(QWidget):
             # No rotation, return objects as-is
             return objects
         
-        # For rotated pages, create transformed copies
         if index < 0 or index >= len(self._pages):
-            return objects
-        
+            raise IndexError(
+                f"page index {index} is out of range for a {len(self._pages)}-page document"
+            )
+
         orig_width, orig_height = self._pages[index].size
         transformed = []
         
@@ -181,18 +187,33 @@ class DocumentCanvas(QWidget):
         
         return transformed
 
+    def _reset_document_state(self) -> None:
+        """Drop every piece of state that belongs to the document being replaced.
+
+        All per-document state must be reset here, not inline in `set_pages`:
+        `_page_rotations` was once missed there and leaked into the next opened
+        document, drawing a freshly-loaded page stretched into a transposed rect.
+        Anything deliberately kept across documents (the clipboard cache) stays
+        in `set_pages` so the exception is visible.
+        """
+        self._current_page = 0
+        self._page_objects = {}
+        self._object_map = {}
+        self._next_object_id = 0
+        self._page_rotations = {}
+        self._clear_selection_state()
+        self._reset_drag_state()
+        self.history.clear()
+
     def set_pages(self, pages: list[Image.Image]) -> None:
         if self._cached_copy_data is not None and self._pages:
+            # The clipboard survives a document change; its page association doesn't.
             self._cached_copy_data = [
                 {**item, "page": None} for item in self._cached_copy_data
             ]
+        self._reset_document_state()
         self._pages = [p.convert("RGB") for p in pages]
         self._page_pixmaps = [QPixmap.fromImage(ImageQt(p)) for p in self._pages]
-        self._current_page = 0
-        self._page_objects = {}
-        self._object_map = {}  # Clear object map when resetting document
-        self._next_object_id = 0  # Reset object ID counter
-        self._clear_selection_state()
         self._recompute_fit()
         self.pageChanged.emit(0, len(self._pages))
         self._invalidate_display()
@@ -212,6 +233,7 @@ class DocumentCanvas(QWidget):
             for page, angle in (rotations or {}).items()
             if str(page).lstrip("-").isdigit()
         }
+        self._refresh_rotated_pixmaps()
         for obj in objects:
             self._register_object(obj)
             self._page_objects.setdefault(obj.page, []).append(obj)
@@ -236,8 +258,10 @@ class DocumentCanvas(QWidget):
     def _get_rotated_page_image(self, page_index: int) -> Image.Image:
         """Get the PIL image for a page, applying rotation if set."""
         if page_index < 0 or page_index >= len(self._pages):
-            return self._pages[0] if self._pages else None
-        
+            raise IndexError(
+                f"page index {page_index} is out of range for a {len(self._pages)}-page document"
+            )
+
         original = self._pages[page_index]
         rotation = self._page_rotations.get(page_index, 0)
         
@@ -254,9 +278,15 @@ class DocumentCanvas(QWidget):
     
     def _rotate_pages(self, pages: list[int] | range, delta: int) -> None:
         """Rotate the given page indices by `delta` degrees (90 or 270)."""
+        from_rotations: dict[int, int] = {}
+        to_rotations: dict[int, int] = {}
         for i in pages:
-            self._page_rotations[i] = (self._page_rotations.get(i, 0) + delta) % 360
+            from_rotations[i] = self._page_rotations.get(i, 0)
+            self._page_rotations[i] = (from_rotations[i] + delta) % 360
+            to_rotations[i] = self._page_rotations[i]
             self._update_rotated_pixmap(i)
+        if to_rotations:
+            self.history.record_action(RotatePageAction(from_rotations, to_rotations))
         self._recompute_fit()
         self._invalidate_display()
 
@@ -282,6 +312,11 @@ class DocumentCanvas(QWidget):
             return
         rotated_img = self._get_rotated_page_image(page_index)
         self._page_pixmaps[page_index] = QPixmap.fromImage(ImageQt(rotated_img))
+
+    def _refresh_rotated_pixmaps(self) -> None:
+        """Re-render every page whose stored rotation isn't reflected in its cached pixmap."""
+        for page_index in self._page_rotations:
+            self._update_rotated_pixmap(page_index)
     
     def get_page_image_with_rotation(self, page_index: int) -> Image.Image:
         """Get a PIL image for a page with rotation applied (for export)."""
@@ -474,18 +509,32 @@ class DocumentCanvas(QWidget):
         return len(self._selected_multiple) > 1
 
     def move_selected(self, dx: float, dy: float) -> None:
-        """Move all selected annotations by (dx, dy) in document space."""
+        """Move all selected annotations by (dx, dy) in document space.
+
+        Recorded like a drag: consecutive nudges of the same single annotation
+        coalesce into one undo entry, and any other action ends that run.
+        """
         selected = self.get_selected_annotations()
         if not selected:
             return
-        
-        objs = self.current_page_objects()
+
+        actions = []
         for obj in selected:
+            from_x, from_y = obj.x, obj.y
             obj.x += dx
             obj.y += dy
             if self.current_page_image:
                 pw, ph = self.current_page_image.size
                 obj.clamp_to_page(pw, ph)
+            actions.append(MoveAnnotationAction(
+                object_id=self._stable_id_for(obj),
+                from_x=from_x,
+                from_y=from_y,
+                to_x=obj.x,
+                to_y=obj.y,
+            ))
+
+        self._record_composite_action(actions)
         self._invalidate_display()
 
     @staticmethod
@@ -595,8 +644,7 @@ class DocumentCanvas(QWidget):
         sub_actions = []
         for obj_idx, obj, obj_data in reversed(delete_entries):
             obj_id = self._stable_id_for(obj)
-            if obj_idx < len(objs):
-                objs.pop(obj_idx)
+            objs.remove(obj)
             self._object_map.pop(obj_id, None)
             action = DeleteAnnotationAction(object_id=obj_id, object_data=obj_data)
             action._deleted_object = obj
@@ -695,9 +743,12 @@ class DocumentCanvas(QWidget):
         # Use setdefault to ensure page list exists in _page_objects
         objs = self._page_objects.setdefault(self._current_page, [])
         pasted_objs = []
+        skipped = 0
         for item in data:
             obj = self._paste_object(item, objs)
-            if obj is not None:
+            if obj is None:
+                skipped += 1
+            else:
                 pasted_objs.append(obj)
 
         # Select pasted annotations
@@ -716,6 +767,9 @@ class DocumentCanvas(QWidget):
             action = PasteAnnotationAction(pasted_objects_data=pasted_data)
             action._pasted_objects = pasted_objs
             self.history.record_action(action)
+
+        if skipped:
+            self.pasteIncomplete.emit(skipped, len(data))
 
         self.update()
 
@@ -749,7 +803,8 @@ class DocumentCanvas(QWidget):
 
         Applies the duplicate offset only when pasting onto the same page the
         item was copied from (a different page is already a distinct location).
-        Returns None (without appending) if the item is invalid or unrecognized.
+        Returns None (without appending) if the item is invalid or unrecognized;
+        `paste_selected` counts those and reports them via `pasteIncomplete`.
         """
         try:
             original_page = item.get("page")
@@ -770,8 +825,9 @@ class DocumentCanvas(QWidget):
             self._register_object(obj)
             objs.append(obj)
             return obj
-        except (KeyError, ValueError, TypeError):
-            # Invalid annotation data; skip
+        except (KeyError, ValueError, TypeError) as exc:
+            # Caller counts these and emits pasteIncomplete so the user is told.
+            logger.warning("Skipping unreadable annotation in pasted data: %s", exc)
             return None
 
     def set_color_selected(self, color: QColor) -> None:
@@ -1159,6 +1215,9 @@ class DocumentCanvas(QWidget):
     def mousePressEvent(self, event) -> None:
         if event.button() != Qt.LeftButton or not self._pages:
             return
+        # A press begins a new gesture: nothing recorded from here on should merge
+        # into whatever the previous gesture (drag or keyboard nudge run) recorded.
+        self.history.end_coalescing()
         # Re-assert activation/focus: some launch methods (e.g. an IDE debugger) can leave the window inactive between clicks.
         window = self.window()
         if window is not None:
@@ -1431,33 +1490,33 @@ class DocumentCanvas(QWidget):
 
         self._update_hover_cursor(pt)
 
+    def _record_drag_action(self, action_cls, initial_kwargs: dict, update_kwargs: dict) -> None:
+        """Record a drag step: the first one carries the initial state, later ones
+        are partial-format updates that `HistoryStack` merges into it.
+        """
+        obj_id = self._stable_id_for(self._selected)
+        if not self._action_recorded_this_drag:
+            self.history.record_action(action_cls(object_id=obj_id, **initial_kwargs))
+            self._action_recorded_this_drag = True
+        else:
+            self.history.record_action(action_cls(object_id=obj_id, **update_kwargs))
+
     def _handle_move_drag(self, pt: QPointF) -> None:
         """Move the selected object to follow the pointer, recording a coalescing MoveAnnotationAction."""
         doc_pt = self._view_to_doc(pt)
         self._selected.x = doc_pt.x() - self._drag_doc_offset_x
         self._selected.y = doc_pt.y() - self._drag_doc_offset_y
 
-        # Record move action with coalescing using stable object ID
-        obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
-        if obj_id >= 0:
-            if not self._action_recorded_this_drag:
-                # First move: create full-format action with initial state
-                action = MoveAnnotationAction(
-                    object_id=obj_id,
-                    from_x=self._drag_start_x,
-                    from_y=self._drag_start_y,
-                    to_x=self._selected.x,
-                    to_y=self._selected.y,
-                )
-                self._action_recorded_this_drag = True
-            else:
-                # Subsequent moves: create partial-format action for merging
-                action = MoveAnnotationAction(
-                    object_id=obj_id,
-                    x=self._selected.x,
-                    y=self._selected.y,
-                )
-            self.history.record_action(action)
+        self._record_drag_action(
+            MoveAnnotationAction,
+            {
+                "from_x": self._drag_start_x,
+                "from_y": self._drag_start_y,
+                "to_x": self._selected.x,
+                "to_y": self._selected.y,
+            },
+            {"x": self._selected.x, "y": self._selected.y},
+        )
 
     def _handle_resize_drag(self, pt: QPointF, event) -> None:
         """Resize/reshape the selected object per the active handle drag, then record
@@ -1469,27 +1528,16 @@ class DocumentCanvas(QWidget):
         else:
             self._apply_corner_edge_resize_drag(doc_pt, event)
 
-        # Record resize action with coalescing using stable object ID
-        obj_id = self._stable_id_for(self._selected) if self._selected in self.current_page_objects() else -1
-        if obj_id >= 0:
-            if not self._action_recorded_this_drag:
-                # First resize: create full-format action with initial state
-                action = ResizeAnnotationAction(
-                    object_id=obj_id,
-                    from_width=self._drag_start_w,
-                    from_height=self._drag_start_h,
-                    to_width=self._selected.scaled_width,
-                    to_height=self._selected.scaled_height,
-                )
-                self._action_recorded_this_drag = True
-            else:
-                # Subsequent resizes: create partial-format action for merging
-                action = ResizeAnnotationAction(
-                    object_id=obj_id,
-                    width=self._selected.scaled_width,
-                    height=self._selected.scaled_height,
-                )
-            self.history.record_action(action)
+        self._record_drag_action(
+            ResizeAnnotationAction,
+            {
+                "from_width": self._drag_start_w,
+                "from_height": self._drag_start_h,
+                "to_width": self._selected.scaled_width,
+                "to_height": self._selected.scaled_height,
+            },
+            {"width": self._selected.scaled_width, "height": self._selected.scaled_height},
+        )
 
     def _apply_endpoint_drag(self, doc_pt: QPointF, event) -> None:
         """Resize a line/arrow by dragging one endpoint, keeping the other endpoint fixed at its anchor."""
@@ -1674,7 +1722,16 @@ class DocumentCanvas(QWidget):
                         ))
                 if actions:
                     self._record_composite_action(actions)
-            self._reset_drag_state()
+            self._end_drag_gesture()
+
+    def _end_drag_gesture(self) -> None:
+        """Finish a drag: close the history coalescing window, then clear drag state.
+
+        Without closing the window, the next drag of the same object would merge
+        into this one and a single Ctrl+Z would revert both gestures.
+        """
+        self.history.end_coalescing()
+        self._reset_drag_state()
 
     def _reset_drag_state(self) -> None:
         """Clear all mouse-drag/rotation bookkeeping after a drag ends."""
@@ -1770,6 +1827,20 @@ class DocumentCanvas(QWidget):
                     return True
         return False
 
+    def _invoke_window_command(self, name: str) -> None:
+        """Call `name` on the parent window, logging if it isn't available.
+
+        None of these commands are optional; a missing one means the canvas was
+        reparented away from MainWindow and the shortcut would otherwise be
+        silently dead.
+        """
+        window = self.parent()
+        command = getattr(window, name, None)
+        if command is None:
+            logger.warning("Cannot run %r: parent window does not provide it", name)
+            return
+        command()
+
     def _handle_ctrl_shortcuts(self, key: int, is_shift_key: bool, selected: list[CanvasObject]) -> bool:
         """Handle Ctrl+<key> shortcuts (copy/cut/paste/duplicate/select-all/undo/redo,
         rotation, and document operations). Returns True if the key was handled.
@@ -1793,12 +1864,11 @@ class DocumentCanvas(QWidget):
             self.select_all_on_page()
             return True
         elif key == Qt.Key_Z:
-            # Undo (Ctrl+Z) - delegate to parent window
-            self.parent().undo() if hasattr(self.parent(), 'undo') else None
+            # Ctrl+Z undo, Ctrl+Shift+Z redo (the conventional chord).
+            self._invoke_window_command("redo" if is_shift_key else "undo")
             return True
-        elif key in (Qt.Key_Y, Qt.Key_Plus):  # Ctrl+Y for Redo
-            # Redo (Ctrl+Y or Ctrl+Shift+Z) - delegate to parent window
-            self.parent().redo() if hasattr(self.parent(), 'redo') else None
+        elif key == Qt.Key_Y:
+            self._invoke_window_command("redo")
             return True
         # ================================================================ Rotation with Ctrl
         elif key == Qt.Key_L:
@@ -1819,19 +1889,13 @@ class DocumentCanvas(QWidget):
             return True
         # ================================================================ Document operations (delegate to parent)
         elif key == Qt.Key_O:
-            # Ctrl+O: Open document
-            if hasattr(self.parent(), 'open_document'):
-                self.parent().open_document()
+            self._invoke_window_command("open_document")
             return True
         elif key == Qt.Key_S:
-            # Ctrl+S: Save As dialog
-            if hasattr(self.parent(), 'save_document_as'):
-                self.parent().save_document_as()
+            self._invoke_window_command("save_document_as")
             return True
         elif key == Qt.Key_P:
-            # Ctrl+P: Print
-            if hasattr(self.parent(), 'print_document'):
-                self.parent().print_document()
+            self._invoke_window_command("print_document")
             return True
         return False
 
@@ -1842,23 +1906,16 @@ class DocumentCanvas(QWidget):
         """
         if key == Qt.Key_Plus:
             # +: Open the toolbar annotation menu
-            if hasattr(self.parent(), 'show_annotation_menu'):
-                self.parent().show_annotation_menu()
+            self._invoke_window_command("show_annotation_menu")
             return True
         elif key == Qt.Key_O:
-            # O: Open document
-            if hasattr(self.parent(), 'open_document'):
-                self.parent().open_document()
+            self._invoke_window_command("open_document")
             return True
         elif key == Qt.Key_S:
-            # S: Save As dialog
-            if hasattr(self.parent(), 'save_document_as'):
-                self.parent().save_document_as()
+            self._invoke_window_command("save_document_as")
             return True
         elif key == Qt.Key_P:
-            # P: Print
-            if hasattr(self.parent(), 'print_document'):
-                self.parent().print_document()
+            self._invoke_window_command("print_document")
             return True
         elif key == Qt.Key_C:
             # C: Copy
@@ -1884,14 +1941,10 @@ class DocumentCanvas(QWidget):
             self.select_all_on_page()
             return True
         elif key == Qt.Key_Z:
-            # Z: Undo
-            if hasattr(self.parent(), 'undo'):
-                self.parent().undo()
+            self._invoke_window_command("redo" if is_shift_key else "undo")
             return True
         elif key == Qt.Key_Y:
-            # Y: Redo
-            if hasattr(self.parent(), 'redo'):
-                self.parent().redo()
+            self._invoke_window_command("redo")
             return True
         elif key == Qt.Key_L:
             # L or Shift+L: Rotate

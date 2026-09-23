@@ -87,6 +87,20 @@ class Action(ABC):
         logger.warning("Action object_id %r could not be resolved", object_id)
         return None
 
+    @staticmethod
+    def page_object_list(canvas: Any, page: int | None) -> list:
+        """Return the mutable annotation list of `page`.
+
+        Deliberately not `canvas.current_page_objects()`: the user may have
+        navigated elsewhere since the action was recorded, and that helper
+        returns a throwaway `[]` for pages with no entry yet, so appending to it
+        would silently discard the annotation.
+        """
+        page_objects = getattr(canvas, "_page_objects", None)
+        if page is None or not isinstance(page_objects, dict):
+            return canvas.current_page_objects()
+        return page_objects.setdefault(page, [])
+
     @classmethod
     def register(cls, action_type: str):
         """Class decorator: register a concrete Action subclass under `action_type`
@@ -423,11 +437,17 @@ class AddAnnotationAction(Action):
         self._added_object = None  # Store reference to the object we added
 
     def execute(self, canvas: Any) -> None:
-        """Add annotation to current page."""
-        from ..constants import DPI_SCALE
+        """Add annotation to the page named in the payload."""
+        from ..constants import (
+            DEFAULT_COLOR,
+            DEFAULT_FONT_FAMILY,
+            DEFAULT_TEXT_FONT_PT,
+            DPI_SCALE,
+        )
         from ..objects import (
             LARGE_DEFAULT_TYPES,
             AnnotationType,
+            CanvasObject,
             VectorAnnotation,
             canvas_object_from_dict,
         )
@@ -444,22 +464,15 @@ class AddAnnotationAction(Action):
         if "ann_type" in data_for_creation:
             # Use VectorAnnotation.from_dict if we have the right format
             try:
-                # Determine default base size for annotations created from
-                # minimal action payloads. Match VectorAnnotation.__init__:
-                # - 80 PDF points (333 px) for LARGE_DEFAULT_TYPES (arrow, line, rectangle, ellipse)
-                # - 20 PDF points (83 px) for others (checkmark, crossmark)
                 ann_type_str = data_for_creation["ann_type"]
                 try:
                     ann_type = AnnotationType(ann_type_str)
                 except ValueError:
                     ann_type = None
-                
-                # Add default values for any missing fields
-                if ann_type in LARGE_DEFAULT_TYPES:
-                    default_base_size_points = 80.0
-                else:
-                    default_base_size_points = 20.0
-                default_base_size_scaled = default_base_size_points * DPI_SCALE
+
+                # Mirror VectorAnnotation.__init__ for minimal action payloads.
+                size_factor = 4.0 if ann_type in LARGE_DEFAULT_TYPES else 1.0
+                default_base_size_scaled = size_factor * CanvasObject.DEFAULT_BASE_SIZE * DPI_SCALE
                 
                 if "base_width" not in data_for_creation:
                     data_for_creation["base_width"] = default_base_size_scaled
@@ -469,11 +482,11 @@ class AddAnnotationAction(Action):
                 if "scale" not in data_for_creation:
                     data_for_creation["scale"] = 1.0
                 if "color" not in data_for_creation:
-                    data_for_creation["color"] = "#FF0000"  # Red default
+                    data_for_creation["color"] = DEFAULT_COLOR
                 if "font_family" not in data_for_creation:
-                    data_for_creation["font_family"] = "Arial"
+                    data_for_creation["font_family"] = DEFAULT_FONT_FAMILY
                 if "font_size_pt" not in data_for_creation:
-                    data_for_creation["font_size_pt"] = 12
+                    data_for_creation["font_size_pt"] = DEFAULT_TEXT_FONT_PT
                 obj = VectorAnnotation.from_dict(data_for_creation)
             except (KeyError, ValueError, TypeError):
                 # Fallback: try canvas_object_from_dict
@@ -483,28 +496,32 @@ class AddAnnotationAction(Action):
         if obj is None:
             obj = canvas_object_from_dict(data_for_creation)
             
-        if obj:
-            if obj.page not in canvas._page_objects:
-                canvas._page_objects[obj.page] = []
-            canvas._page_objects[obj.page].append(obj)
-            self._added_object = obj  # Store reference for later undo
-            
-            # Sync to canvas's object map if object_id is present in data
-            obj_id = self.data.get("object_id")
-            if obj_id is not None and hasattr(canvas, '_object_map'):
-                canvas._object_map[obj_id] = obj
-            
-            canvas.objectChanged.emit()
+        if obj is None:
+            logger.warning(
+                "AddAnnotationAction.execute(): could not recreate annotation from %r; "
+                "nothing was added", data_for_creation.get("ann_type") or data_for_creation.get("type"),
+            )
+            return
+
+        self.page_object_list(canvas, obj.page).append(obj)
+        self._added_object = obj  # Store reference for later undo
+
+        # Sync to canvas's object map if object_id is present in data
+        obj_id = self.data.get("object_id")
+        if obj_id is not None and hasattr(canvas, '_object_map'):
+            canvas._object_map[obj_id] = obj
+
+        canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
-        """Remove the added annotation.
+        """Remove the added annotation from the page it was added to.
 
         Tries several strategies in order of reliability to find the exact
         object this action added, since older serialized actions may lack a
         stable object_id. Each `_undo_via_*` helper returns True if it found
         and removed the object (and emitted objectChanged), stopping the chain.
         """
-        page = self.data.get("page", canvas.current_page)
+        page = self._added_page(canvas)
         obj_id = self.data.get("object_id")
 
         if self._undo_via_direct_reference(canvas, page, obj_id):
@@ -515,20 +532,27 @@ class AddAnnotationAction(Action):
             return
         self._undo_via_lifo_fallback(canvas, page, obj_id)
 
+    def _added_page(self, canvas: Any) -> int:
+        """Page the annotation was added to, which may not be the one on screen."""
+        page = getattr(self._added_object, "page", None)
+        if page is None:
+            page = self.data.get("page", canvas.current_page)
+        return page
+
     def _undo_via_direct_reference(self, canvas: Any, page: int, obj_id: int | None) -> bool:
         """Most reliable: remove the exact object reference captured when it was added."""
         if not self._added_object:
             return False
-        objects_on_page = canvas._page_objects.get(page)
-        if objects_on_page is not None:
-            try:
-                objects_on_page.remove(self._added_object)
-            except ValueError:
-                # Tracked reference is no longer on this page; use the same logged
-                # LIFO fallback as the last-resort strategy below instead of
-                # silently popping an unrelated object here.
-                self._undo_via_lifo_fallback(canvas, page, obj_id)
-                return True
+        objects_on_page = self.page_object_list(canvas, page)
+        if self._added_object not in objects_on_page:
+            # Don't report success and don't pop a bystander; let the id/property
+            # strategies below try, and leave a trace that this happened.
+            logger.warning(
+                "AddAnnotationAction.undo(): tracked object is no longer on page %r; "
+                "falling back to id/property lookup", page,
+            )
+            return False
+        objects_on_page.remove(self._added_object)
         if obj_id is not None and hasattr(canvas, '_object_map'):
             canvas._object_map.pop(obj_id, None)
         canvas.objectChanged.emit()
@@ -539,11 +563,14 @@ class AddAnnotationAction(Action):
         if obj_id is None or not hasattr(canvas, '_object_map') or obj_id not in canvas._object_map:
             return False
         obj_to_remove = canvas._object_map[obj_id]
-        if page in canvas._page_objects:
-            try:
-                canvas._page_objects[page].remove(obj_to_remove)
-            except ValueError:
-                pass  # Object not on this page
+        objects_on_page = self.page_object_list(canvas, getattr(obj_to_remove, "page", page))
+        if obj_to_remove in objects_on_page:
+            objects_on_page.remove(obj_to_remove)
+        else:
+            logger.warning(
+                "AddAnnotationAction.undo(): object_id %r resolved but was not on page %r; "
+                "only its stable id was released", obj_id, page,
+            )
         canvas._object_map.pop(obj_id, None)
         canvas.objectChanged.emit()
         return True
@@ -554,7 +581,7 @@ class AddAnnotationAction(Action):
         trigger; logs a warning so any remaining gaps are visible instead of
         silently mutating the wrong object.
         """
-        objects_on_page = canvas._page_objects.get(page)
+        objects_on_page = self.page_object_list(canvas, page)
         if not objects_on_page:
             return False
         target_x = self.data.get("x")
@@ -585,7 +612,7 @@ class AddAnnotationAction(Action):
         """Last resort: remove the last object on the page (Last In First Out).
         May remove the wrong object if none of the more targeted strategies matched.
         """
-        objects_on_page = canvas._page_objects.get(page)
+        objects_on_page = self.page_object_list(canvas, page)
         if not objects_on_page:
             return
         logger.warning(
@@ -630,13 +657,20 @@ class DeleteAnnotationAction(Action):
         self._deleted_object: Any = None  # Direct reference, set by canvas or execute()
         self._deleted_index: int | None = None  # Position to restore to on undo
 
+    def _page_list_for_object(self, canvas: Any, obj: Any) -> list:
+        """Mutable annotation list of the page this annotation belongs to."""
+        page = getattr(obj, "page", None)
+        if page is None:
+            page = (self.data.get("object_data") or {}).get("page", canvas.current_page)
+        return self.page_object_list(canvas, page)
+
     def execute(self, canvas: Any) -> None:
-        """Delete annotation from current page (used to redo a previously-undone delete)."""
+        """Delete annotation from its own page (used to redo a previously-undone delete)."""
         obj_id = self.data["object_id"]
         obj = self._deleted_object
         if obj is None and hasattr(canvas, "_object_map"):
             obj = canvas._object_map.get(obj_id)
-        objects = canvas.current_page_objects()
+        objects = self._page_list_for_object(canvas, obj)
         if obj is None and 0 <= obj_id < len(objects):
             # Legacy fallback: object_id is an array index rather than a stable id.
             obj = objects[obj_id]
@@ -649,13 +683,13 @@ class DeleteAnnotationAction(Action):
             canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
-        """Restore the deleted annotation at its original position."""
+        """Restore the deleted annotation at its original position on its own page."""
         obj = self._deleted_object
         if obj is None and "object_data" in self.data:
             from ..objects import canvas_object_from_dict
             obj = canvas_object_from_dict(self.data["object_data"])
         if obj is not None:
-            objects = canvas.current_page_objects()
+            objects = self._page_list_for_object(canvas, obj)
             index = self._deleted_index if self._deleted_index is not None else len(objects)
             index = max(0, min(index, len(objects)))
             objects.insert(index, obj)
@@ -843,9 +877,9 @@ class PasteAnnotationAction(Action):
 
     def execute(self, canvas: Any) -> None:
         """Paste annotations (used to redo a previously-undone paste)."""
-        objects = canvas.current_page_objects()
         if self._pasted_objects:
             for index, obj in enumerate(self._pasted_objects):
+                objects = self.page_object_list(canvas, getattr(obj, "page", None))
                 if obj not in objects:
                     objects.append(obj)
                 if hasattr(canvas, "_object_map") and isinstance(canvas._object_map, dict):
@@ -860,7 +894,7 @@ class PasteAnnotationAction(Action):
             for obj_data in self.data["pasted_objects_data"]:
                 obj = canvas_object_from_dict(obj_data)
                 if obj:
-                    objects.append(obj)
+                    self.page_object_list(canvas, getattr(obj, "page", None)).append(obj)
                     recreated.append(obj)
                     object_id = obj_data.get("object_id")
                     if hasattr(canvas, "_object_map") and isinstance(canvas._object_map, dict):
@@ -875,10 +909,12 @@ class PasteAnnotationAction(Action):
     def undo(self, canvas: Any) -> None:
         """Remove exactly the pasted annotations, not merely the last N objects."""
         if self._pasted_objects:
-            objects = canvas.current_page_objects()
             for obj in self._pasted_objects:
-                if obj in objects:
-                    objects.remove(obj)
+                objects = self.page_object_list(canvas, getattr(obj, "page", None))
+                if obj not in objects:
+                    # Already gone; leave its stable id alone so later actions can still resolve it.
+                    continue
+                objects.remove(obj)
                 if hasattr(canvas, "_object_map") and isinstance(canvas._object_map, dict):
                     for object_id, mapped_obj in list(canvas._object_map.items()):
                         if mapped_obj is obj:
@@ -927,48 +963,46 @@ class ChangePageAction(Action):
 
 @Action.register("rotate_page")
 class RotatePageAction(Action):
-    """Action: Rotate a page."""
+    """Action: Rotate one or more pages.
 
-    def __init__(self, page: int, to_rotation: int, from_rotation: int | None = None) -> None:
-        """Initialize rotate action.
-        
-        Args:
-            page: Page to rotate (0-indexed, -1 for all pages)
-            to_rotation: Target rotation (0, 90, 180, 270)
-            from_rotation: Previous rotation (for undo)
-        """
-        data = {"page": page, "to_rotation": to_rotation}
-        if from_rotation is not None:
-            data["from_rotation"] = from_rotation
-        super().__init__("rotate_page", data)
+    Stores the exact before/after angle of every page it touched. A single
+    shared angle would be wrong for "rotate all pages" whenever the pages had
+    differing rotations: undoing would flatten them all to one value.
+    Page keys are strings so the payload survives a JSON round-trip unchanged.
+    """
 
-    def execute(self, canvas: Any) -> None:
-        """Rotate page."""
-        if self.data["page"] == -1:
-            # Rotate all pages
-            for page_idx in range(canvas.page_count):
-                canvas._page_rotations[page_idx] = self.data["to_rotation"]
-        else:
-            canvas._page_rotations[self.data["page"]] = self.data["to_rotation"]
+    def __init__(self, from_rotations: dict[int, int], to_rotations: dict[int, int]) -> None:
+        super().__init__(
+            "rotate_page",
+            {
+                "from_rotations": {str(page): angle for page, angle in from_rotations.items()},
+                "to_rotations": {str(page): angle for page, angle in to_rotations.items()},
+            },
+        )
+
+    @staticmethod
+    def _apply(canvas: Any, rotations: dict[str, int]) -> None:
+        for page, angle in rotations.items():
+            canvas._page_rotations[int(page)] = angle
+            canvas._update_rotated_pixmap(int(page))
+        canvas._recompute_fit()
+        canvas.objectChanged.emit()
         canvas.update()
 
+    def execute(self, canvas: Any) -> None:
+        """Rotate pages to their recorded target angles."""
+        self._apply(canvas, self.data["to_rotations"])
+
     def undo(self, canvas: Any) -> None:
-        """Restore previous rotation."""
-        if "from_rotation" in self.data:
-            if self.data["page"] == -1:
-                for page_idx in range(canvas.page_count):
-                    canvas._page_rotations[page_idx] = self.data["from_rotation"]
-            else:
-                canvas._page_rotations[self.data["page"]] = self.data["from_rotation"]
-            canvas.update()
+        """Restore each page's previous rotation."""
+        self._apply(canvas, self.data["from_rotations"])
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> RotatePageAction:
         """Create action from serialized data."""
         return cls(
-            page=data["page"],
-            to_rotation=data["to_rotation"],
-            from_rotation=data.get("from_rotation"),
+            from_rotations={int(page): angle for page, angle in data.get("from_rotations", {}).items()},
+            to_rotations={int(page): angle for page, angle in data.get("to_rotations", {}).items()},
         )
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sys
 from dataclasses import asdict, dataclass, field
@@ -13,6 +14,8 @@ from .constants import (
     DEFAULT_TEXT_FONT_PT,
 )
 from .debug import is_frozen
+
+logger = logging.getLogger(__name__)
 
 
 def get_config_dir(app_name: str = "Signer") -> Path:
@@ -102,7 +105,13 @@ class SettingsStore:
                 if field_name in data
             }
             return AppSettings(**kwargs)
-        except (OSError, TypeError, ValueError):
+        except (OSError, TypeError, ValueError) as exc:
+            # Unreadable config means recent files/colours/preferences are lost;
+            # defaults keep the app usable, but say so rather than losing it quietly.
+            logger.warning(
+                "Could not read settings from %s (%s); falling back to defaults",
+                self._settings_path, exc,
+            )
             return AppSettings()
 
     def save(self, settings: AppSettings) -> None:
