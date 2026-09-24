@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from PIL import Image
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
 from PySide6.QtTest import QTest
 
 from signer.objects import AnnotationType, ProjectFile, VectorAnnotation
@@ -223,6 +224,8 @@ def test_open_project_returns_keyboard_focus_to_canvas(main_window, tmp_path):
         Image.new("RGB", (600, 800), "white") for _ in range(3)
     ]):
         assert main_window.open_document(str(project_path)) is True
+        # Allow the event loop to process focus events after opening the document
+        QApplication.instance().processEvents()
 
     assert main_window.canvas.hasFocus()
 

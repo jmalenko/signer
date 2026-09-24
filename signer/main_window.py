@@ -1073,13 +1073,14 @@ class MainWindow(QMainWindow):
         """Get list of available system fonts."""
         from PySide6.QtGui import QFontDatabase
         db = QFontDatabase()
-        # Get common system fonts; default to all if available
         fonts = sorted(db.families())
-        # Return common fonts if available, otherwise all
         common = ["Arial", "Helvetica", "Times New Roman", "Courier New", "Verdana", "Georgia"]
-        if all(f in fonts for f in common):
-            return common + [f for f in fonts if f not in common]
-        return fonts[:50]  # Limit to 50 fonts if very large list
+        # Always include common fonts first; they may not be present in the database
+        # on minimal CI runners. This ensures the combo always has items.
+        result = list(common)
+        # Add any additional fonts from the database that aren't already in common
+        result += [f for f in fonts if f not in common]
+        return result[:50]
 
     # ---------------------------------------------------------------- date/time helpers
 
