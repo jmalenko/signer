@@ -23,26 +23,23 @@ def test_load_signature_file_prunes_stale_recent_entry(main_window, tmp_path):
     main_window._settings.recent_signature_paths = [missing, "/other/kept.png"]
 
     with patch("signer.main_window.QMessageBox.warning"):
-        result = main_window._load_signature_file(missing, at_default_position=True)
+        result = main_window._load_signature_file(missing)
 
     assert result is False
     assert missing not in main_window._settings.recent_signature_paths
     assert "/other/kept.png" in main_window._settings.recent_signature_paths
 
 
-def test_load_signature_file_uses_signature_default_position(main_window, sample_pdf, sample_signature):
-    """Regression test (silent-failure review finding #3): loading a signature via
-    the Signature submenu ("From file...", recent files - at_default_position=False)
-    must use the 80%-down-the-page position documented in
-    FUNCTIONAL_SPECIFICATION.md #7.7, not the generic center-of-page position used
-    for other annotation types.
-    """
+def test_load_signature_file_uses_default_centered_position(
+    main_window, sample_pdf, sample_signature
+):
+    """Signatures use the same centered placement as every other annotation."""
     main_window.open_document(str(sample_pdf))
 
-    result = main_window._load_signature_file(str(sample_signature), at_default_position=False)
+    result = main_window._load_signature_file(str(sample_signature))
 
     assert result is True
     obj = main_window.canvas.selected
-    expected_x, expected_y = main_window.canvas.default_signature_position_for(obj)
+    expected_x, expected_y = main_window.canvas.default_position_for(obj)
     assert obj.x == expected_x
     assert obj.y == expected_y

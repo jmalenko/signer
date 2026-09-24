@@ -577,3 +577,8 @@ sometimes need to follow content that is not horizontal. Rotation should remain 
 
 The rotation is a visual variation only; it does not add cryptographic or legal protection to a
 signature.
+
+## Version 1.2.40 - Center Signature Placement
+
+Signatures added through the `-signature` startup parameter or the Signature/Image annotation
+menu shall be placed at the center of the page.

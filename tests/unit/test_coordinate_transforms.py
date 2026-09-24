@@ -96,19 +96,6 @@ class TestCoordinateTransforms:
         assert x == 400.0
         assert y == 450.0
     
-    def test_default_signature_position_for(self, canvas):
-        """Test default signature position (80% from top)."""
-        canvas._pages = [type('obj', (object,), {'size': (1000, 1000)})()]
-        
-        obj = CanvasObject(0, 0, 200, 100, 0)
-        
-        x, y = canvas.default_signature_position_for(obj)
-        
-        # Centered horizontally: (1000 - 200) / 2 = 400
-        # 80% from top: 0.8 * 1000 - 100/2 = 800 - 50 = 750
-        assert x == 400.0
-        assert y == 750.0
-    
     def test_default_position_clamped(self, canvas):
         """Test default position is clamped to page bounds."""
         canvas._pages = [type('obj', (object,), {'size': (100, 100)})()]

@@ -1106,14 +1106,6 @@ class DocumentCanvas(QWidget):
         y = max(0.0, (ph - obj.scaled_height) / 2)
         return x, y
 
-    def default_signature_position_for(self, obj: CanvasObject) -> tuple[float, float]:
-        if not self._pages:
-            return 0.0, 0.0
-        pw, ph = self._pages[self._current_page].size
-        x = max(0.0, (pw - obj.scaled_width) / 2)
-        y = max(0.0, 0.8 * ph - obj.scaled_height / 2)
-        return x, y
-
     # ---------------------------------------------------------------- paint
 
     def resizeEvent(self, event) -> None:

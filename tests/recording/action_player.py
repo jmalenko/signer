@@ -100,7 +100,7 @@ class ActionPlayer:
     def _execute_open_signature(self, action: dict[str, Any]) -> None:
         """Load a signature file."""
         path = normalize_recorded_path(action["path"])
-        result = self.main_window._load_signature_file(path, at_default_position=True)
+        result = self.main_window._load_signature_file(path)
         if not result:
             raise RuntimeError(f"Failed to load signature: {path}")
         
@@ -113,7 +113,7 @@ class ActionPlayer:
     def _execute_add_signature(self, action: dict[str, Any]) -> None:
         """Add a signature file (same as open_signature)."""
         path = normalize_recorded_path(action["path"])
-        result = self.main_window._load_signature_file(path, at_default_position=True)
+        result = self.main_window._load_signature_file(path)
         if not result:
             raise RuntimeError(f"Failed to load signature: {path}")
         

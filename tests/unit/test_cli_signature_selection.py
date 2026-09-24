@@ -17,6 +17,17 @@ def _run_startup_load(main_window, qapp, document, signature):
 
 
 class TestCliSignatureSelection:
+    def test_signature_loaded_from_cli_is_centered_on_the_page(
+        self, qapp, main_window, sample_pdf, sample_signature
+    ):
+        _run_startup_load(main_window, qapp, sample_pdf, sample_signature)
+
+        signature = main_window.canvas.selected
+        expected_x, expected_y = main_window.canvas.default_position_for(signature)
+
+        assert signature.x == expected_x
+        assert signature.y == expected_y
+
     def test_signature_loaded_from_cli_gets_keyboard_focus(
         self, qapp, main_window, sample_pdf, sample_signature
     ):

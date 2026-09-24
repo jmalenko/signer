@@ -214,8 +214,8 @@ def patch_main_window_for_recording(main_window) -> None:
         return result
     
     # Wrap _load_signature_file
-    def recorded_load_signature(path, at_default_position):
-        result = original_load_signature(path, at_default_position)
+    def recorded_load_signature(path):
+        result = original_load_signature(path)
         if result and recorder.is_enabled():
             recorder.record_open_signature(path, main_window.canvas.selected)
         return result

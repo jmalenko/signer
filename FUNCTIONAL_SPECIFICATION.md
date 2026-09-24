@@ -401,10 +401,6 @@ top-right corner); for Line/Arrow this can flip the line's effective direction.
 - **Duplicate** preserves size and color, offsetting the copy by 20px (`DUPLICATE_OFFSET`).
 - New annotations default to the **center of the current page**: `x = (page_width -
   object_width)/2`, `y = (page_height - object_height)/2`, clamped to page bounds.
-- **Exception**: a Signature/Image annotation added via the `-signature` CLI argument or the
-  Signature submenu defaults to 80% down the page instead: `y = 0.8 × page_height -
-  object_height/2`, still centered horizontally. This mirrors typical bottom-of-page signature
-  placement.
 
 ### 7.8 Color/width toolbar controls
 
@@ -933,7 +929,7 @@ control in either scale state.
 | `-signature <path>` | Initial signature image to load (PNG preferred for transparency) |
 
 - If `-signature` is given together with `-document`, the signature annotation is added
-  immediately after load, at the default signature position (§7.7), and becomes fully selected
+  immediately after load at the center of the current page (§7.7), and becomes fully selected
   (movable/deletable via keyboard right away).
 - If `-signature` is omitted, no annotation is auto-added on open.
 - If `-signature` is omitted, the previously-used signature file is remembered but **not**

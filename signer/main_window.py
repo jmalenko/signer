@@ -398,7 +398,7 @@ class MainWindow(QMainWindow):
             if document:
                 self.open_document(document)
             if signature:
-                self._load_signature_file(signature, at_default_position=True)
+                self._load_signature_file(signature)
             # Force real window activation before focusing: a freshly-shown window may not yet be key/active.
             self.raise_()
             self.activateWindow()
@@ -777,7 +777,7 @@ class MainWindow(QMainWindow):
             self._rebuild_menu_items(
                 self._sig_ann_menu, [], paths,
                 label_fn=lambda p: Path(p).name,
-                callback=lambda p: self._load_signature_file(p, at_default_position=False),
+                callback=self._load_signature_file,
             )
 
     @staticmethod
@@ -1164,7 +1164,7 @@ class MainWindow(QMainWindow):
             "Image files (*.png *.jpg *.jpeg);;All files (*.*)",
         )
         if path:
-            self._load_signature_file(path, at_default_position=False)
+            self._load_signature_file(path)
 
     def _open_prepare_signature_tool(self) -> None:
         dialog = PrepareSignatureDialog(self)
@@ -1560,9 +1560,9 @@ class MainWindow(QMainWindow):
             )
         if not chosen:
             return False
-        return self._load_signature_file(chosen, at_default_position=True)
+        return self._load_signature_file(chosen)
 
-    def _load_signature_file(self, path: str, at_default_position: bool) -> bool:
+    def _load_signature_file(self, path: str) -> bool:
         p = Path(path)
         suffix = p.suffix.lower()
         if suffix == ".xcf":
@@ -1587,10 +1587,7 @@ class MainWindow(QMainWindow):
 
         obj = SignatureObject(loaded, str(p), 0, 0, self.canvas.current_page)
         obj.color = QColor(self._current_color)
-        # FUNCTIONAL_SPECIFICATION.md #7.7: signatures added via the -signature CLI
-        # argument or the Signature submenu default to 80% down the page, not the
-        # generic center-of-page position used for other annotation types.
-        x, y = self.canvas.default_signature_position_for(obj)
+        x, y = self.canvas.default_position_for(obj)
         obj.x, obj.y = x, y
 
         if self.canvas.has_document:
