@@ -50,6 +50,11 @@ pytest --cov=signer --cov-report=html
 pytest tests/feature/test_document_all_annotations.py -q
 ```
 
+Qt runs with the `offscreen` platform during tests. Native font discovery is platform-dependent:
+macOS still exposes its CoreText fonts, whereas a headless Windows runner may report none. Tests
+that exercise font controls must use the application's guaranteed common-font choices rather than
+assuming any particular font is installed by the host.
+
 ## Static Analysis with Ruff
 
 Install Ruff in the active virtual environment if needed:

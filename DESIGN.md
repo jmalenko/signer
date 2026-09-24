@@ -228,6 +228,11 @@ On Linux build/CI machines without a display, run the suite headlessly with
 run time are distribution-specific packaging issues and should be resolved on the oldest
 supported build/test image, not worked around at build time.
 
+Qt's offscreen platform can report no installed font families on headless Windows runners, while
+macOS offscreen runs normally retain access to CoreText fonts. The font-family toolbar therefore
+starts with the application's common-font choices before appending families discovered by Qt;
+tests explicitly cover the empty-database case and must not rely on host-installed fonts.
+
 **Portable build**: after building, copy the executable from `dist/` to any writable directory;
 optionally place a `config.json` next to it to enable portable mode (see
 [FUNCTIONAL_SPECIFICATION.md §15](FUNCTIONAL_SPECIFICATION.md#15-persistence--settings) for the
