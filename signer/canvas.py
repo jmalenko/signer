@@ -1176,10 +1176,17 @@ class DocumentCanvas(QWidget):
                     handle_center = obj.rotation_handle_center_viewport(
                         r.x(), r.y(), r.width(), r.height(), display_rotation
                     )
-                    top_center = obj._rotate_point(
-                        QPointF(r.center().x(), r.top()), r.center(), display_rotation
-                    )
-                    painter.drawLine(top_center, handle_center)
+                    # For LINE/ARROW, draw rotation handle line from center perpendicular to line
+                    # For other objects, draw from top center to handle center
+                    if hasattr(obj, 'ann_type') and obj.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}:
+                        # Draw from center of bounding box to handle center
+                        line_start = r.center()
+                    else:
+                        # Default: from top center
+                        line_start = obj._rotate_point(
+                            QPointF(r.center().x(), r.top()), r.center(), display_rotation
+                        )
+                    painter.drawLine(line_start, handle_center)
                     painter.drawEllipse(obj.rotation_handle_rect_viewport(
                         r.x(), r.y(), r.width(), r.height(), display_rotation
                     ))
@@ -1302,6 +1309,29 @@ class DocumentCanvas(QWidget):
         self._rotation_drag_states = [
             (obj, obj.x, obj.y, obj.rotation) for obj in selected
         ]
+        
+        # Cache orientation (flip/no-flip decision) for LINE/ARROW to prevent handle from switching sides during drag
+        for obj in selected:
+            if isinstance(obj, VectorAnnotation) and obj.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}:
+                view_rect = self._object_view_rect(obj)
+                vx, vy = view_rect.x(), view_rect.y()
+                vw, vh = view_rect.width(), view_rect.height()
+                
+                # Get endpoints in current rotated state
+                endpoints = obj.endpoint_points_viewport(vx, vy, vw, vh, rotation=self._display_rotation(obj))
+                if len(endpoints) >= 2:
+                    dx = endpoints[1].x() - endpoints[0].x()
+                    dy = endpoints[1].y() - endpoints[0].y()
+                else:
+                    dx, dy = 1.0, 0.0
+                
+                # Calculate perpendicular: (-dy, dx)
+                perp_x = -dy
+                perp_y = dx
+                
+                # Cache the flip decision: True if perpendicular points downward (needs flipping to point upward)
+                obj._rotation_handle_flip_cache = (perp_y > 0)
+        
         self._dragging = True
         self._rotating = True
         self._drag_handle = -1
@@ -1735,6 +1765,11 @@ class DocumentCanvas(QWidget):
 
     def _reset_drag_state(self) -> None:
         """Clear all mouse-drag/rotation bookkeeping after a drag ends."""
+        # Clear cached flip decisions
+        for obj in self.get_selected_annotations():
+            if hasattr(obj, '_rotation_handle_flip_cache'):
+                delattr(obj, '_rotation_handle_flip_cache')
+        
         self._dragging = False
         self._rotating = False
         self._rotation_drag_states = []

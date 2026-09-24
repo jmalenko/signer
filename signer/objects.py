@@ -567,6 +567,68 @@ class VectorAnnotation(CanvasObject):
     def supports_endpoint_handles(self) -> bool:
         return self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}
 
+    def rotation_handle_center_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> QPointF:
+        """Override: for LINE/ARROW, position handle perpendicular to the line.
+        
+        Location: signer/objects.py, rotation_handle_center_viewport() method in VectorAnnotation class
+        
+        The rotation handle is positioned perpendicular to the line/arrow direction,
+        pointing upward (dy < 0). For direction vector (dx, dy), the perpendicular is (-dy, dx).
+        During rotation drag, the flip decision (orientation) is cached to prevent the handle
+        from switching sides as the object rotates.
+        """
+        # For LINE/ARROW, position the rotation handle perpendicular to the line
+        if self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}:
+            cx, cy = vx + vw / 2.0, vy + vh / 2.0
+            
+            # Calculate perpendicular from endpoints in their CURRENT (rotated) viewport state
+            endpoints = self.endpoint_points_viewport(vx, vy, vw, vh, rotation=rotation)
+            if len(endpoints) >= 2:
+                ep0 = endpoints[0]
+                ep1 = endpoints[1]
+                dx = ep1.x() - ep0.x()
+                dy = ep1.y() - ep0.y()
+            else:
+                dx, dy = 1.0, 0.0
+            
+            # Perpendicular to (dx, dy) is (-dy, dx)
+            perp_x = -dy
+            perp_y = dx
+            
+            # Use cached flip decision if available (during rotation drag)
+            if hasattr(self, '_rotation_handle_flip_cache'):
+                should_flip = self._rotation_handle_flip_cache
+            else:
+                # Determine if perpendicular points downward (needs flipping to point upward)
+                should_flip = (perp_y > 0)
+            
+            # Apply flip decision to ensure perpendicular points upward
+            if should_flip:
+                perp_x = -perp_x
+                perp_y = -perp_y
+            
+            # Normalize the perpendicular vector
+            length = math.sqrt(perp_x * perp_x + perp_y * perp_y)
+            if length > 0:
+                perp_x /= length
+                perp_y /= length
+            
+            # Position handle at ROTATION_HANDLE_OFFSET distance perpendicular
+            handle_x = cx + perp_x * ROTATION_HANDLE_OFFSET
+            handle_y = cy + perp_y * ROTATION_HANDLE_OFFSET
+            
+            return QPointF(handle_x, handle_y)
+        
+        # Fall back to base class for other types
+        return super().rotation_handle_center_viewport(vx, vy, vw, vh, rotation)
+
     def endpoint_points_viewport(
         self,
         vx: float,
