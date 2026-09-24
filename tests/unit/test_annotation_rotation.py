@@ -295,6 +295,38 @@ def test_angle_toolbar_is_hidden_without_selection(main_window):
     assert not main_window._angle_spinner.isVisible()
     assert not main_window._reset_angle_btn.isVisible()
 
+# We must mock QPainter.begin/end globally for the print dialog test because
+# the test patches QPrintDialog.exec to return Accepted without showing a
+# real printer dialog. Without the mock, QPainter.begin() on the real QPrinter
+# would return False (no printer available) and the print operation would fail
+# early. However, a naive mock (return_value=True) would also affect QPainter
+# instances used elsewhere (e.g., when rendering annotations to QImage in
+# VectorAnnotation.render_to_pil()), causing a Qt abort because the painter
+# would think it is active without being properly initialized. Therefore we
+# install a conditional mock that returns True only for QPrinter devices and
+# delegates to the original implementation for all other devices.
+
+_original_qpainter_begin = QPainter.begin
+_original_qpainter_end = QPainter.end
+
+
+def _mock_printer_qpainter_begin(self, device):
+    """Return True for the QPrinter used by print_document, but let real
+    initialization happen for other devices (e.g. annotation QImages)."""
+    if isinstance(device, QPrinter):
+        return True
+    else:
+        return _original_qpainter_begin(self, device)
+
+
+def _mock_printer_qpainter_end(self):
+    """Do nothing for the QPrinter used by print_document, but let real
+    ending happen for other devices (e.g. annotation QImages)."""
+    if isinstance(self.device(), QPrinter):
+        return
+    else:
+        return _original_qpainter_end(self)
+
 
 def test_print_uses_rotated_page_and_annotation_geometry(main_window):
     main_window.canvas.set_pages([Image.new("RGB", (500, 400), "white")])
@@ -304,9 +336,9 @@ def test_print_uses_rotated_page_and_annotation_geometry(main_window):
 
     with (
         patch.object(QPrintDialog, "exec", return_value=QDialog.Accepted),
-        patch.object(QPainter, "begin", return_value=True),
+        patch.object(QPainter, "begin", new=_mock_printer_qpainter_begin),
         patch.object(QPainter, "drawPixmap"),
-        patch.object(QPainter, "end"),
+        patch.object(QPainter, "end", new=_mock_printer_qpainter_end),
         # Real page metrics need an actual system printer/print backend, which
         # isn't guaranteed to exist on CI runners (esp. Windows without a
         # configured printer); fix the page size instead of querying it.

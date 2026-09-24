@@ -1,5 +1,6 @@
 """Cross-platform notification behavior tests."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 from PySide6.QtWidgets import QMainWindow
@@ -21,4 +22,6 @@ def test_directory_link_uses_desktop_services(qtbot, tmp_path):
         notification._on_link_clicked(str(tmp_path))
 
     opened_url = open_url.call_args.args[0]
-    assert opened_url.toLocalFile() == str(tmp_path)
+    # QUrl.toLocalFile() may return forward slashes even on Windows; compare
+    # using pathlib for separator-agnostic equality.
+    assert Path(opened_url.toLocalFile()).resolve() == tmp_path.resolve()
