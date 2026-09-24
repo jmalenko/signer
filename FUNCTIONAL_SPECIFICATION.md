@@ -64,6 +64,7 @@ from it), `document.pdf`, `document.doc` / `document.docx`, `document1.pdf` (mul
 | Width spinner | Line width in points (vector types only) |
 | Font Size spinner | Text annotations only |
 | Font combo | Text annotations only |
+| Spacing spinner | Character spacing in points; text annotations only |
 | Angle spinner | Rotation in degrees; all annotation types |
 | Hamburger menu (☰, far right) | See §2.2 |
 
@@ -142,6 +143,7 @@ selected annotations that support that property):
 | Width spinner | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | hidden | hidden |
 | Font size spinner | hidden | hidden | hidden | hidden | hidden | hidden | ✓ | hidden |
 | Font family combo | hidden | hidden | hidden | hidden | hidden | hidden | ✓ | hidden |
+| Character spacing spinner | hidden | hidden | hidden | hidden | hidden | hidden | ✓ | hidden |
 | Angle spinner | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 When nothing is selected, all annotation-specific property controls are hidden. Duplicate and
@@ -354,6 +356,12 @@ for which types support color/width/font controls.
 ### 7.2 Text annotations
 
 - Default font size 11pt, default font family Arial; no text wrapping.
+- Default character spacing is 0pt. The toolbar accepts positive and negative values in 1pt
+  steps, with no application-imposed minimum or maximum, and refits the boundary immediately
+  when the value changes.
+- A selected text annotation has a diamond handle beyond the right-edge midpoint. Dragging it
+  along the annotation's local horizontal axis changes character spacing without changing font
+  size. The handle follows annotation rotation and spacing changes are undoable/redoable.
 - New text annotations render at the toolbar's current point size, with the boundary sized to
   fit the full text (via Qt font metrics) without cropping, zero margin.
 - Ctrl+Enter inserts a newline in the text edit; Enter/closing the editor commits changes as
@@ -621,6 +629,7 @@ Stored as JSON in `config.json` (location depends on portable vs installed mode,
 | `recent_line_width_pt` | float | `1.5` | Last-used line width |
 | `recent_font_family` | string | `Arial` | Last-used text font family |
 | `recent_font_size_pt` | int | `11` | Last-used text font size |
+| `recent_character_spacing_pt` | float | `0.0` | Last-used text character spacing |
 | `libreoffice_path` | string \| null | `null` | Manual LibreOffice executable override |
 | `last_save_directory` | string \| null | `null` | Last save location |
 | `last_export_format` | string | `jpg` | Last-used export format |

@@ -6,6 +6,7 @@ DEFAULT_COLOR: str = "#cc0000"
 DEFAULT_LINE_WIDTH_PT: float = 1.5
 DEFAULT_FONT_FAMILY: str = "Arial"
 DEFAULT_TEXT_FONT_PT: int = 11
+DEFAULT_CHARACTER_SPACING_PT: float = 0.0
 
 # Document is internally rendered at 300 DPI, PDF standard is 72 DPI.
 # Converts between the two throughout rendering/export/geometry code.

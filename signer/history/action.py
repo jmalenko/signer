@@ -758,11 +758,14 @@ class PropertyChangeAction(Action):
     def _post_set(self, obj: Any) -> None:
         pass
 
+    def _set_value(self, obj: Any, value: Any) -> None:
+        setattr(obj, self.attr_name, value)
+
     def _apply_value(self, canvas: Any, key: str) -> None:
         if key in self.data and "object_id" in self.data:
             obj = self.find_object(canvas, self.data["object_id"])
             if obj is not None and hasattr(obj, self.attr_name):
-                setattr(obj, self.attr_name, self._convert(self.data[key]))
+                self._set_value(obj, self._convert(self.data[key]))
                 self._post_set(obj)
         if self.calls_canvas_update:
             canvas.update()
@@ -1160,4 +1163,41 @@ class ChangeFontFamilyAction(PropertyChangeAction):
             object_id=data.get("object_id"),
             font_family=data.get("font_family", "Arial"),
             from_font_family=data.get("from_font_family"),
+        )
+
+
+@Action.register("change_character_spacing")
+class ChangeCharacterSpacingAction(PropertyChangeAction):
+    """Action: Change character spacing of text annotations."""
+
+    action_type_str = "change_character_spacing"
+    data_key = "character_spacing_pt"
+    from_data_key = "from_character_spacing_pt"
+    attr_name = "_character_spacing_pt"
+
+    def __init__(
+        self,
+        object_id: int | None = None,
+        character_spacing_pt: float = 0.0,
+        from_character_spacing_pt: float | None = None,
+    ) -> None:
+        self._init_property_data(
+            object_id,
+            character_spacing_pt,
+            from_character_spacing_pt,
+            always_include_object_id=True,
+        )
+
+    def _set_value(self, obj: Any, value: Any) -> None:
+        if hasattr(obj, "set_character_spacing"):
+            obj.set_character_spacing(value)
+        else:
+            super()._set_value(obj, value)
+
+    @classmethod
+    def from_data(cls, data: dict[str, Any]) -> ChangeCharacterSpacingAction:
+        return cls(
+            object_id=data.get("object_id"),
+            character_spacing_pt=data.get("character_spacing_pt", 0.0),
+            from_character_spacing_pt=data.get("from_character_spacing_pt"),
         )

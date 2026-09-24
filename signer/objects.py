@@ -25,6 +25,7 @@ from PySide6.QtGui import (
 )
 
 from .constants import (
+    DEFAULT_CHARACTER_SPACING_PT,
     DEFAULT_COLOR,
     DEFAULT_FONT_FAMILY,
     DEFAULT_LINE_WIDTH_PT,
@@ -98,6 +99,8 @@ ANCHOR_HANDLE = [7, 6, 5, 4, 3, 2, 1, 0]  # opposite handle for each handle
 HANDLE_SIZE = 10.0
 ROTATION_HANDLE_SIZE = 12.0
 ROTATION_HANDLE_OFFSET = 24.0
+CHARACTER_SPACING_HANDLE_SIZE = 12.0
+CHARACTER_SPACING_HANDLE_OFFSET = 24.0
 VISIBLE_ALPHA_RUN = re.compile(rb"[^\x00]+")
 
 # _draw_symbol() geometry constants (fractions of min(vw, vh) unless noted).
@@ -496,9 +499,11 @@ class VectorAnnotation(CanvasObject):
         font_family: str = DEFAULT_FONT_FAMILY,
         font_size_pt: int = DEFAULT_TEXT_FONT_PT,
         line_width_pt: float = DEFAULT_LINE_WIDTH_PT,  # v1.2.22
+        character_spacing_pt: float = DEFAULT_CHARACTER_SPACING_PT,
     ) -> None:
         self._font_family = font_family
         self._font_size_pt = font_size_pt
+        self._character_spacing_pt = character_spacing_pt
         self._line_width_pt = line_width_pt  # v1.2.22
         self._angle: float | None = None  # Rotation angle in degrees for LINE/ARROW
         if ann_type == AnnotationType.TEXT:
@@ -566,6 +571,42 @@ class VectorAnnotation(CanvasObject):
 
     def supports_endpoint_handles(self) -> bool:
         return self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}
+
+    def character_spacing_handle_center_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> QPointF:
+        """Return the text-spacing handle center beyond the right edge."""
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        return self._rotate_point(
+            QPointF(vx + vw + CHARACTER_SPACING_HANDLE_OFFSET, center.y()),
+            center,
+            angle,
+        )
+
+    def character_spacing_handle_rect_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> QRectF:
+        center = self.character_spacing_handle_center_viewport(
+            vx, vy, vw, vh, rotation
+        )
+        half = CHARACTER_SPACING_HANDLE_SIZE / 2.0
+        return QRectF(
+            center.x() - half,
+            center.y() - half,
+            CHARACTER_SPACING_HANDLE_SIZE,
+            CHARACTER_SPACING_HANDLE_SIZE,
+        )
 
     def rotation_handle_center_viewport(
         self,
@@ -701,10 +742,43 @@ class VectorAnnotation(CanvasObject):
 
     # ------------------------------------------------------------------ text fitting
 
+    def set_character_spacing(self, spacing_pt: float) -> None:
+        """Set text spacing while keeping the rotated left edge fixed."""
+        if self.ann_type != AnnotationType.TEXT:
+            self._character_spacing_pt = spacing_pt
+            return
+
+        center = QPointF(
+            self.x + self.scaled_width / 2.0,
+            self.y + self.scaled_height / 2.0,
+        )
+        left_edge = self._rotate_point(
+            QPointF(self.x, self.y + self.scaled_height / 2.0),
+            center,
+            self.rotation,
+        )
+        self._character_spacing_pt = spacing_pt
+        self.fit_text_box()
+        new_center = QPointF(
+            self.x + self.scaled_width / 2.0,
+            self.y + self.scaled_height / 2.0,
+        )
+        new_left_edge = self._rotate_point(
+            QPointF(self.x, self.y + self.scaled_height / 2.0),
+            new_center,
+            self.rotation,
+        )
+        self.x += left_edge.x() - new_left_edge.x()
+        self.y += left_edge.y() - new_left_edge.y()
+
     def _make_font(self) -> QFont:
         f = QFont(self._font_family)
         # Font size is stored in PDF points; scale to pixels for 300 DPI rendering
         f.setPixelSize(round(self._font_size_pt * DPI_SCALE))
+        f.setLetterSpacing(
+            QFont.AbsoluteSpacing,
+            self._character_spacing_pt * DPI_SCALE,
+        )
         return f
 
     def fit_text_box(self) -> None:
@@ -736,7 +810,8 @@ class VectorAnnotation(CanvasObject):
             font_pixel_size = self._make_font().pixelSize()
             avg_char_width = max(8.0, float(font_pixel_size))
             widest_line = max((line.replace("\t", "    ") for line in lines or [""]), key=len)
-            self._base_width = max(8.0, len(widest_line) * avg_char_width)
+            spacing_width = max(0, len(widest_line) - 1) * self._character_spacing_pt * DPI_SCALE
+            self._base_width = max(8.0, len(widest_line) * avg_char_width + spacing_width)
             self._base_height = max(8.0, font_pixel_size * 1.2 * len(lines))
             self._natural_width = self._base_width
             self._natural_height = self._base_height
@@ -838,6 +913,10 @@ class VectorAnnotation(CanvasObject):
         font = self._make_font()
         # Font size already includes DPI_SCALE from _make_font(), multiply by factor and doc_scale
         font.setPixelSize(max(1, round(font.pixelSize() * factor * doc_scale)))
+        font.setLetterSpacing(
+            QFont.AbsoluteSpacing,
+            self._character_spacing_pt * DPI_SCALE * factor * doc_scale,
+        )
         painter.setFont(font)
         painter.setPen(self.color)
         painter.setBrush(Qt.NoBrush)
@@ -904,6 +983,7 @@ class VectorAnnotation(CanvasObject):
             self.text,
             font_family=self._font_family,
             font_size_pt=self._font_size_pt,
+            character_spacing_pt=self._character_spacing_pt,
             line_width_pt=self._line_width_pt,  # v1.2.22
         )
         obj.scale = self.scale
@@ -927,6 +1007,7 @@ class VectorAnnotation(CanvasObject):
         if self.ann_type == AnnotationType.TEXT:
             data["font_family"] = self._font_family
             data["font_size_pt"] = self._font_size_pt
+            data["character_spacing_pt"] = self._character_spacing_pt
         # Save line width for vector annotations (all types)
         data["line_width_pt"] = self._line_width_pt  # v1.2.22: line width in points
         data["natural_width"] = self._natural_width
@@ -947,6 +1028,7 @@ class VectorAnnotation(CanvasObject):
             data.get("text", ""),
             font_family=data.get("font_family", DEFAULT_FONT_FAMILY),
             font_size_pt=data.get("font_size_pt", DEFAULT_TEXT_FONT_PT),
+            character_spacing_pt=data.get("character_spacing_pt", DEFAULT_CHARACTER_SPACING_PT),
             line_width_pt=data.get("line_width_pt", DEFAULT_LINE_WIDTH_PT),  # v1.2.22
         )
         obj._base_width = data["base_width"]
@@ -1054,6 +1136,7 @@ class ProjectFile:
                     data["text"] = obj.text
                     data["font_family"] = obj._font_family
                     data["font_size_pt"] = obj._font_size_pt
+                    data["character_spacing_pt"] = obj._character_spacing_pt
                 data["natural_width"] = obj._natural_width
                 data["natural_height"] = obj._natural_height
                 if obj._angle is not None:

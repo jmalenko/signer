@@ -64,6 +64,7 @@ from .compositor import (
 )
 from .export_quality_dialog import ExportQualityOptionsPanel
 from .constants import (
+    DEFAULT_CHARACTER_SPACING_PT,
     DEFAULT_FONT_FAMILY,
     DEFAULT_LINE_WIDTH_PT,
     DEFAULT_TEXT_FONT_PT,
@@ -542,6 +543,18 @@ class MainWindow(QMainWindow):
         self._font_family_combo.currentTextChanged.connect(self._on_font_family_changed)
         self._font_family_combo_action = tb.addWidget(self._font_family_combo)
 
+        self._character_spacing_label = QLabel("Spacing:")
+        self._character_spacing_label_action = tb.addWidget(self._character_spacing_label)
+        self._character_spacing_spinner = QDoubleSpinBox()
+        self._character_spacing_spinner.setRange(float("-inf"), float("inf"))
+        self._character_spacing_spinner.setSingleStep(1.0)
+        self._character_spacing_spinner.setDecimals(1)
+        self._character_spacing_spinner.setValue(DEFAULT_CHARACTER_SPACING_PT)
+        self._character_spacing_spinner.setMaximumWidth(65)
+        self._character_spacing_spinner.setToolTip("Character spacing in points")
+        self._character_spacing_spinner.valueChanged.connect(self._on_character_spacing_changed)
+        self._character_spacing_spinner_action = tb.addWidget(self._character_spacing_spinner)
+
         self._angle_label = QLabel("Angle:")
         self._angle_label_action = tb.addWidget(self._angle_label)
         self._angle_spinner = QSpinBox()
@@ -941,13 +954,21 @@ class MainWindow(QMainWindow):
         )
         self._font_size_spinner.setVisible(font_visible)
         self._font_size_label.setVisible(font_visible)
+        self._character_spacing_spinner.setVisible(font_visible)
+        self._character_spacing_label.setVisible(font_visible)
         if font_visible:
             # Reflect the selected annotation's actual font size (e.g. after a [ / ] shortcut).
             self._set_value_silently(self._font_size_spinner, selected._font_size_pt)
+            self._set_value_silently(
+                self._character_spacing_spinner,
+                selected._character_spacing_pt,
+            )
         self._font_family_combo.setVisible(font_visible)
         self._font_label.setVisible(font_visible)
         self._font_size_spinner_action.setVisible(font_visible)
         self._font_size_label_action.setVisible(font_visible)
+        self._character_spacing_spinner_action.setVisible(font_visible)
+        self._character_spacing_label_action.setVisible(font_visible)
         self._font_family_combo_action.setVisible(font_visible)
         self._font_label_action.setVisible(font_visible)
         return font_visible
@@ -1056,6 +1077,18 @@ class MainWindow(QMainWindow):
             self._settings.recent_font_size_pt = value
             self._save_settings_safe()
 
+    def _on_character_spacing_changed(self, value: float) -> None:
+        """Handle character spacing changes."""
+        selected = self.canvas.selected
+        if (
+            selected is not None
+            and isinstance(selected, VectorAnnotation)
+            and selected.ann_type == AnnotationType.TEXT
+        ):
+            self.canvas.set_character_spacing_selected(value)
+            self._settings.recent_character_spacing_pt = value
+            self._save_settings_safe()
+
     def _on_font_family_changed(self, family: str) -> None:
         """Handle font family combo changes."""
         selected = self.canvas.selected
@@ -1121,6 +1154,7 @@ class MainWindow(QMainWindow):
             ann_type, 0, 0, self.canvas.current_page,
             font_family=self._settings.recent_font_family,
             font_size_pt=self._settings.recent_font_size_pt,
+            character_spacing_pt=self._settings.recent_character_spacing_pt,
             line_width_pt=self._settings.recent_line_width_pt,
         )
         obj.color = QColor(self._current_color)
@@ -1146,6 +1180,7 @@ class MainWindow(QMainWindow):
             AnnotationType.TEXT, 0, 0, self.canvas.current_page, preset_text,
             font_family=self._settings.recent_font_family,
             font_size_pt=self._settings.recent_font_size_pt,
+            character_spacing_pt=self._settings.recent_character_spacing_pt,
             line_width_pt=self._settings.recent_line_width_pt,
         )
         obj.color = QColor(self._current_color)

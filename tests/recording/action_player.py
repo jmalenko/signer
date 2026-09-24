@@ -79,6 +79,8 @@ class ActionPlayer:
             self._execute_set_font_size(action)
         elif action_type == "set_font_family":
             self._execute_set_font_family(action)
+        elif action_type == "set_character_spacing":
+            self._execute_set_character_spacing(action)
         elif action_type == "set_line_width":
             self._execute_set_line_width(action)
         elif action_type == "undo":
@@ -149,7 +151,14 @@ class ActionPlayer:
             # Set text content if this is a text annotation
             if text is not None and hasattr(self.canvas.selected, 'text'):
                 self.canvas.selected.text = text
-                # Resize annotation to fit the text
+                if "font_family" in action:
+                    self.canvas.selected._font_family = action["font_family"]
+                if "font_size_pt" in action:
+                    self.canvas.selected._font_size_pt = action["font_size_pt"]
+                if "character_spacing_pt" in action:
+                    self.canvas.selected._character_spacing_pt = float(
+                        action["character_spacing_pt"]
+                    )
                 if hasattr(self.canvas.selected, 'fit_text_box'):
                     self.canvas.selected.fit_text_box()
             
@@ -606,6 +615,18 @@ class ActionPlayer:
             obj._font_family = font_family
             if hasattr(obj, 'fit_text_box'):
                 obj.fit_text_box()
+        self.canvas.objectChanged.emit()
+        self.canvas.update()
+
+    def _execute_set_character_spacing(self, action: dict[str, Any]) -> None:
+        """Set character spacing (in PDF points) on a text annotation."""
+        obj_id = action.get("object_id")
+        obj = self._get_object(obj_id) if obj_id is not None else self.canvas.selected
+        if obj is None:
+            raise RuntimeError(f"Object with id {obj_id} not found for set_character_spacing")
+
+        if hasattr(obj, "set_character_spacing"):
+            obj.set_character_spacing(float(action.get("character_spacing_pt", 0.0)))
         self.canvas.objectChanged.emit()
         self.canvas.update()
 

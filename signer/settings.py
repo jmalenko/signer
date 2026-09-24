@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .constants import (
+    DEFAULT_CHARACTER_SPACING_PT,
     DEFAULT_COLOR,
     DEFAULT_FONT_FAMILY,
     DEFAULT_LINE_WIDTH_PT,
@@ -63,6 +64,8 @@ class AppSettings:
     recent_font_family: str = DEFAULT_FONT_FAMILY
     # Recent font size (points) - default 11pt per requirements
     recent_font_size_pt: int = DEFAULT_TEXT_FONT_PT
+    # Recent character spacing (points)
+    recent_character_spacing_pt: float = DEFAULT_CHARACTER_SPACING_PT
     
     # LibreOffice path (for Word/ODT support)
     libreoffice_path: str | None = None

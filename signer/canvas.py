@@ -18,8 +18,10 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QWidget
 
+from .constants import DPI_SCALE
 from .history import (
     AddAnnotationAction,
+    ChangeCharacterSpacingAction,
     ChangeColorAction,
     ChangeFontFamilyAction,
     ChangeFontSizeAction,
@@ -106,6 +108,10 @@ class DocumentCanvas(QWidget):
         self._drag_start_h: float = 0.0
         self._action_recorded_this_drag: bool = False  # Track if action was recorded yet
         self._drag_endpoint_handles: bool = False
+        self._character_spacing_dragging: bool = False
+        self._character_spacing_drag_start_doc = QPointF()
+        self._character_spacing_drag_start_value: float = 0.0
+        self._character_spacing_drag_gap_count: int = 1
         self._rotating: bool = False
         self._rotation_drag_states: list[tuple[CanvasObject, float, float, float]] = []
         self._rotation_pivot_doc = QPointF()
@@ -913,6 +919,26 @@ class DocumentCanvas(QWidget):
         self._record_composite_action(actions)
         self._invalidate_display()
 
+    def set_character_spacing_selected(self, spacing_pt: float) -> None:
+        """Set character spacing for all selected text annotations as one undo unit."""
+        selected = [
+            obj for obj in self.get_selected_annotations()
+            if isinstance(obj, VectorAnnotation) and obj.ann_type == AnnotationType.TEXT
+        ]
+        if not selected:
+            return
+        actions = []
+        for obj in selected:
+            old_spacing = obj._character_spacing_pt
+            obj.set_character_spacing(spacing_pt)
+            actions.append(ChangeCharacterSpacingAction(
+                object_id=self._stable_id_for(obj),
+                character_spacing_pt=spacing_pt,
+                from_character_spacing_pt=old_spacing,
+            ))
+        self._record_composite_action(actions)
+        self._invalidate_display()
+
     # ---------------------------------------------------------------- coordinate helpers
 
     def _transform_doc_coords_by_rotation(self, x: float, y: float, rotation: int, page_width: float, page_height: float) -> tuple[float, float]:
@@ -1182,6 +1208,26 @@ class DocumentCanvas(QWidget):
                     painter.drawEllipse(obj.rotation_handle_rect_viewport(
                         r.x(), r.y(), r.width(), r.height(), display_rotation
                     ))
+                    if (
+                        isinstance(obj, VectorAnnotation)
+                        and obj.ann_type == AnnotationType.TEXT
+                    ):
+                        spacing_center = obj.character_spacing_handle_center_viewport(
+                            r.x(), r.y(), r.width(), r.height(), display_rotation
+                        )
+                        spacing_line_start = obj._rotate_point(
+                            QPointF(r.right(), r.center().y()),
+                            r.center(),
+                            display_rotation,
+                        )
+                        painter.drawLine(spacing_line_start, spacing_center)
+                        half = 6.0
+                        painter.drawPolygon(QPolygonF([
+                            QPointF(spacing_center.x(), spacing_center.y() - half),
+                            QPointF(spacing_center.x() + half, spacing_center.y()),
+                            QPointF(spacing_center.x(), spacing_center.y() + half),
+                            QPointF(spacing_center.x() - half, spacing_center.y()),
+                        ]))
                 painter.restore()
 
         if self.is_multi_selected():
@@ -1226,6 +1272,10 @@ class DocumentCanvas(QWidget):
         objects = self.current_page_objects()
 
         if self._selected is not None:
+            spacing_handle = self._character_spacing_handle_rect_for_selection()
+            if spacing_handle is not None and spacing_handle.contains(pt):
+                self._start_character_spacing_drag(pt)
+                return
             rotation_handle = self._rotation_handle_rect_for_selection()
             if rotation_handle is not None and rotation_handle.contains(pt):
                 self._start_rotation_drag(pt)
@@ -1286,6 +1336,49 @@ class DocumentCanvas(QWidget):
         return self._selected.rotation_handle_rect_viewport(
             rect.x(), rect.y(), rect.width(), rect.height(), self._display_rotation(self._selected)
         )
+
+    def _character_spacing_handle_rect_for_selection(self) -> QRectF | None:
+        obj = self._selected
+        if (
+            self.is_multi_selected()
+            or not isinstance(obj, VectorAnnotation)
+            or obj.ann_type != AnnotationType.TEXT
+        ):
+            return None
+        rect = self._object_view_rect(obj)
+        return obj.character_spacing_handle_rect_viewport(
+            rect.x(), rect.y(), rect.width(), rect.height(), self._display_rotation(obj)
+        )
+
+    def _start_character_spacing_drag(self, pt: QPointF) -> None:
+        obj = self._selected
+        if not isinstance(obj, VectorAnnotation) or obj.ann_type != AnnotationType.TEXT:
+            return
+        self._character_spacing_drag_start_doc = self._view_to_doc(pt)
+        self._character_spacing_drag_start_value = obj._character_spacing_pt
+        self._character_spacing_drag_gap_count = max(
+            1,
+            max((len(line) - 1 for line in (obj.text or "").split("\n")), default=0),
+        )
+        self._character_spacing_dragging = True
+        self._dragging = True
+        self._drag_handle = -1
+
+    def _apply_character_spacing_drag(self, pt: QPointF) -> None:
+        obj = self._selected
+        if not isinstance(obj, VectorAnnotation) or obj.ann_type != AnnotationType.TEXT:
+            return
+        doc_pt = self._view_to_doc(pt)
+        delta_x = doc_pt.x() - self._character_spacing_drag_start_doc.x()
+        delta_y = doc_pt.y() - self._character_spacing_drag_start_doc.y()
+        radians = math.radians(obj.rotation)
+        local_delta_x = math.cos(radians) * delta_x + math.sin(radians) * delta_y
+        spacing_delta = local_delta_x / (DPI_SCALE * self._character_spacing_drag_gap_count)
+        obj.set_character_spacing(round(
+            self._character_spacing_drag_start_value + spacing_delta,
+            1,
+        ))
+        self._invalidate_display()
 
     def _start_rotation_drag(self, pt: QPointF) -> None:
         selected = self.get_selected_annotations()
@@ -1491,7 +1584,9 @@ class DocumentCanvas(QWidget):
         pt = event.position()
 
         if self._dragging and self._selected is not None:
-            if self._rotating:
+            if self._character_spacing_dragging:
+                self._apply_character_spacing_drag(pt)
+            elif self._rotating:
                 self._apply_rotation_drag(pt, self._is_shift_pressed(event))
             elif self._drag_handle == -1:
                 self._handle_move_drag(pt)
@@ -1696,6 +1791,10 @@ class DocumentCanvas(QWidget):
     def _update_hover_cursor(self, pt: QPointF) -> None:
         """Set the mouse cursor shape for hovering over handles/objects when not dragging."""
         if self._selected is not None:
+            spacing_handle = self._character_spacing_handle_rect_for_selection()
+            if spacing_handle is not None and spacing_handle.contains(pt):
+                self.setCursor(Qt.SizeHorCursor)
+                return
             rotation_handle = self._rotation_handle_rect_for_selection()
             if rotation_handle is not None and rotation_handle.contains(pt):
                 self.setCursor(Qt.CrossCursor)
@@ -1725,7 +1824,15 @@ class DocumentCanvas(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:
         if event.button() == Qt.LeftButton:
-            if self._rotating:
+            if self._character_spacing_dragging and isinstance(self._selected, VectorAnnotation):
+                new_spacing = self._selected._character_spacing_pt
+                if abs(new_spacing - self._character_spacing_drag_start_value) > 1e-9:
+                    self.history.record_action(ChangeCharacterSpacingAction(
+                        object_id=self._stable_id_for(self._selected),
+                        character_spacing_pt=new_spacing,
+                        from_character_spacing_pt=self._character_spacing_drag_start_value,
+                    ))
+            elif self._rotating:
                 actions = []
                 for obj, old_x, old_y, old_rotation in self._rotation_drag_states:
                     if (
@@ -1763,6 +1870,7 @@ class DocumentCanvas(QWidget):
                 delattr(obj, '_rotation_handle_flip_cache')
         
         self._dragging = False
+        self._character_spacing_dragging = False
         self._rotating = False
         self._rotation_drag_states = []
         self._drag_handle = -1

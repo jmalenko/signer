@@ -582,3 +582,16 @@ signature.
 
 Signatures added through the `-signature` startup parameter or the Signature/Image annotation
 menu shall be placed at the center of the page.
+
+## Version 1.2.41 - Text Character Spacing
+
+Motivation: forms often provide one box per character, requiring text to be spread evenly across
+the available boxes.
+
+1. Text annotations shall have character spacing in points, defaulting to 0pt. A toolbar control
+   shall accept positive and negative values without an application-imposed limit.
+2. A selected text annotation shall have a distinct handle beyond its right edge. Dragging the
+   handle horizontally, or along the text line when rotated, shall change character spacing
+   without changing the font size.
+3. Spacing changes shall immediately refit the text boundary, support undo/redo, and be preserved
+   by duplicate, copy/paste, project save/reload, export, and print.

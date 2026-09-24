@@ -3,6 +3,7 @@
 from .action import (
     Action,
     AddAnnotationAction,
+    ChangeCharacterSpacingAction,
     ChangeColorAction,
     ChangeFontFamilyAction,
     ChangeFontSizeAction,
@@ -23,6 +24,7 @@ from .history_stack import HistoryStack
 __all__ = [
     "Action",
     "AddAnnotationAction",
+    "ChangeCharacterSpacingAction",
     "ChangeColorAction",
     "ChangeFontFamilyAction",
     "ChangeFontSizeAction",

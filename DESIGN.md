@@ -167,6 +167,11 @@ flowchart TD
   `natural_height`) has to be added to `ProjectFile.from_annotations()` explicitly too - it
   is not automatic. A prior code review missed this, causing rotation/angle/custom text
   size to be silently reset to their defaults on project reload (fixed 2026-09-23).
+- **Text character spacing uses one measured font definition**: `VectorAnnotation._make_font()`
+  applies absolute spacing in 300-DPI pixels for both `QFontMetricsF` boundary fitting and Qt
+  painting. View painting scales font size and spacing together, keeping the canvas, exported
+  image, and selection geometry consistent. Spacing is stored in PDF points and defaults to zero
+  when loading older annotation or project data.
 - **Non-native Save As dialog**: Qt's native file dialogs don't expose their filename `QLineEdit`
   for real-time monitoring. Using a Qt-rendered dialog (`DontUseNativeDialog`) trades the native
   OS look for the ability to auto-correct the filename (page placeholder, extension) as the user
