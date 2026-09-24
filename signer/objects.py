@@ -104,6 +104,7 @@ ROTATION_HANDLE_SIZE = 12.0
 ROTATION_HANDLE_OFFSET = 24.0
 CHARACTER_SPACING_HANDLE_SIZE = 12.0
 CHARACTER_SPACING_HANDLE_OFFSET = 24.0
+MIN_ANNOTATION_SIZE: float = 8.0
 VISIBLE_ALPHA_RUN = re.compile(rb"[^\x00]+")
 
 # _draw_symbol() geometry constants (fractions of min(vw, vh) unless noted).
@@ -272,8 +273,8 @@ class CanvasObject:
 
     def set_scaled_size(self, width: float, height: float) -> None:
         """Resize object in document-space units."""
-        width = max(8.0, width)
-        height = max(8.0, height)
+        width = max(MIN_ANNOTATION_SIZE, width)
+        height = max(MIN_ANNOTATION_SIZE, height)
         if self.supports_free_resize():
             self._base_width = width
             self._base_height = height
@@ -552,8 +553,8 @@ class VectorAnnotation(CanvasObject):
             super().set_scaled_size(width, height)
             return
 
-        target_width = max(8.0, width)
-        target_height = max(8.0, height)
+        target_width = max(MIN_ANNOTATION_SIZE, width)
+        target_height = max(MIN_ANNOTATION_SIZE, height)
         width_factor = target_width / max(1.0, self.scaled_width)
         height_factor = target_height / max(1.0, self.scaled_height)
         size_factor = min(width_factor, height_factor)
@@ -802,12 +803,15 @@ class VectorAnnotation(CanvasObject):
             if QGuiApplication.instance() is None:
                 raise RuntimeError("Qt font metrics require a GUI application")
             fm = QFontMetricsF(self._make_font())
-            widest = 0.0
+            left = 0.0
+            right = 0.0
             for line in lines:
-                widest = max(widest, fm.horizontalAdvance(line))
+                bounds = fm.boundingRect(line)
+                left = min(left, bounds.left())
+                right = max(right, bounds.right())
             line_h = fm.height()
-            self._base_width = max(8.0, widest)
-            self._base_height = max(8.0, line_h * len(lines))
+            self._base_width = max(MIN_ANNOTATION_SIZE, math.ceil(right - left))
+            self._base_height = max(MIN_ANNOTATION_SIZE, line_h * len(lines))
             self._natural_width = self._base_width
             self._natural_height = self._base_height
             self.scale = 1.0
@@ -819,11 +823,11 @@ class VectorAnnotation(CanvasObject):
                 exc_info=True,
             )
             font_pixel_size = self._make_font().pixelSize()
-            avg_char_width = max(8.0, float(font_pixel_size))
+            avg_char_width = max(MIN_ANNOTATION_SIZE, float(font_pixel_size))
             widest_line = max((line.replace("\t", "    ") for line in lines or [""]), key=len)
             spacing_width = max(0, len(widest_line) - 1) * self._character_spacing_pt * DPI_SCALE
-            self._base_width = max(8.0, len(widest_line) * avg_char_width + spacing_width)
-            self._base_height = max(8.0, font_pixel_size * 1.2 * len(lines))
+            self._base_width = max(MIN_ANNOTATION_SIZE, len(widest_line) * avg_char_width + spacing_width)
+            self._base_height = max(MIN_ANNOTATION_SIZE, font_pixel_size * 1.2 * len(lines))
             self._natural_width = self._base_width
             self._natural_height = self._base_height
             self.scale = 1.0
@@ -931,7 +935,18 @@ class VectorAnnotation(CanvasObject):
         painter.setFont(font)
         painter.setPen(self.color)
         painter.setBrush(Qt.NoBrush)
-        painter.drawText(QRectF(vx, vy, vw, vh), Qt.AlignLeft | Qt.AlignTop, self.text or "")
+        metrics = QFontMetricsF(font)
+        left = min(
+            (metrics.boundingRect(line).left() for line in (self.text or "").split("\n")),
+            default=0.0,
+        )
+        first_line = (self.text or "").split("\n")[0]
+        baseline_y = vy - metrics.boundingRect(first_line).top()
+        for line_index, line in enumerate((self.text or "").split("\n")):
+            painter.drawText(
+                QPointF(vx - left, baseline_y + line_index * metrics.lineSpacing()),
+                line,
+            )
 
     def _draw_arrow(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
         # ARROW uses _angle for free rotation

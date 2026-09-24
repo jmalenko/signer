@@ -85,6 +85,15 @@ from .settings import AppSettings, SettingsStore
 MAX_RECENT_ITEMS = 10
 
 
+class _WholeNumberFriendlyDoubleSpinBox(QDoubleSpinBox):
+    """Display whole values without a redundant decimal fraction."""
+
+    def textFromValue(self, value: float) -> str:
+        if value.is_integer():
+            return str(int(value))
+        return super().textFromValue(value)
+
+
 class _SaveDialogWithFilterDetection(QFileDialog):
     """Custom file dialog that detects filter changes in real-time."""
     
@@ -545,7 +554,7 @@ class MainWindow(QMainWindow):
 
         self._character_spacing_label = QLabel("Spacing:")
         self._character_spacing_label_action = tb.addWidget(self._character_spacing_label)
-        self._character_spacing_spinner = QDoubleSpinBox()
+        self._character_spacing_spinner = _WholeNumberFriendlyDoubleSpinBox()
         self._character_spacing_spinner.setRange(float("-inf"), float("inf"))
         self._character_spacing_spinner.setSingleStep(1.0)
         self._character_spacing_spinner.setDecimals(1)

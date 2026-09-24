@@ -246,6 +246,16 @@ class TestSpinnerStateManagement:
         # Combo value should match
         assert text._font_family == "Verdana"
 
+    def test_character_spacing_spinner_hides_decimal_for_whole_value(self, main_window):
+        """Whole character spacing values should display like font-size values."""
+        spinner = main_window._character_spacing_spinner
+
+        spinner.setValue(2.0)
+        assert spinner.lineEdit().text() == "2"
+
+        spinner.setValue(2.5)
+        assert spinner.lineEdit().text().replace(",", ".") == "2.5"
+
 
 class TestControlSignalBlocking:
     """Test controls use signal blocking to prevent loops."""
