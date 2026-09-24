@@ -454,6 +454,9 @@ default applied to the next newly-added annotation.
   handles, and a rotation handle. A multi-selection shows each selected annotation's blue
   boundary plus one shared axis-aligned group boundary and rotation handle; resize handles are
   shown only on the primary selected object.
+- Resize handles are drawn entirely outside the boundary, just beyond the corner or edge they
+  control, so they never cover the annotation and so their whole
+  area resizes rather than competing with the move region inside the boundary.
 
 ---
 
@@ -465,7 +468,7 @@ unit unless noted otherwise. See [§13](#13-keyboard-shortcuts-reference) for ke
 | Operation | Behavior |
 |---|---|
 | Move | 12pt per press; Shift+arrow = 1px |
-| Resize | Drag boundary handles; non-text/non-signature types preserve aspect ratio unless the type supports free resize (Text, Line, Arrow, Rectangle, Ellipse). Dragging a handle past the opposite (anchor) handle flips the box across that anchor — the dragged handle becomes the opposite corner/edge and resizing continues. |
+| Resize | Drag the handles just outside the boundary; non-text/non-signature types preserve aspect ratio unless the type supports free resize (Text, Line, Arrow, Rectangle, Ellipse). Dragging a handle past the opposite (anchor) handle flips the box across that anchor — the dragged handle becomes the opposite corner/edge and resizing continues. |
 | Rotate | Drag the rotation handle around the object/group center (15° snapping by default; Shift disables snapping), or set a whole-degree angle in the toolbar |
 | Duplicate | Copies preserving size, color, and rotation, offset 20px |
 | Cut | Copies to clipboard (JSON), then deletes |

@@ -247,42 +247,50 @@ class TestHandleRectangles:
         
         assert len(handles) == 8
         
-        # Handle size is 10, so each handle rect is 10x10
-        # Handle 0 (TL): center at (10, 10), rect at (5, 5, 10, 10)
-        assert handles[0].x() == 5.0
-        assert handles[0].y() == 5.0
+        # Handles sit outside the box by HANDLE_SIZE / 2 + HANDLE_GAP = 6.
+        # Handle 0 (TL): center at (4, 4), rect at (-1, -1, 10, 10)
+        assert handles[0].x() == -1.0
+        assert handles[0].y() == -1.0
         assert handles[0].width() == 10.0
         assert handles[0].height() == 10.0
         
-        # Handle 2 (TR): center at (110, 10), rect at (105, 5, 10, 10)
-        assert handles[2].x() == 105.0
-        assert handles[2].y() == 5.0
+        # Handle 2 (TR): center at (116, 4), rect at (111, -1, 10, 10)
+        assert handles[2].x() == 111.0
+        assert handles[2].y() == -1.0
         
-        # Handle 7 (BR): center at (110, 110), rect at (105, 105, 10, 10)
-        assert handles[7].x() == 105.0
-        assert handles[7].y() == 105.0
+        # Handle 7 (BR): center at (116, 116), rect at (111, 111, 10, 10)
+        assert handles[7].x() == 111.0
+        assert handles[7].y() == 111.0
+
+    def test_handle_rects_do_not_overlap_the_boundary(self):
+        """Handles must stay fully outside the box, even when it is smaller than a handle."""
+        obj = CanvasObject(0, 0, 6, 6, 0)
+        box = QRectF(10, 10, 6, 6)
+
+        for handle in obj.handle_rects_viewport(box.x(), box.y(), box.width(), box.height()):
+            assert not handle.intersects(box)
     
     def test_hit_test_handle(self):
         """Test handle hit testing."""
         obj = CanvasObject(0, 0, 100, 100, 0)
         
         # Viewport rect at (10, 10) with size (100, 100)
-        # Handle 0 at (10, 10) with size 10x10 -> rect (5, 5, 10, 10)
+        # Handle 0 is centered at (4, 4) -> rect (-1, -1, 10, 10)
         
         # Click in handle 0
-        hit = obj.hit_test_handle(10, 10, 100, 100, QPointF(10, 10))
+        hit = obj.hit_test_handle(10, 10, 100, 100, QPointF(4, 4))
         assert hit == 0
         
-        # Click in handle 7 (BR) at (110, 110)
-        hit = obj.hit_test_handle(10, 10, 100, 100, QPointF(110, 110))
+        # Click in handle 7 (BR) centered at (116, 116)
+        hit = obj.hit_test_handle(10, 10, 100, 100, QPointF(116, 116))
         assert hit == 7
         
         # Click in center - no handle
         hit = obj.hit_test_handle(10, 10, 100, 100, QPointF(60, 60))
         assert hit == -1
         
-        # Click near handle but outside
-        hit = obj.hit_test_handle(10, 10, 100, 100, QPointF(0, 0))
+        # Click on the box corner itself - inside the box, so no handle
+        hit = obj.hit_test_handle(10, 10, 100, 100, QPointF(10, 10))
         assert hit == -1
 
 
@@ -421,6 +429,37 @@ class TestResizeDragPastAnchor:
         # Vertical extent is untouched by an edge drag.
         assert obj.scaled_height == pytest.approx(100.0)
         assert obj.y == pytest.approx(100.0)
+
+
+class TestResizeGrabOffset:
+    """Handles sit outside the box, so the grab offset must not jump the size."""
+
+    def test_grabbing_handle_center_keeps_size_until_pointer_moves(self, canvas):
+        obj = _canvas_with_annotation(canvas, AnnotationType.CHECKMARK)
+        handle_center = obj.handle_rects_viewport(
+            obj.x, obj.y, obj.scaled_width, obj.scaled_height
+        )[7].center()
+
+        canvas._start_handle_drag(7, handle_center)
+        canvas.mouseMoveEvent(_FakeMouseEvent(handle_center))
+
+        assert obj.scaled_width == pytest.approx(100.0)
+        assert obj.scaled_height == pytest.approx(100.0)
+
+    def test_grabbing_handle_center_tracks_the_pointer_delta(self, canvas):
+        obj = _canvas_with_annotation(canvas, AnnotationType.CHECKMARK)
+        handle_center = obj.handle_rects_viewport(
+            obj.x, obj.y, obj.scaled_width, obj.scaled_height
+        )[7].center()
+
+        canvas._start_handle_drag(7, handle_center)
+        canvas.mouseMoveEvent(_FakeMouseEvent(QPointF(
+            handle_center.x() + 30, handle_center.y() + 30
+        )))
+
+        assert obj.scaled_width == pytest.approx(130.0)
+        assert obj.scaled_height == pytest.approx(130.0)
+
 
 class TestSquareCircleSnapThreshold:
     """Tests for rectangle/ellipse snap-to-square threshold behavior."""

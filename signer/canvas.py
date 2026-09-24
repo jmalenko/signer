@@ -126,6 +126,7 @@ class DocumentCanvas(QWidget):
         self._hdrag_start_h: float = 1.0
         self._hdrag_rotation: float = 0.0
         self._hdrag_start_center_doc = QPointF()
+        self._hdrag_grab_offset_local = QPointF()
 
         self._fit_scale: float = 1.0
         self._doc_offset_x: float = 0.0
@@ -1511,6 +1512,22 @@ class DocumentCanvas(QWidget):
         )
         self._hdrag_anchor_fx = HANDLE_FX[anchor_h]
         self._hdrag_anchor_fy = HANDLE_FY[anchor_h]
+        # Handles are drawn outside the box, so the press point is not the box
+        # edge itself; keep that offset so the drag doesn't jump on first move.
+        dragged_doc = obj._rotate_point(
+            QPointF(
+                obj.x + HANDLE_FX[h_idx] * obj.scaled_width,
+                obj.y + HANDLE_FY[h_idx] * obj.scaled_height,
+            ),
+            self._hdrag_start_center_doc,
+            self._hdrag_rotation,
+        )
+        press_doc = self._view_to_doc(pt)
+        self._hdrag_grab_offset_local = obj._rotate_point(
+            QPointF(press_doc.x() - dragged_doc.x(), press_doc.y() - dragged_doc.y()),
+            QPointF(),
+            -self._hdrag_rotation,
+        )
         self._hdrag_start_w = obj.scaled_width
         self._hdrag_start_h = obj.scaled_height
         self._dragging = True
@@ -1722,6 +1739,10 @@ class DocumentCanvas(QWidget):
         fy = HANDLE_FY[h]
         local_doc_pt = self._selected._rotate_point(
             doc_pt, self._hdrag_anchor_doc, -self._hdrag_rotation
+        )
+        local_doc_pt = QPointF(
+            local_doc_pt.x() - self._hdrag_grab_offset_local.x(),
+            local_doc_pt.y() - self._hdrag_grab_offset_local.y(),
         )
 
         # Signed extents from the fixed anchor. A negative extent means

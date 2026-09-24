@@ -91,8 +91,9 @@ def test_font_size_down_arrow_works_after_bounding_box_resize(main_window):
     main_window.canvas.set_pages([Image.new("RGB", (1200, 1600), "white")])
     main_window.canvas.add_object(annotation)
     rect = main_window.canvas._object_view_rect(annotation)
-    drag_start = rect.bottomRight().toPoint()
-    drag_end = rect.bottomRight().toPoint()
+    handles = annotation.handle_rects_viewport(rect.x(), rect.y(), rect.width(), rect.height())
+    drag_start = handles[7].center().toPoint()  # bottom-right resize handle
+    drag_end = handles[7].center().toPoint()
     drag_end.setX(drag_start.x() + int(rect.width()))
     drag_end.setY(drag_start.y() + int(rect.height()))
 

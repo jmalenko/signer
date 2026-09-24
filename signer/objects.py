@@ -97,6 +97,9 @@ HANDLE_FX = [0.0, 0.5, 1.0, 0.0, 1.0, 0.0, 0.5, 1.0]
 HANDLE_FY = [0.0, 0.0, 0.0, 0.5, 0.5, 1.0, 1.0, 1.0]
 ANCHOR_HANDLE = [7, 6, 5, 4, 3, 2, 1, 0]  # opposite handle for each handle
 HANDLE_SIZE = 10.0
+# Handles sit fully outside the boundary so they never cover the annotation and
+# their whole area resizes instead of competing with the move (inside) region.
+HANDLE_GAP = 1.0
 ROTATION_HANDLE_SIZE = 12.0
 ROTATION_HANDLE_OFFSET = 24.0
 CHARACTER_SPACING_HANDLE_SIZE = 12.0
@@ -168,10 +171,18 @@ class CanvasObject:
         hs = HANDLE_SIZE
         angle = self.rotation if rotation is None else rotation
         center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        outward = hs / 2.0 + HANDLE_GAP
         return [
             QRectF(point.x() - hs / 2, point.y() - hs / 2, hs, hs)
             for point in (
-                self._rotate_point(QPointF(vx + fx * vw, vy + fy * vh), center, angle)
+                self._rotate_point(
+                    QPointF(
+                        vx + fx * vw + (fx - 0.5) * 2.0 * outward,
+                        vy + fy * vh + (fy - 0.5) * 2.0 * outward,
+                    ),
+                    center,
+                    angle,
+                )
                 for fx, fy in zip(HANDLE_FX, HANDLE_FY)
             )
         ]

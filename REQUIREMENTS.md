@@ -595,3 +595,15 @@ the available boxes.
    without changing the font size.
 3. Spacing changes shall immediately refit the text boundary, support undo/redo, and be preserved
    by duplicate, copy/paste, project save/reload, export, and print.
+
+## Version 1.2.42 - Resize handles outside the boundary
+
+Motivation: on small annotations (e.g. a checkmark) the resize handles covered the annotation
+itself, and on large ones the half of each handle that fell inside the boundary started a move
+instead of a resize.
+
+1. Corner and edge resize handles shall be drawn entirely outside the selection boundary, just
+   beyond the corner or edge they control, for annotations of any size. Line and Arrow endpoint
+   handles stay on their endpoints.
+2. The whole visible area of a resize handle shall start a resize; no part of it shall start a
+   move. Grabbing a handle shall not jump the annotation's size on the first pointer move.

@@ -123,33 +123,33 @@ class TestHandlePositions:
         # Should have 8 handles
         assert len(handles) == 8
         
-        # Handle 0 (TL): at (100, 100) - center of handle
-        # Handle size is 10, so rect is (95, 95, 10, 10)
-        assert handles[0].x() == 95.0
-        assert handles[0].y() == 95.0
+        # Handles sit outside the box by HANDLE_SIZE / 2 + HANDLE_GAP = 6.
+        # Handle 0 (TL): centered at (94, 94) -> rect (89, 89, 10, 10)
+        assert handles[0].x() == 89.0
+        assert handles[0].y() == 89.0
         
-        # Handle 2 (TR): at (300, 100)
-        assert handles[2].x() == 295.0
-        assert handles[2].y() == 95.0
+        # Handle 2 (TR): centered at (306, 94)
+        assert handles[2].x() == 301.0
+        assert handles[2].y() == 89.0
         
-        # Handle 5 (BL): at (100, 200)
-        assert handles[5].x() == 95.0
-        assert handles[5].y() == 195.0
+        # Handle 5 (BL): centered at (94, 206)
+        assert handles[5].x() == 89.0
+        assert handles[5].y() == 201.0
         
-        # Handle 7 (BR): at (300, 200)
-        assert handles[7].x() == 295.0
-        assert handles[7].y() == 195.0
+        # Handle 7 (BR): centered at (306, 206)
+        assert handles[7].x() == 301.0
+        assert handles[7].y() == 201.0
     
     def test_hit_test_handle(self, canvas):
         """Test handle hit testing."""
         obj = CanvasObject(100, 100, 200, 100, 0)
         
-        # Click on handle 0 (TL) at (100, 100)
-        hit = obj.hit_test_handle(100, 100, 200, 100, QPointF(100, 100))
+        # Click on handle 0 (TL), centered at (94, 94)
+        hit = obj.hit_test_handle(100, 100, 200, 100, QPointF(94, 94))
         assert hit == 0
         
-        # Click on handle 7 (BR) at (300, 200)
-        hit = obj.hit_test_handle(100, 100, 200, 100, QPointF(300, 200))
+        # Click on handle 7 (BR), centered at (306, 206)
+        hit = obj.hit_test_handle(100, 100, 200, 100, QPointF(306, 206))
         assert hit == 7
         
         # Click in middle - no handle
