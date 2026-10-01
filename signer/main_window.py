@@ -17,6 +17,7 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QDesktopServices,
+    QIntValidator,
     QKeyEvent,
     QPageSize,
     QPainter,
@@ -406,7 +407,10 @@ class MainWindow(QMainWindow):
         self._menu_rotate_all_right_action: QAction | None = None
         self._toolbar_page_nav_prev_action: QAction | None = None
         self._toolbar_page_nav_next_action: QAction | None = None
-        self._toolbar_page_nav_label: QLabel | None = None
+        self._toolbar_page_nav_label: QLineEdit | None = None
+        self._toolbar_page_nav_label_action: QAction | None = None
+        self._toolbar_page_nav_total_label: QLabel | None = None
+        self._toolbar_page_nav_total_label_action: QAction | None = None
 
         self.document_path: str | None = None
         self.project_path: str | None = None
@@ -610,8 +614,18 @@ class MainWindow(QMainWindow):
         self._toolbar_page_nav_prev_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page - 1))
         tb.addAction(self._toolbar_page_nav_prev_action)
 
-        self._toolbar_page_nav_label = QLabel("  Page — / —  ")
+        self._toolbar_page_nav_label = QLineEdit()
+        self._toolbar_page_nav_label.setAlignment(Qt.AlignCenter)
+        self._toolbar_page_nav_label.setFixedWidth(12)
+        self._toolbar_page_nav_label.setMaxLength(6)
+        self._toolbar_page_nav_label.setValidator(QIntValidator(1, 999999, self._toolbar_page_nav_label))
+        self._toolbar_page_nav_label.setToolTip("Current page")
+        self._toolbar_page_nav_label.returnPressed.connect(self._navigate_to_toolbar_page)
         self._toolbar_page_nav_label_action = tb.addWidget(self._toolbar_page_nav_label)
+
+        self._toolbar_page_nav_total_label = QLabel(" / — ")
+        self._toolbar_page_nav_total_label.setToolTip("Total pages")
+        self._toolbar_page_nav_total_label_action = tb.addWidget(self._toolbar_page_nav_total_label)
 
         self._toolbar_page_nav_next_action = QAction("▶", self)
         self._toolbar_page_nav_next_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page + 1))
@@ -923,11 +937,28 @@ class MainWindow(QMainWindow):
             self._toolbar_page_nav_next_action.setVisible(show_navigation)
         if self._toolbar_page_nav_label is not None:
             self._toolbar_page_nav_label.setVisible(show_navigation)
-        if getattr(self, "_toolbar_page_nav_label_action", None) is not None:
+        if self._toolbar_page_nav_total_label is not None:
+            self._toolbar_page_nav_total_label.setVisible(show_navigation)
+        if self._toolbar_page_nav_label_action is not None:
             self._toolbar_page_nav_label_action.setVisible(show_navigation)
+        if self._toolbar_page_nav_total_label_action is not None:
+            self._toolbar_page_nav_total_label_action.setVisible(show_navigation)
 
         self._update_page_nav_separator_visibility()
         self._refresh_toolbar_layout()
+
+    def _navigate_to_toolbar_page(self) -> None:
+        """Navigate to the page entered in the main toolbar page field."""
+        if self._toolbar_page_nav_label is None:
+            return
+        try:
+            page_number = int(self._toolbar_page_nav_label.text())
+        except ValueError:
+            page_number = self.canvas.current_page + 1
+        if 1 <= page_number <= self.canvas.page_count:
+            self.canvas.goto_page(page_number - 1)
+        else:
+            self._update_page_navigation_label()
 
     def _update_page_nav_separator_visibility(self) -> None:
         """Show the separator after Save As only if page nav or Duplicate/Delete are visible."""
@@ -1411,11 +1442,22 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, current: int, total: int) -> None:
         self._update_document_workflow_state()
         self._update_menu_state()
+        self._update_page_navigation_label(current, total)
+
+    def _update_page_navigation_label(self, current: int | None = None, total: int | None = None) -> None:
+        if current is None:
+            current = self.canvas.current_page
+        if total is None:
+            total = self.canvas.page_count
         if self._toolbar_page_nav_label is not None:
+            self._toolbar_page_nav_label.setFixedWidth(12 * max(1, len(str(total))))
             if total > 0:
-                self._toolbar_page_nav_label.setText(f"  Page {current + 1} / {total}  ")
+                self._toolbar_page_nav_label.setValidator(QIntValidator(1, total, self._toolbar_page_nav_label))
+                self._toolbar_page_nav_label.setText(str(current + 1))
             else:
-                self._toolbar_page_nav_label.setText("  Page — / —  ")
+                self._toolbar_page_nav_label.clear()
+        if self._toolbar_page_nav_total_label is not None:
+            self._toolbar_page_nav_total_label.setText(f" / {total}" if total > 0 else " / —")
 
     def _on_paste_incomplete(self, skipped: int, total: int) -> None:
         """Tell the user when some clipboard items could not be pasted."""

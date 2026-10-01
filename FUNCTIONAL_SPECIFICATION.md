@@ -61,7 +61,7 @@ visible and never changes size based on selection, so it always fits an A4-propo
 | **Open** (with dropdown arrow) | Click opens the file picker directly; dropdown also offers Recent Documents |
 | **Add** (annotation picker) | Clicking the button opens the same menu as its dropdown arrow (whole button is clickable) |
 | **Save** | Opens the Save As dialog |
-| Page navigation (◀ / label / ▶) | Only visible when the document has more than one page (see [§6](#6-page-navigation)) |
+| Page navigation (◀ / current page / total pages / ▶) | Only visible when the document has more than one page; enter a page number in the current-page field and press Enter to navigate (see [§6](#6-page-navigation)) |
 | **Undo** / **Redo** | Reverses or reapplies the most recent undoable action; enabled only when available; shown after page navigation |
 | Hamburger menu (☰, far right) | See §2.2 |
 

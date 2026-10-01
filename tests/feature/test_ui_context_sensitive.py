@@ -126,6 +126,33 @@ class TestDocumentDependentWorkflowButtons:
         assert not main_window._toolbar_page_nav_prev_action.isVisible()
         assert not main_window._toolbar_page_nav_next_action.isVisible()
         assert not main_window._toolbar_page_nav_label.isVisible()
+        assert main_window._toolbar_page_nav_label.width() == 12
+
+    def test_page_navigation_field_jumps_to_entered_page(
+        self, main_window, sample_multipage_pdf
+    ):
+        assert main_window.open_document(str(sample_multipage_pdf))
+        assert main_window.canvas.page_count >= 2
+        assert main_window._toolbar_page_nav_label.width() == 12 * len(
+            str(main_window.canvas.page_count)
+        )
+
+        main_window._toolbar_page_nav_label.setText("2")
+        main_window._toolbar_page_nav_label.returnPressed.emit()
+
+        assert main_window.canvas.current_page == 1
+
+    def test_page_navigation_field_rejects_out_of_range_page(
+        self, main_window, sample_multipage_pdf
+    ):
+        assert main_window.open_document(str(sample_multipage_pdf))
+        current_page = main_window.canvas.current_page
+
+        main_window._toolbar_page_nav_label.setText(str(main_window.canvas.page_count + 1))
+        main_window._toolbar_page_nav_label.returnPressed.emit()
+
+        assert main_window.canvas.current_page == current_page
+        assert main_window._toolbar_page_nav_label.text() == str(current_page + 1)
 
     def test_property_controls_hidden_when_no_selection(self, main_window, sample_pdf):
         """No selection should hide all annotation property controls even on a single-page document."""

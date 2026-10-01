@@ -668,3 +668,14 @@ without opening the hamburger menu.
 1. Add Undo and Redo buttons to the first toolbar row.
 2. Enable each button only when the corresponding history action is available, matching the Edit
    menu state.
+
+## Version 1.2.45 - Editable page navigation
+
+The current page indicator should also provide a quick way to jump directly to another page in a
+multi-page document.
+
+1. The current page in the first toolbar row shall be an input field showing the current page
+   number, followed by the total page count.
+2. Pressing Enter after entering a valid page number shall navigate to that page.
+3. Invalid or out-of-range page numbers shall leave the current page unchanged and restore the
+   field to the current page number.
