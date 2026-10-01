@@ -113,6 +113,7 @@ class TestDocumentAllAnnotations:
         expected_types = {"checkmark", "crossmark", "arrow", "text"}
         found_types = annotation_types & expected_types
         assert len(found_types) >= 3, f"Expected at least 3 types from {expected_types}, got {found_types}"
+        assert "line" in annotation_types, "Expected a line annotation under the Document headline"
 
     def test_document_all_annotations_uses_all_types_on_page_two(self):
         """Verify every annotation type is used on the second document page."""

@@ -2,7 +2,6 @@ name: Build executables
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
