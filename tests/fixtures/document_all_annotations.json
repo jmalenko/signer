@@ -10,6 +10,32 @@
     },
     {
       "type": "add_annotation",
+      "annotation_type": "line",
+      "x": 1120.0,
+      "y": 355.0,
+      "page": 0,
+      "object_id": 13,
+      "width": 243.0,
+      "height": 243.0,
+      "color": "#cc0000",
+      "line_width_pt": 1.5
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 13,
+      "handle": 0,
+      "x": 1120.0,
+      "y": 365.0
+    },
+    {
+      "type": "resize_annotation",
+      "object_id": 13,
+      "handle": 1,
+      "x": 1363.0,
+      "y": 365.0
+    },
+    {
+      "type": "add_annotation",
       "annotation_type": "checkmark",
       "x": 1198.8333333333333,
       "y": 1712.8333333333333,
