@@ -511,7 +511,7 @@ class MainWindow(QMainWindow):
             # Setting fixed height prevents geometry from being changed when items are added/removed.
             row.setStyleSheet(
                 tb.styleSheet()
-                + " QToolBar { background-color: #303030; border: none; }"
+                + " QToolBar { background-color: palette(window); border: none; }"
                 + " QToolBar::extension { width: 0px; }"
             )
             row.show()

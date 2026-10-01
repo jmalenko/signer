@@ -617,7 +617,8 @@ no reliable way to reach them without maximizing the window.
 
 1. Selection-dependent controls shall live in a second area, separate from the always-visible
    row (Open, Add, Save, page navigation, hamburger menu), built from real toolbar rows so its
-   look (including dark-theme contrast) always matches the always-visible row.
+   look (including dark-theme contrast) always matches the always-visible row. Its background
+   shall follow the system color scheme (light or dark) on every platform, never a fixed color.
 2. In overlay mode (see below), the second area shall be visible if and only if an annotation is
    selected, so it never forces a minimum window width or height when nothing is selected.
 3. Which individual controls are visible within that area still follows the existing selection/

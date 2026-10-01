@@ -1,7 +1,7 @@
 """Unit tests for toolbar controls and context-sensitive visibility."""
 
 from PySide6.QtCore import QCoreApplication, QPoint, QTimer, Qt
-from PySide6.QtGui import QContextMenuEvent
+from PySide6.QtGui import QContextMenuEvent, QPalette
 from PySide6.QtWidgets import QApplication, QWidgetAction
 from shiboken6 import isValid
 
@@ -91,6 +91,22 @@ class TestSelectionToolbarRendering:
         assert actions
         assert all(action.isVisible() and action.isEnabled() for action in actions)
         assert all(action.defaultWidget().isVisible() for action in actions)
+
+
+class TestSelectionToolbarBackground:
+    """The selection row background follows the system color scheme, like the main toolbar."""
+
+    def test_selection_row_background_matches_palette(self, main_window, sample_pdf):
+        assert main_window.open_document(str(sample_pdf))
+        annotation = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, 200, 150)
+        main_window.canvas.add_object(annotation)
+        main_window.canvas.select_annotation(annotation)
+        QApplication.processEvents()
+
+        image = main_window._context_row1.grab().toImage()
+        background = image.pixelColor(image.width() - 2, image.height() // 2)
+        expected = main_window._main_toolbar.palette().color(QPalette.Window)
+        assert background.name() == expected.name()
 
 
 class TestSelectionToolbarOverflow:
