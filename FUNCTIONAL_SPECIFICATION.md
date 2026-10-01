@@ -62,6 +62,7 @@ visible and never changes size based on selection, so it always fits an A4-propo
 | **Add** (annotation picker) | Clicking the button opens the same menu as its dropdown arrow (whole button is clickable) |
 | **Save** | Opens the Save As dialog |
 | Page navigation (◀ / label / ▶) | Only visible when the document has more than one page (see [§6](#6-page-navigation)) |
+| **Undo** / **Redo** | Reverses or reapplies the most recent undoable action; enabled only when available; shown after page navigation |
 | Hamburger menu (☰, far right) | See §2.2 |
 
 The **selection-properties area** holds the controls that depend on the current selection,
@@ -208,8 +209,8 @@ toolbar separators.
 | Item(s) | Enabled when |
 |---|---|
 | Save As…, Print, Save Project, Save Project As…, Change Document…, rotation actions | A document is open |
-| Undo | An action is available to undo |
-| Redo | An action is available to redo |
+| Undo (toolbar and Edit menu) | An action is available to undo |
+| Redo (toolbar and Edit menu) | An action is available to redo |
 | Cut, Copy, Duplicate, Delete | At least one annotation is selected |
 | Paste | A document is open **and** annotation data is available to paste (prior copy/cut, in-app cache, or system clipboard) |
 | Select All | The current page has at least one annotation |

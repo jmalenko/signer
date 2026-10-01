@@ -388,6 +388,8 @@ class MainWindow(QMainWindow):
         self._hamburger_annotations_menu: QMenu | None = None
         self._add_annotation_btn: QToolButton | None = None
         self._save_as_toolbar_action: QAction | None = None
+        self._undo_toolbar_action: QAction | None = None
+        self._redo_toolbar_action: QAction | None = None
         self._save_as_file_action: QAction | None = None
         self._print_action: QAction | None = None
         self._menu_undo_action: QAction | None = None
@@ -614,6 +616,17 @@ class MainWindow(QMainWindow):
         self._page_nav_next_action = QAction("▶", self)
         self._page_nav_next_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page + 1))
         tb.addAction(self._page_nav_next_action)
+
+        # Undo and redo are available in the main toolbar as well as the Edit menu.
+        self._undo_toolbar_action = QAction("⟲ Undo", self)
+        self._undo_toolbar_action.setToolTip("Undo (Z)")
+        self._undo_toolbar_action.triggered.connect(self.undo)
+        tb.addAction(self._undo_toolbar_action)
+
+        self._redo_toolbar_action = QAction("⟳ Redo", self)
+        self._redo_toolbar_action.setToolTip("Redo (Y)")
+        self._redo_toolbar_action.triggered.connect(self.redo)
+        tb.addAction(self._redo_toolbar_action)
 
         self._dup_action = ctx_button("❏ Duplicate", lambda: self.canvas.duplicate_selected())
         self._del_action = ctx_button("🗑 Delete", lambda: self.canvas.remove_selected())
@@ -871,6 +884,8 @@ class MainWindow(QMainWindow):
             (self._print_action, has_doc),
             (self._menu_undo_action, self.canvas.can_undo()),
             (self._menu_redo_action, self.canvas.can_redo()),
+            (self._undo_toolbar_action, self.canvas.can_undo()),
+            (self._redo_toolbar_action, self.canvas.can_redo()),
             (self._menu_cut_action, has_selection),
             (self._menu_copy_action, has_selection),
             (self._menu_paste_action, can_paste),

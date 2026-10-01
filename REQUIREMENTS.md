@@ -659,3 +659,12 @@ no reliable way to reach them without maximizing the window.
 10. Switching the setting shall produce exactly the layout the application would have shown had
     it been launched in the target mode. No reserved space or painted strip may remain from the
     previous mode, whether or not an annotation is selected.
+
+## Version 1.2.44 - Undo and redo toolbar buttons
+
+Undo and redo are frequent editing actions, so they should be reachable from the main toolbar
+without opening the hamburger menu.
+
+1. Add Undo and Redo buttons to the first toolbar row.
+2. Enable each button only when the corresponding history action is available, matching the Edit
+   menu state.
