@@ -705,3 +705,16 @@ manually choosing a version, creating a tag, or uploading platform builds.
    pushes to `main`; manually pushing a version tag shall not publish a release.
 
 See [DESIGN.md §6](DESIGN.md#6-distribution--build-details) for the release workflow.
+
+## Version 1.4 - Tight Line and Arrow Bounding Boxes
+
+Motivation: the Arrow was rendered inside only part of its stored square, making its selection
+boundary and selectable transparent area substantially larger than the visible annotation. Line
+needs a usable bounding rectangle even when it is horizontal or vertical.
+
+1. An Arrow's bounding box shall be the minimal axis-aligned rectangle in the annotation's local
+   coordinate system that contains its complete visible shaft, arrowhead, and stroke. Selection,
+   hit-testing, and multi-selection bounds shall use that rectangle.
+2. A Line's bounding box shall contain the complete stroke and remain easy to see and select,
+   even when the Line is horizontal or vertical. Its minimum thickness shall match the height of
+   an Arrow's head, with any extra space added evenly on both sides so the Line stays centered.

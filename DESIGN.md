@@ -140,6 +140,13 @@ flowchart TD
   Page rotation lives in `DocumentCanvas._page_rotations` and drives a matching rotated entry in
   the `_page_pixmaps` cache; the two are updated together (`set_pages`, `restore_objects`,
   `_rotate_pages`), since a mismatch would draw an unrotated page into a transposed rect.
+- **Line/Arrow bounds are derived from rendered vector geometry**: both types keep their square
+  storage geometry so endpoint resizing and serialization remain stable, while
+  `VectorAnnotation.boundary_points_viewport()` and `contains_viewport_point()` use content
+  rectangles. Arrow tightly encloses its shaft, head, and pen radius. Line encloses its stroked
+  endpoints and centrally pads each dimension to the shared Arrow-head spread factor
+  `ARROW_HEAD_SPREAD_FACTOR`; the constant derives from the same head length and angle used to
+  draw Arrow, avoiding a second independent scaling formula.
 - **Coalescing is scoped to one drag gesture**: `HistoryStack` merges consecutive move/resize
   actions on the same object, but `DocumentCanvas` calls `end_coalescing()` on mouse release
   (and the stack closes the window on undo/redo/clear). Without that boundary a second drag

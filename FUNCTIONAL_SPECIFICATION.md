@@ -407,6 +407,12 @@ All sizes are stored in PDF points (1/72 inch) and scaled for 300 DPI rendering 
 Default color: `#cc0000`. Default line width: 1.5pt (range 0.5-16pt). See [§2.3](#2-toolbar--menu)
 for which types support color/width/font controls.
 
+The Arrow retains an 80×80pt storage square for sizing and endpoint calculations, but its
+selection, hit-testing, and multi-selection boundary is the minimal local axis-aligned rectangle
+containing the rendered shaft, arrowhead, and full stroke. Transparent space between that tight
+rectangle and the storage square is not selectable. Checkmark and Crossmark continue to use their
+storage squares despite their visual inset.
+
 ### 7.2 Text annotations
 
 - Default font size 11pt, default font family Arial; no text wrapping.
@@ -450,6 +456,12 @@ aspect ratio. Color and line-width controls are hidden for this type.
 While drawing or resizing a Line or the generic Arrow, if the angle is within 10° of one of the
 8 cardinal/intercardinal directions (0°, 45°, 90°, …, 315°), it snaps exactly to that direction.
 Holding any modifier key (Shift, Ctrl, Alt) disables snapping for precise control.
+
+A Line's local bounding box is the axis-aligned rectangle containing its complete stroked segment.
+Each dimension is at least `N = stored side × 0.18 × sin(35°)`, matching how the perpendicular
+spine-to-barb distance of a horizontal Arrow scales. Padding needed to reach `N` is split equally
+on both sides so the Line remains centered. This rectangle is used for the visible blue boundary,
+hit-testing, and group bounds; endpoint handles remain on the segment endpoints.
 
 ### 7.6 Free corner dragging
 
