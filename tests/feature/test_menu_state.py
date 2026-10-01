@@ -16,28 +16,28 @@ class TestMenuStateNoDocument:
     def test_print_disabled(self, main_window):
         _clear_clipboard(main_window)
         main_window._update_menu_state()
-        assert not main_window._print_action.isEnabled()
+        assert not main_window._menu_print_action.isEnabled()
 
     def test_undo_redo_disabled(self, main_window):
         _clear_clipboard(main_window)
         main_window._update_menu_state()
         assert not main_window._menu_undo_action.isEnabled()
         assert not main_window._menu_redo_action.isEnabled()
-        assert not main_window._undo_toolbar_action.isEnabled()
-        assert not main_window._redo_toolbar_action.isEnabled()
+        assert not main_window._toolbar_undo_action.isEnabled()
+        assert not main_window._toolbar_redo_action.isEnabled()
 
     def test_undo_redo_toolbar_actions_are_available(self, main_window):
         toolbar_actions = main_window._main_toolbar.actions()
 
-        assert main_window._undo_toolbar_action in toolbar_actions
-        assert main_window._redo_toolbar_action in toolbar_actions
+        assert main_window._toolbar_undo_action in toolbar_actions
+        assert main_window._toolbar_redo_action in toolbar_actions
 
     def test_undo_redo_toolbar_state_matches_menu(self, main_window, sample_pdf):
         assert main_window.open_document(str(sample_pdf))
         main_window._update_menu_state()
 
-        assert main_window._undo_toolbar_action.isEnabled() == main_window._menu_undo_action.isEnabled()
-        assert main_window._redo_toolbar_action.isEnabled() == main_window._menu_redo_action.isEnabled()
+        assert main_window._toolbar_undo_action.isEnabled() == main_window._menu_undo_action.isEnabled()
+        assert main_window._toolbar_redo_action.isEnabled() == main_window._menu_redo_action.isEnabled()
 
     def test_cut_copy_duplicate_delete_disabled(self, main_window):
         _clear_clipboard(main_window)
@@ -73,7 +73,7 @@ class TestMenuStateDocumentNoSelection:
         assert main_window.open_document(str(sample_pdf))
         _clear_clipboard(main_window)
         main_window._update_menu_state()
-        assert main_window._print_action.isEnabled()
+        assert main_window._menu_print_action.isEnabled()
         assert main_window._menu_rotate_page_left_action.isEnabled()
         assert main_window._menu_rotate_page_right_action.isEnabled()
         assert main_window._menu_rotate_all_left_action.isEnabled()

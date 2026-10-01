@@ -88,14 +88,14 @@ class TestDocumentDependentWorkflowButtons:
     def test_buttons_disabled_without_document(self, main_window):
         """Add Annotation and Save As are disabled when no document is open."""
         assert not main_window.canvas.has_document
-        assert main_window._add_annotation_btn is not None
-        assert main_window._save_as_toolbar_action is not None
-        assert main_window._save_as_file_action is not None
+        assert main_window._toolbar_add_annotation_btn is not None
+        assert main_window._toolbar_save_as_action is not None
+        assert main_window._menu_save_as_action is not None
         assert main_window._hamburger_annotations_menu is not None
 
-        assert not main_window._add_annotation_btn.isEnabled()
-        assert not main_window._save_as_toolbar_action.isEnabled()
-        assert not main_window._save_as_file_action.isEnabled()
+        assert not main_window._toolbar_add_annotation_btn.isEnabled()
+        assert not main_window._toolbar_save_as_action.isEnabled()
+        assert not main_window._menu_save_as_action.isEnabled()
         assert not main_window._hamburger_annotations_menu.menuAction().isEnabled()
 
     def test_buttons_enabled_after_open_document(self, main_window, sample_pdf):
@@ -103,14 +103,14 @@ class TestDocumentDependentWorkflowButtons:
         assert main_window.open_document(str(sample_pdf))
         assert main_window.canvas.has_document
 
-        assert main_window._add_annotation_btn is not None
-        assert main_window._save_as_toolbar_action is not None
-        assert main_window._save_as_file_action is not None
+        assert main_window._toolbar_add_annotation_btn is not None
+        assert main_window._toolbar_save_as_action is not None
+        assert main_window._menu_save_as_action is not None
         assert main_window._hamburger_annotations_menu is not None
 
-        assert main_window._add_annotation_btn.isEnabled()
-        assert main_window._save_as_toolbar_action.isEnabled()
-        assert main_window._save_as_file_action.isEnabled()
+        assert main_window._toolbar_add_annotation_btn.isEnabled()
+        assert main_window._toolbar_save_as_action.isEnabled()
+        assert main_window._menu_save_as_action.isEnabled()
         assert main_window._hamburger_annotations_menu.menuAction().isEnabled()
 
     def test_page_navigation_hidden_for_single_page_document(self, main_window, sample_pdf):
@@ -118,14 +118,14 @@ class TestDocumentDependentWorkflowButtons:
         assert main_window.open_document(str(sample_pdf))
         assert main_window.canvas.page_count == 1
 
-        assert main_window._page_nav_prev_action is not None
-        assert main_window._page_nav_next_action is not None
-        assert main_window._page_nav_label is not None
-        assert main_window._page_nav_prev_action.text() == "◀"
-        assert main_window._page_nav_next_action.text() == "▶"
-        assert not main_window._page_nav_prev_action.isVisible()
-        assert not main_window._page_nav_next_action.isVisible()
-        assert not main_window._page_nav_label.isVisible()
+        assert main_window._toolbar_page_nav_prev_action is not None
+        assert main_window._toolbar_page_nav_next_action is not None
+        assert main_window._toolbar_page_nav_label is not None
+        assert main_window._toolbar_page_nav_prev_action.text() == "◀"
+        assert main_window._toolbar_page_nav_next_action.text() == "▶"
+        assert not main_window._toolbar_page_nav_prev_action.isVisible()
+        assert not main_window._toolbar_page_nav_next_action.isVisible()
+        assert not main_window._toolbar_page_nav_label.isVisible()
 
     def test_property_controls_hidden_when_no_selection(self, main_window, sample_pdf):
         """No selection should hide all annotation property controls even on a single-page document."""

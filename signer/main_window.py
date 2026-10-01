@@ -386,12 +386,12 @@ class MainWindow(QMainWindow):
         self._hamburger_file_menu: QMenu | None = None
         self._hamburger_text_submenu: QMenu | None = None
         self._hamburger_annotations_menu: QMenu | None = None
-        self._add_annotation_btn: QToolButton | None = None
-        self._save_as_toolbar_action: QAction | None = None
-        self._undo_toolbar_action: QAction | None = None
-        self._redo_toolbar_action: QAction | None = None
-        self._save_as_file_action: QAction | None = None
-        self._print_action: QAction | None = None
+        self._toolbar_add_annotation_btn: QToolButton | None = None
+        self._toolbar_save_as_action: QAction | None = None
+        self._toolbar_undo_action: QAction | None = None
+        self._toolbar_redo_action: QAction | None = None
+        self._menu_save_as_action: QAction | None = None
+        self._menu_print_action: QAction | None = None
         self._menu_undo_action: QAction | None = None
         self._menu_redo_action: QAction | None = None
         self._menu_cut_action: QAction | None = None
@@ -404,9 +404,9 @@ class MainWindow(QMainWindow):
         self._menu_rotate_page_right_action: QAction | None = None
         self._menu_rotate_all_left_action: QAction | None = None
         self._menu_rotate_all_right_action: QAction | None = None
-        self._page_nav_prev_action: QAction | None = None
-        self._page_nav_next_action: QAction | None = None
-        self._page_nav_label: QLabel | None = None
+        self._toolbar_page_nav_prev_action: QAction | None = None
+        self._toolbar_page_nav_next_action: QAction | None = None
+        self._toolbar_page_nav_label: QLabel | None = None
 
         self.document_path: str | None = None
         self.project_path: str | None = None
@@ -580,7 +580,7 @@ class MainWindow(QMainWindow):
         ann_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         ann_menu = QMenu(ann_btn)
         ann_btn.setMenu(ann_menu)
-        self._add_annotation_btn = ann_btn
+        self._toolbar_add_annotation_btn = ann_btn
 
         self._populate_annotation_type_actions(ann_menu, with_icons=True)
 
@@ -601,32 +601,32 @@ class MainWindow(QMainWindow):
         tb.addWidget(ann_btn)
 
         # Save action (3rd, same workflow group)
-        self._save_as_toolbar_action = big_action("💾 Save", self.save_document_as)
+        self._toolbar_save_as_action = big_action("💾 Save", self.save_document_as)
 
-        self._page_nav_separator_action = tb.addSeparator()
+        self._toolbar_page_nav_separator_action = tb.addSeparator()
 
         # Page navigation
-        self._page_nav_prev_action = QAction("◀", self)
-        self._page_nav_prev_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page - 1))
-        tb.addAction(self._page_nav_prev_action)
+        self._toolbar_page_nav_prev_action = QAction("◀", self)
+        self._toolbar_page_nav_prev_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page - 1))
+        tb.addAction(self._toolbar_page_nav_prev_action)
 
-        self._page_nav_label = QLabel("  Page — / —  ")
-        self._page_nav_label_action = tb.addWidget(self._page_nav_label)
+        self._toolbar_page_nav_label = QLabel("  Page — / —  ")
+        self._toolbar_page_nav_label_action = tb.addWidget(self._toolbar_page_nav_label)
 
-        self._page_nav_next_action = QAction("▶", self)
-        self._page_nav_next_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page + 1))
-        tb.addAction(self._page_nav_next_action)
+        self._toolbar_page_nav_next_action = QAction("▶", self)
+        self._toolbar_page_nav_next_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page + 1))
+        tb.addAction(self._toolbar_page_nav_next_action)
 
         # Undo and redo are available in the main toolbar as well as the Edit menu.
-        self._undo_toolbar_action = QAction("⟲ Undo", self)
-        self._undo_toolbar_action.setToolTip("Undo (Z)")
-        self._undo_toolbar_action.triggered.connect(self.undo)
-        tb.addAction(self._undo_toolbar_action)
+        self._toolbar_undo_action = QAction("⟲ Undo", self)
+        self._toolbar_undo_action.setToolTip("Undo (Z)")
+        self._toolbar_undo_action.triggered.connect(self.undo)
+        tb.addAction(self._toolbar_undo_action)
 
-        self._redo_toolbar_action = QAction("⟳ Redo", self)
-        self._redo_toolbar_action.setToolTip("Redo (Y)")
-        self._redo_toolbar_action.triggered.connect(self.redo)
-        tb.addAction(self._redo_toolbar_action)
+        self._toolbar_redo_action = QAction("⟳ Redo", self)
+        self._toolbar_redo_action.setToolTip("Redo (Y)")
+        self._toolbar_redo_action.triggered.connect(self.redo)
+        tb.addAction(self._toolbar_redo_action)
 
         self._dup_action = ctx_button("❏ Duplicate", lambda: self.canvas.duplicate_selected())
         self._del_action = ctx_button("🗑 Delete", lambda: self.canvas.remove_selected())
@@ -744,18 +744,18 @@ class MainWindow(QMainWindow):
         self._hamburger_file_menu = hamburger_menu.addMenu("File")
         open_document_action = self._hamburger_file_menu.addAction("Open Document…\tO", self.open_document)
         open_document_action.setShortcut("O")
-        self._save_as_file_action = self._hamburger_file_menu.addAction("Save As…\tS", self.save_document_as)
-        self._save_as_file_action.setShortcut("S")
+        self._menu_save_as_action = self._hamburger_file_menu.addAction("Save As…\tS", self.save_document_as)
+        self._menu_save_as_action.setShortcut("S")
         self._hamburger_file_menu.addSeparator()
-        self._save_project_action = self._hamburger_file_menu.addAction("Save Project", lambda: self.save_project())
-        self._save_project_as_action = self._hamburger_file_menu.addAction("Save Project As…", lambda: self.save_project_as())
-        self._change_document_action = self._hamburger_file_menu.addAction("Change Document…", lambda: self.change_document())
-        self._auto_save_project_action = self._hamburger_file_menu.addAction("Auto-save Project on Save", self._toggle_auto_save_project)
-        self._auto_save_project_action.setCheckable(True)
-        self._auto_save_project_action.setChecked(self._settings.auto_save_project)
+        self._menu_save_project_action = self._hamburger_file_menu.addAction("Save Project", lambda: self.save_project())
+        self._menu_save_project_as_action = self._hamburger_file_menu.addAction("Save Project As…", lambda: self.save_project_as())
+        self._menu_change_document_action = self._hamburger_file_menu.addAction("Change Document…", lambda: self.change_document())
+        self._menu_auto_save_project_action = self._hamburger_file_menu.addAction("Auto-save Project on Save", self._toggle_auto_save_project)
+        self._menu_auto_save_project_action.setCheckable(True)
+        self._menu_auto_save_project_action.setChecked(self._settings.auto_save_project)
         self._hamburger_file_menu.addSeparator()
-        self._print_action = self._hamburger_file_menu.addAction("Print\tP", self.print_document)
-        self._print_action.setShortcut("P")
+        self._menu_print_action = self._hamburger_file_menu.addAction("Print\tP", self.print_document)
+        self._menu_print_action.setShortcut("P")
         self._hamburger_file_menu.addSeparator()
         self._file_recent_docs_actions = []  # Track recent doc actions for rebuilding
         self._rebuild_file_recent_documents_top_level(self._hamburger_file_menu)
@@ -815,11 +815,11 @@ class MainWindow(QMainWindow):
         tools_menu = hamburger_menu.addMenu("Tools")
         tools_menu.addAction("Prepare Signature…", self._open_prepare_signature_tool)
         tools_menu.addSeparator()
-        self._overlay_selection_toolbar_action = tools_menu.addAction(
+        self._menu_overlay_selection_toolbar_action = tools_menu.addAction(
             "Overlay Selection Toolbar on Document", self._toggle_overlay_selection_toolbar
         )
-        self._overlay_selection_toolbar_action.setCheckable(True)
-        self._overlay_selection_toolbar_action.setChecked(self._settings.overlay_selection_toolbar)
+        self._menu_overlay_selection_toolbar_action.setCheckable(True)
+        self._menu_overlay_selection_toolbar_action.setChecked(self._settings.overlay_selection_toolbar)
 
         # Help menu
         help_menu = hamburger_menu.addMenu("Help")
@@ -837,8 +837,8 @@ class MainWindow(QMainWindow):
 
     def show_annotation_menu(self) -> None:
         """Open the toolbar annotation menu from a keyboard shortcut."""
-        if self._add_annotation_btn.isEnabled():
-            self._add_annotation_btn.showMenu()
+        if self._toolbar_add_annotation_btn.isEnabled():
+            self._toolbar_add_annotation_btn.showMenu()
 
     def _populate_annotation_type_actions(self, menu: QMenu, with_icons: bool = False) -> None:
         """Add the shared vector annotation commands to an annotation menu."""
@@ -863,13 +863,13 @@ class MainWindow(QMainWindow):
         has_page_objects = has_doc and bool(self.canvas.current_page_objects())
         can_paste = has_doc and self.canvas.has_pasteable_data()
 
-        if self._auto_save_project_action is not None:
+        if self._menu_auto_save_project_action is not None:
             self._set_value_silently(
-                self._auto_save_project_action, self._settings.auto_save_project, setter="setChecked"
+                self._menu_auto_save_project_action, self._settings.auto_save_project, setter="setChecked"
             )
-        if getattr(self, "_overlay_selection_toolbar_action", None) is not None:
+        if getattr(self, "_menu_overlay_selection_toolbar_action", None) is not None:
             self._set_value_silently(
-                self._overlay_selection_toolbar_action, self._settings.overlay_selection_toolbar, setter="setChecked"
+                self._menu_overlay_selection_toolbar_action, self._settings.overlay_selection_toolbar, setter="setChecked"
             )
 
         # Declarative action -> enabled-condition mapping so adding a new menu
@@ -881,11 +881,11 @@ class MainWindow(QMainWindow):
             self._menu_rotate_all_right_action,
         )
         action_conditions = [
-            (self._print_action, has_doc),
+            (self._menu_print_action, has_doc),
             (self._menu_undo_action, self.canvas.can_undo()),
             (self._menu_redo_action, self.canvas.can_redo()),
-            (self._undo_toolbar_action, self.canvas.can_undo()),
-            (self._redo_toolbar_action, self.canvas.can_redo()),
+            (self._toolbar_undo_action, self.canvas.can_undo()),
+            (self._toolbar_redo_action, self.canvas.can_redo()),
             (self._menu_cut_action, has_selection),
             (self._menu_copy_action, has_selection),
             (self._menu_paste_action, can_paste),
@@ -902,12 +902,12 @@ class MainWindow(QMainWindow):
         """Enable/disable document-dependent workflow controls."""
         has_doc = self.canvas.has_document
 
-        if self._add_annotation_btn is not None:
-            self._add_annotation_btn.setEnabled(has_doc)
-        if self._save_as_toolbar_action is not None:
-            self._save_as_toolbar_action.setEnabled(has_doc)
-        if self._save_as_file_action is not None:
-            self._save_as_file_action.setEnabled(has_doc)
+        if self._toolbar_add_annotation_btn is not None:
+            self._toolbar_add_annotation_btn.setEnabled(has_doc)
+        if self._toolbar_save_as_action is not None:
+            self._toolbar_save_as_action.setEnabled(has_doc)
+        if self._menu_save_as_action is not None:
+            self._menu_save_as_action.setEnabled(has_doc)
         if self._hamburger_annotations_menu is not None:
             self._hamburger_annotations_menu.menuAction().setEnabled(has_doc)
 
@@ -917,21 +917,21 @@ class MainWindow(QMainWindow):
         """Hide page navigation controls when the current document has a single page."""
         show_navigation = self.canvas.has_document and self.canvas.page_count > 1
 
-        if self._page_nav_prev_action is not None:
-            self._page_nav_prev_action.setVisible(show_navigation)
-        if self._page_nav_next_action is not None:
-            self._page_nav_next_action.setVisible(show_navigation)
-        if self._page_nav_label is not None:
-            self._page_nav_label.setVisible(show_navigation)
-        if getattr(self, "_page_nav_label_action", None) is not None:
-            self._page_nav_label_action.setVisible(show_navigation)
+        if self._toolbar_page_nav_prev_action is not None:
+            self._toolbar_page_nav_prev_action.setVisible(show_navigation)
+        if self._toolbar_page_nav_next_action is not None:
+            self._toolbar_page_nav_next_action.setVisible(show_navigation)
+        if self._toolbar_page_nav_label is not None:
+            self._toolbar_page_nav_label.setVisible(show_navigation)
+        if getattr(self, "_toolbar_page_nav_label_action", None) is not None:
+            self._toolbar_page_nav_label_action.setVisible(show_navigation)
 
         self._update_page_nav_separator_visibility()
         self._refresh_toolbar_layout()
 
     def _update_page_nav_separator_visibility(self) -> None:
         """Show the separator after Save As only if page nav or Duplicate/Delete are visible."""
-        separator = getattr(self, "_page_nav_separator_action", None)
+        separator = getattr(self, "_toolbar_page_nav_separator_action", None)
         if separator is None:
             return
         show_navigation = self.canvas.has_document and self.canvas.page_count > 1
@@ -1411,11 +1411,11 @@ class MainWindow(QMainWindow):
     def _on_page_changed(self, current: int, total: int) -> None:
         self._update_document_workflow_state()
         self._update_menu_state()
-        if self._page_nav_label is not None:
+        if self._toolbar_page_nav_label is not None:
             if total > 0:
-                self._page_nav_label.setText(f"  Page {current + 1} / {total}  ")
+                self._toolbar_page_nav_label.setText(f"  Page {current + 1} / {total}  ")
             else:
-                self._page_nav_label.setText("  Page — / —  ")
+                self._toolbar_page_nav_label.setText("  Page — / —  ")
 
     def _on_paste_incomplete(self, skipped: int, total: int) -> None:
         """Tell the user when some clipboard items could not be pasted."""
@@ -1642,13 +1642,13 @@ class MainWindow(QMainWindow):
 
     def _toggle_auto_save_project(self, checked: bool | None = None) -> None:
         if checked is None:
-            checked = self._auto_save_project_action.isChecked()
+            checked = self._menu_auto_save_project_action.isChecked()
         self._settings.auto_save_project = checked
         self._save_settings_safe()
 
     def _toggle_overlay_selection_toolbar(self, checked: bool | None = None) -> None:
         if checked is None:
-            checked = self._overlay_selection_toolbar_action.isChecked()
+            checked = self._menu_overlay_selection_toolbar_action.isChecked()
         self._settings.overlay_selection_toolbar = checked
         self._save_settings_safe()
         self._sync_context_toolbar()

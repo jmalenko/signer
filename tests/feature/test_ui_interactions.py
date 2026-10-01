@@ -203,7 +203,7 @@ class TestMultipageAnnotations:
         from PySide6.QtCore import Qt
         from PySide6.QtTest import QTest
         main_window.canvas.setFocus()
-        with patch.object(main_window._add_annotation_btn, "showMenu") as show_menu:
+        with patch.object(main_window._toolbar_add_annotation_btn, "showMenu") as show_menu:
             QTest.keyClick(main_window.canvas, Qt.Key_Plus)
 
         show_menu.assert_called_once_with()

@@ -30,16 +30,16 @@ def test_auto_save_project_menu_reflects_loaded_setting(main_window):
     main_window._settings.auto_save_project = False
     main_window._update_menu_state()
 
-    assert main_window._auto_save_project_action.isChecked() is False
+    assert main_window._menu_auto_save_project_action.isChecked() is False
 
 
 def test_auto_save_project_on_save_menu_action_toggles_checkmark_and_setting(main_window):
     main_window._settings.auto_save_project = False
     main_window._update_menu_state()
 
-    main_window._auto_save_project_action.trigger()
+    main_window._menu_auto_save_project_action.trigger()
 
-    assert main_window._auto_save_project_action.isChecked() is True
+    assert main_window._menu_auto_save_project_action.isChecked() is True
     assert main_window._settings.auto_save_project is True
 
 
@@ -55,7 +55,7 @@ def test_auto_save_project_on_save_is_not_written_before_export(main_window, tmp
 
 
 def test_auto_save_project_menu_label_explains_save_timing(main_window):
-    assert main_window._auto_save_project_action.text() == "Auto-save Project on Save"
+    assert main_window._menu_auto_save_project_action.text() == "Auto-save Project on Save"
 
 
 def test_project_file_disk_roundtrip(tmp_path):
@@ -251,7 +251,7 @@ def test_right_key_navigates_after_project_open_without_click(main_window, tmp_p
 
 
 def test_project_file_menu_uses_ellipsis_for_change_document(main_window):
-    assert main_window._change_document_action.text() == "Change Document…"
+    assert main_window._menu_change_document_action.text() == "Change Document…"
 
 
 def test_file_menu_has_no_new_project_action(main_window):
