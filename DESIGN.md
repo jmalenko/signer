@@ -188,6 +188,32 @@ flowchart TD
   ordinary dark-ink-on-light-paper case, while optional hue filtering can run afterward to remove
   black text/dots around colored ink. Keeping the filters independent makes each method tunable
   and allows either one or both to be selected.
+- **Selection toolbar widget actions are restored explicitly**: `QToolBar.addWidget()` hides and
+  disables both an embedded widget and its generated `QWidgetAction`. The selection toolbar
+  therefore restores both states after each row assignment; restoring only the child widget
+  leaves controls invisible after a selection-triggered re-layout.
+- **Selection toolbar fitting measures, it doesn't predict**: `_sync_context_toolbar()` inserts
+  every candidate control into the row, lays the row out at an oversized width, and reads each
+  control's real `x() + width()`. Placement is then the longest prefix whose right edge fits the
+  budget. An earlier version summed `sizeHint()` values taken while the controls were parented to
+  the plain canvas container, which underestimated their real width by ~12% — the row's stylesheet
+  (13px font) only applies once a control is inside the row. That gap let controls overlap the
+  overflow button and the window edge, and delayed the overflow button by a resize step. Because
+  a toolbar row is laid out left-to-right with fixed spacing, positions of the kept prefix are
+  unaffected by removing trailing items, so a single measurement pass is exact.
+- **Overlay toolbar rows are created on demand**: overlay mode repeatedly takes the longest
+  measured prefix that fits the current width and assigns the remainder to another real
+  `QToolBar`, creating rows until every control is placed. Reserve-space mode continues to use
+  exactly one row plus the application's overflow popup. Unused overlay rows are collapsed and
+  retained for reuse so resizing does not destroy and recreate controls.
+- **Selection toolbar rows are positioned with explicit geometry, not layout constraints**: each
+  row's size is applied by clearing its previous minimum/maximum and then setting the new
+  geometry and fixed size. Mixing a new maximum with the previous mode's stale minimum let Qt
+  clamp the row to the old reserved height, leaving a dark strip over the canvas after switching
+  to overlay mode.
+- **Qt's native toolbar extension is suppressed**: `QToolBar` creates a `qt_toolbar_ext_button`
+  ("»") and moves controls behind it on its own. Its popup is empty for widget actions, so the
+  app hides and zero-sizes that button and supplies its own `…` button and popup instead.
 
 ## 5. Testing Architecture
 

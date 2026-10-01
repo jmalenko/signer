@@ -1984,13 +1984,14 @@ class DocumentCanvas(QWidget):
         return False
 
     def _invoke_window_command(self, name: str) -> None:
-        """Call `name` on the parent window, logging if it isn't available.
+        """Call `name` on the top-level window, logging if it isn't available.
 
-        None of these commands are optional; a missing one means the canvas was
-        reparented away from MainWindow and the shortcut would otherwise be
+        Uses window() rather than parent() so this keeps working regardless of any
+        wrapper widgets placed between the canvas and MainWindow. None of these
+        commands are optional; a missing one means the shortcut would otherwise be
         silently dead.
         """
-        window = self.parent()
+        window = self.window()
         command = getattr(window, name, None)
         if command is None:
             logger.warning("Cannot run %r: parent window does not provide it", name)

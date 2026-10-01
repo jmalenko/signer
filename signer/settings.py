@@ -87,6 +87,12 @@ class AppSettings:
     # Project persistence preference
     auto_save_project: bool = True
 
+    # If True, the selection-properties toolbar row floats over the canvas (document is
+    # never rescaled but the row covers its top strip while visible). If False, the row
+    # is a real second toolbar row that reserves its own space (canvas rescales the
+    # document to fit, but nothing is ever covered).
+    overlay_selection_toolbar: bool = False
+
 
 class SettingsStore:
     def __init__(self, app_name: str = "Signer") -> None:

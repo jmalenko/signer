@@ -58,11 +58,16 @@ def test_toolbar_character_spacing_change_is_undoable(main_window):
 
 
 def test_spacing_control_follows_font_family_and_steps_by_one(main_window):
-    actions = main_window._main_toolbar.actions()
-
-    assert actions.index(main_window._font_family_combo_action) < actions.index(
-        main_window._character_spacing_label_action
-    )
+    # Font size/family/spacing are grouped into a single toolbar item (_text_style_group)
+    # since they always show/hide together; check their relative order within that group's
+    # internal layout instead of the (now removed) separate per-widget toolbar actions.
+    group_layout = main_window._text_style_group.layout()
+    widget_positions = {
+        group_layout.itemAt(i).widget(): i for i in range(group_layout.count())
+    }
+    assert widget_positions[main_window._font_family_combo] < widget_positions[
+        main_window._character_spacing_label
+    ]
     assert main_window._character_spacing_spinner.singleStep() == 1.0
 
 

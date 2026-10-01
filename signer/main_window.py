@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
-from PySide6.QtCore import QCoreApplication, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -31,6 +31,8 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -44,6 +46,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from .canvas import DocumentCanvas
@@ -84,6 +87,9 @@ from .settings import AppSettings, SettingsStore
 # Max number of entries kept in each "recent items" list (documents, signatures, texts).
 MAX_RECENT_ITEMS = 10
 
+# Qt's widget size ceiling; PySide6 doesn't re-export QWIDGETSIZE_MAX.
+QWIDGETSIZE_MAX = 16777215
+
 
 class _WholeNumberFriendlyDoubleSpinBox(QDoubleSpinBox):
     """Display whole values without a redundant decimal fraction."""
@@ -92,6 +98,28 @@ class _WholeNumberFriendlyDoubleSpinBox(QDoubleSpinBox):
         if value.is_integer():
             return str(int(value))
         return super().textFromValue(value)
+
+
+class _ToolbarLayoutItemView:
+    def __init__(self, widget: QWidget) -> None:
+        self._widget = widget
+
+    def widget(self) -> QWidget:
+        return self._widget
+
+
+class _ToolbarLayoutView:
+    def __init__(self, widgets: tuple[QWidget, ...]) -> None:
+        self._items = tuple(_ToolbarLayoutItemView(widget) for widget in widgets)
+
+    def layout(self) -> _ToolbarLayoutView:
+        return self
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def itemAt(self, index: int) -> _ToolbarLayoutItemView:
+        return self._items[index]
 
 
 class _SaveDialogWithFilterDetection(QFileDialog):
@@ -385,7 +413,20 @@ class MainWindow(QMainWindow):
         self._saving_project: bool = False
 
         self.canvas = DocumentCanvas(self)
-        self.setCentralWidget(self.canvas)
+        # Wrapper so the selection-properties toolbar row can be positioned above the canvas
+        # (reserve-space mode) or float over it (overlay mode). Both children are positioned
+        # manually (see _update_context_toolbar_geometry) rather than via a QLayout or
+        # QMainWindow's own toolbar-area docking (addToolBar/removeToolBar/addToolBarBreak),
+        # neither of which reliably reclaimed space when toggled dynamically.
+        self._canvas_container = QWidget(self)
+        self.canvas.setParent(self._canvas_container)
+        self.setCentralWidget(self._canvas_container)
+        # QMainWindow can resize the central widget's geometry slightly later than its own
+        # resizeEvent (the layout recalculation is posted, not synchronous, on some
+        # platforms), so watch the container's OWN resize directly rather than relying only
+        # on MainWindow.resizeEvent — otherwise the context toolbar can get stuck using a
+        # stale (too-narrow) width until the user manually drags the window to resize it.
+        self._canvas_container.installEventFilter(self)
 
         self._build_toolbar()
         a4_size = QPageSize(QPageSize.A4).sizePixels(300)
@@ -437,11 +478,84 @@ class MainWindow(QMainWindow):
         self.addToolBar(tb)
         self._main_toolbar = tb
 
+        # Selection-dependent controls (Duplicate/Delete, color, width, font, angle) live in a
+        # second area, visible only while something is selected. Real QToolBar rows hold them
+        # (native look, incl. dark-theme support, consistent with the main toolbar);
+        # which rows are used, and how overflow is handled, depends on the "Overlay Selection
+        # Toolbar on Document" setting:
+        #   - Reserve space: only row 1 is used (fixed single-line height, always reserved,
+        #     never changes with content); controls that don't fit go behind a "…" button's
+        #     popup menu instead of a 2nd row, so exactly one extra row is ever reserved.
+        #   - Overlay: as many rows as needed float over the canvas; a control that doesn't fit
+        #     the current row moves to the next one instead of an overflow menu.
+        # All rows/canvas are positioned manually within _canvas_container (see
+        # _sync_context_toolbar) rather than via a QLayout or QMainWindow's own toolbar-area
+        # docking (addToolBar/removeToolBar/addToolBarBreak), neither of which reliably
+        # reclaimed space when toggled dynamically.
+        self._context_toolbar_line_height = 44
+        self._context_toolbar_row_height = self._context_toolbar_line_height
+
+        def make_context_row(name: str) -> QToolBar:
+            row = QToolBar(name, self._canvas_container)
+            row.setMovable(False)
+            row.setIconSize(QSize(24, 24))
+            row.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            row.setAttribute(Qt.WA_TranslucentBackground, True)
+            # Don't set fixed height here; let _sync_context_toolbar() manage it dynamically.
+            # Setting fixed height prevents geometry from being changed when items are added/removed.
+            row.setStyleSheet(
+                tb.styleSheet()
+                + " QToolBar { background-color: #303030; border: none; }"
+                + " QToolBar::extension { width: 0px; }"
+            )
+            row.show()
+            return row
+
+        self._make_context_row = make_context_row
+        self._context_rows = [
+            make_context_row("Selection"),
+            make_context_row("Selection (more)"),
+        ]
+        self._context_row1, self._context_row2 = self._context_rows
+        self._context_more_btn = QToolButton(self._canvas_container)
+        self._context_more_btn.setText("\u2026")
+        self._context_more_btn.setAutoRaise(True)
+        self._context_more_btn.setToolTip("More controls")
+        self._context_more_btn.clicked.connect(self._show_context_overflow_menu)
+        self._context_more_btn.hide()
+        self._context_items: list[QWidget] = []
+        self._context_overflow_items: list[QWidget] = []
+        self._context_overflow_menu: QMenu | None = None
+        self._context_overflow_menu_active = False
+        self._context_edge_cache: dict[tuple, list[int]] = {}
+        # Track which items are "conceptually visible" per the current selection, separately from
+        # their actual isVisible() state (which changes as items move to/from overflow). This
+        # allows _sync_context_toolbar to re-fit items across window resizes, even after they've
+        # been temporarily hidden for space constraints.
+        self._context_conceptually_visible: set[QWidget] = set()
+        self._context_toolbar = self._context_row1  # kept for callers that just need "a" context toolbar
+        self._sync_context_toolbar()
+
         def big_action(text: str, slot) -> QAction:
             act = QAction(text, self)
             act.triggered.connect(slot)
             tb.addAction(act)
             return act
+
+        def ctx_item(widget: QWidget) -> QWidget:
+            """Register a widget as an item of the selection-properties area. It isn't
+            parented to a row yet; _sync_context_toolbar() assigns it one (or the overflow
+            menu) each time visibility/available width changes."""
+            self._context_items.append(widget)
+            return widget
+
+        def ctx_button(text: str, slot) -> QToolButton:
+            btn = QToolButton()
+            btn.setText(text)
+            btn.setAutoRaise(True)
+            btn.clicked.connect(slot)
+            ctx_item(btn)
+            return btn
 
         # Open with recent documents dropdown
         open_doc_btn = QToolButton(self)
@@ -501,10 +615,14 @@ class MainWindow(QMainWindow):
         self._page_nav_next_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page + 1))
         tb.addAction(self._page_nav_next_action)
 
-        self._dup_action = big_action("❏ Duplicate", lambda: self.canvas.duplicate_selected())
-        self._del_action = big_action("🗑 Delete", lambda: self.canvas.remove_selected())
+        self._dup_action = ctx_button("❏ Duplicate", lambda: self.canvas.duplicate_selected())
+        self._del_action = ctx_button("🗑 Delete", lambda: self.canvas.remove_selected())
 
-        self._properties_separator_action = tb.addSeparator()
+        separator = QFrame()
+        separator.setFrameShape(QFrame.VLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setFixedWidth(2)
+        self._properties_separator_action = ctx_item(separator)
 
         # Color button
         self._color_btn = QPushButton("●")
@@ -512,11 +630,10 @@ class MainWindow(QMainWindow):
         self._color_btn.setToolTip("Annotation color")
         self._color_btn.clicked.connect(self._pick_color)
         self._update_color_btn()
-        self._color_btn_action = tb.addWidget(self._color_btn)
+        self._color_btn_action = ctx_item(self._color_btn)
 
-        # v1.2.22: Line width spinner (for vector annotations)
+        # v1.2.22: Line width control (for vector annotations)
         self._width_label = QLabel("Width:")
-        self._width_label_action = tb.addWidget(self._width_label)
         self._width_spinner = QDoubleSpinBox()
         self._width_spinner.setMinimum(0.5)
         self._width_spinner.setMaximum(16.0)
@@ -526,11 +643,11 @@ class MainWindow(QMainWindow):
         self._width_spinner.setMaximumWidth(60)
         self._width_spinner.setToolTip("Line width in points")
         self._width_spinner.valueChanged.connect(self._on_width_changed)
-        self._width_spinner_action = tb.addWidget(self._width_spinner)
+        self._width_group = ctx_item(self._make_control_group(self._width_label, self._width_spinner))
 
-        # v1.2.22: Font size spinner (for text annotations)
+        # v1.2.22: Text style controls (font size, font family, character spacing) — shown/
+        # hidden together (text annotations only), so grouped into a single toolbar item.
         self._font_size_label = QLabel("Font Size:")
-        self._font_size_label_action = tb.addWidget(self._font_size_label)
         self._font_size_spinner = QSpinBox()
         self._font_size_spinner.setMinimum(6)
         self._font_size_spinner.setMaximum(72)
@@ -539,21 +656,16 @@ class MainWindow(QMainWindow):
         self._font_size_spinner.setMaximumWidth(60)
         self._font_size_spinner.setToolTip("Font size in points")
         self._font_size_spinner.valueChanged.connect(self._on_font_size_changed)
-        self._font_size_spinner_action = tb.addWidget(self._font_size_spinner)
 
-        # v1.2.22: Font family combo (for text annotations)
         self._font_label = QLabel("Font:")
-        self._font_label_action = tb.addWidget(self._font_label)
         self._font_family_combo = QComboBox()
         self._font_family_combo.addItems(self._get_system_fonts())
         self._font_family_combo.setCurrentText(DEFAULT_FONT_FAMILY)
         self._font_family_combo.setMaximumWidth(120)
         self._font_family_combo.setToolTip("Font family")
         self._font_family_combo.currentTextChanged.connect(self._on_font_family_changed)
-        self._font_family_combo_action = tb.addWidget(self._font_family_combo)
 
         self._character_spacing_label = QLabel("Spacing:")
-        self._character_spacing_label_action = tb.addWidget(self._character_spacing_label)
         self._character_spacing_spinner = _WholeNumberFriendlyDoubleSpinBox()
         self._character_spacing_spinner.setRange(float("-inf"), float("inf"))
         self._character_spacing_spinner.setSingleStep(1.0)
@@ -562,10 +674,27 @@ class MainWindow(QMainWindow):
         self._character_spacing_spinner.setMaximumWidth(65)
         self._character_spacing_spinner.setToolTip("Character spacing in points")
         self._character_spacing_spinner.valueChanged.connect(self._on_character_spacing_changed)
-        self._character_spacing_spinner_action = tb.addWidget(self._character_spacing_spinner)
 
+        self._font_size_group = ctx_item(self._make_control_group(
+            self._font_size_label, self._font_size_spinner,
+        ))
+        self._font_family_group = ctx_item(self._make_control_group(
+            self._font_label, self._font_family_combo,
+        ))
+        self._character_spacing_group = ctx_item(self._make_control_group(
+            self._character_spacing_label, self._character_spacing_spinner,
+        ))
+        self._text_style_group = _ToolbarLayoutView((
+            self._font_size_label,
+            self._font_size_spinner,
+            self._font_label,
+            self._font_family_combo,
+            self._character_spacing_label,
+            self._character_spacing_spinner,
+        ))
+
+        # Angle + reset — shown/hidden together (all annotation types), grouped as one item.
         self._angle_label = QLabel("Angle:")
-        self._angle_label_action = tb.addWidget(self._angle_label)
         self._angle_spinner = QSpinBox()
         self._angle_spinner.setRange(0, 359)
         self._angle_spinner.setSingleStep(1)
@@ -573,13 +702,16 @@ class MainWindow(QMainWindow):
         self._angle_spinner.setMaximumWidth(70)
         self._angle_spinner.setToolTip("Clockwise annotation rotation in degrees")
         self._angle_spinner.valueChanged.connect(self._on_angle_changed)
-        self._angle_spinner_action = tb.addWidget(self._angle_spinner)
 
-        self._reset_angle_btn = QToolButton(self)
+        self._reset_angle_btn = QToolButton()
+        self._reset_angle_btn.setAutoRaise(True)
         self._reset_angle_btn.setText("↺")
         self._reset_angle_btn.setToolTip("Reset rotation to 0°")
         self._reset_angle_btn.clicked.connect(lambda: self._angle_spinner.setValue(0))
-        self._reset_angle_action = tb.addWidget(self._reset_angle_btn)
+
+        self._angle_group = ctx_item(self._make_control_group(
+            self._angle_label, self._angle_spinner, self._reset_angle_btn
+        ))
 
         # Add stretch to push hamburger menu to the right
         spacer = QWidget()
@@ -669,6 +801,12 @@ class MainWindow(QMainWindow):
         # Tools menu: standalone utilities that don't operate on the currently open document
         tools_menu = hamburger_menu.addMenu("Tools")
         tools_menu.addAction("Prepare Signature…", self._open_prepare_signature_tool)
+        tools_menu.addSeparator()
+        self._overlay_selection_toolbar_action = tools_menu.addAction(
+            "Overlay Selection Toolbar on Document", self._toggle_overlay_selection_toolbar
+        )
+        self._overlay_selection_toolbar_action.setCheckable(True)
+        self._overlay_selection_toolbar_action.setChecked(self._settings.overlay_selection_toolbar)
 
         # Help menu
         help_menu = hamburger_menu.addMenu("Help")
@@ -715,6 +853,10 @@ class MainWindow(QMainWindow):
         if self._auto_save_project_action is not None:
             self._set_value_silently(
                 self._auto_save_project_action, self._settings.auto_save_project, setter="setChecked"
+            )
+        if getattr(self, "_overlay_selection_toolbar_action", None) is not None:
+            self._set_value_silently(
+                self._overlay_selection_toolbar_action, self._settings.overlay_selection_toolbar, setter="setChecked"
             )
 
         # Declarative action -> enabled-condition mapping so adding a new menu
@@ -784,9 +926,272 @@ class MainWindow(QMainWindow):
     def _refresh_toolbar_layout(self) -> None:
         """Force the toolbar to repaint after widget visibility changes."""
         toolbar = getattr(self, "_main_toolbar", None)
-        if toolbar is None:
+        if toolbar is not None:
+            toolbar.update()
+        self._sync_context_toolbar()
+        self._update_min_window_width()
+
+    def _update_min_window_width(self) -> None:
+        """Prevent the window from being resized narrower than what's needed to show the
+        main (always-visible) toolbar row. Deliberately excludes the second
+        (selection-properties) row: its content varies a lot per annotation type/selection,
+        and forcing the window to grow/shrink to fit it every time the selection changes is
+        disruptive (see REQUIREMENTS.md v1.2.43). The second row's own overflow handling is
+        tracked separately."""
+        main_toolbar = getattr(self, "_main_toolbar", None)
+        if main_toolbar is None:
             return
-        toolbar.update()
+        self.setMinimumWidth(main_toolbar.sizeHint().width())
+
+    def _make_control_group(self, *widgets: QWidget) -> QWidget:
+        """Bundle related widgets (e.g. a label and its spinner) into a single toolbar item
+        so they always move/overflow together and are never split apart."""
+        group = QWidget()
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        for widget in widgets:
+            layout.addWidget(widget)
+        return group
+
+    def _sync_context_toolbar(self) -> None:
+        """Assign each selection-properties item to an overlay row or reserve-space overflow.
+
+        Overlay mode creates as many rows as needed. Reserve-space mode uses one row and the
+        overflow menu. Rows and the canvas are positioned within
+        _canvas_container. Real QToolBar rows are used (rather than a custom widget) so
+        styling — including dark-theme contrast — matches the main toolbar. Never relies on
+        Qt's own toolbar overflow button, which doesn't work for widget controls (see
+        REQUIREMENTS.md "Collapsible selection-properties toolbar row"): we decide item
+        placement ourselves via a simple greedy width fit.
+        """
+        container = getattr(self, "_canvas_container", None)
+        row1 = getattr(self, "_context_row1", None)
+        if container is None or row1 is None or self._context_overflow_menu_active:
+            return
+        rows = self._context_rows
+        more_btn = self._context_more_btn
+        # The rows and overflow button are children of the canvas container, so never use the
+        # larger window width when the container is temporarily narrower during a resize.
+        width = container.width() or self.width()
+        line_h = self._context_toolbar_line_height
+        overlay = self._settings.overlay_selection_toolbar
+        # Wide enough that Qt never pushes an item into its extension while we measure.
+        measure_width = 10000
+
+        # Use the conceptually-visible set (tracked per selection type) rather than checking
+        # isVisible(), which may be False due to temporary hiding for space constraints or
+        # previous lack of space. This ensures items remain candidates for fitting even after
+        # being hidden for overflow. Preserve the original order from _context_items so
+        # placement is deterministic.
+        conceptually_visible_items = self._context_conceptually_visible
+        visible_items = [item for item in self._context_items if item in conceptually_visible_items]
+
+        # Detach every item from wherever it currently lives before reassigning it. Reparenting
+        # hides a widget, so anything not placed below simply stays hidden; whatever is placed
+        # is shown again by fill_row(). A widget must be visible at the moment addWidget() is
+        # called, otherwise that QToolBar's layout bookkeeping leaves it stuck at a bogus
+        # geometry forever after, even once shown again.
+        for row in rows:
+            for action in list(row.actions()):
+                row.removeAction(action)
+        for item in self._context_items:
+            item.setParent(container)
+
+        def hide_native_extension(row: QToolBar) -> None:
+            extension = row.findChild(QToolButton, "qt_toolbar_ext_button")
+            if extension is not None:
+                extension.hide()
+                extension.setFixedSize(0, 0)
+
+        def fill_row(row: QToolBar, items: list[QWidget]) -> None:
+            for action in list(row.actions()):
+                row.removeAction(action)
+            for item in items:
+                item.show()
+                row.addWidget(item)
+            # addWidget() hides AND disables both the widget and its generated wrapper action.
+            for item in items:
+                item.show()
+                item.setEnabled(True)
+            for action in row.actions():
+                action.setVisible(True)
+                action.setEnabled(True)
+            hide_native_extension(row)
+
+        def measure_right_edges(row: QToolBar, items: list[QWidget]) -> list[int]:
+            """Right edge of each item once it sits inside the styled row. The row's stylesheet
+            (13px font) only applies after an item is added, so a sizeHint() taken while the
+            item is parented to the plain container is materially too small."""
+            if not items:
+                return []
+            fill_row(row, items)
+            row.setMinimumWidth(0)
+            row.setMaximumWidth(measure_width)
+            row.resize(measure_width, line_h)
+            row.layout().invalidate()
+            row.layout().activate()
+            QCoreApplication.sendPostedEvents()
+            return [item.x() + item.width() for item in items]
+
+        def cached_right_edges(row: QToolBar, items: list[QWidget]) -> list[int]:
+            """Measuring means a full relayout at an oversized width, and every window resize
+            re-enters this method — so reuse the result while the controls and their hints are
+            unchanged. A hint is unreliable as an absolute width but fine as a change detector:
+            identical hints mean identical content and fonts, hence identical allocations."""
+            key = (row.styleSheet(),) + tuple(
+                (id(item), item.sizeHint().width()) for item in items
+            )
+            if key in self._context_edge_cache:
+                return self._context_edge_cache[key]
+            edges = measure_right_edges(row, items)
+            self._context_edge_cache[key] = edges
+            return edges
+
+        def ensure_row(index: int) -> QToolBar:
+            while len(rows) <= index:
+                rows.append(self._make_context_row(f"Selection (row {len(rows) + 1})"))
+            return rows[index]
+
+        def fit_count(edges: list[int], budget: int) -> int:
+            count = 0
+            for edge in edges:
+                if edge > budget:
+                    break
+                count += 1
+            return count
+
+        def place_row(row: QToolBar, x: int, y: int, w: int, h: int) -> None:
+            """Apply an exact manual geometry. The previous mode's fixed size is cleared
+            first so the new geometry can't be clamped by a stale minimum (switching out of
+            reserve-space mode has to be able to collapse the row back to zero height)."""
+            row.setMinimumSize(0, 0)
+            row.setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX)
+            row.setGeometry(x, y, w, h)
+            row.setFixedWidth(w)
+            row.setFixedHeight(h)
+
+        if overlay:
+            row_items: list[list[QWidget]] = []
+            remaining = visible_items
+            while remaining:
+                row = ensure_row(len(row_items))
+                fitting = max(1, fit_count(cached_right_edges(row, remaining), width))
+                row_items.append(remaining[:fitting])
+                remaining = remaining[fitting:]
+            for index, row in enumerate(rows):
+                items = row_items[index] if index < len(row_items) else []
+                fill_row(row, items)
+                row.setVisible(bool(items))
+            if os.environ.get('DEBUG_TOOLBAR_DETAILED'):
+                print(f"[OVERLAY] width={width} rows={[len(items) for items in row_items]}")
+            for row in rows:
+                row.adjustSize()
+                row.update()
+            self._canvas_container.update()
+            for row in rows:
+                row.repaint()
+            self._canvas_container.update()  # Force container repaint
+            more_btn.hide()
+            self._context_overflow_items = []
+            for index, row in enumerate(rows):
+                row_height = line_h if index < len(row_items) else 0
+                place_row(row, 0, index * line_h, width, row_height)
+            # In overlay mode, canvas stays at (0, 0) - toolbar floats on top via z-order.
+            canvas_y = 0
+            canvas_height = container.height()
+            self.canvas.setGeometry(0, canvas_y, width, canvas_height)
+            # Raise after the final canvas geometry update: selection repaint/layout work can
+            # otherwise leave the canvas above the manually positioned toolbar rows.
+            self.canvas.lower()
+            for row in rows[:len(row_items)]:
+                row.raise_()
+            self._context_toolbar_row_height = 0
+        else:
+            # Reserve-space mode: one row; whatever doesn't fit goes behind the custom "…" button.
+            edges = cached_right_edges(row1, visible_items)
+            fitting = fit_count(edges, width)
+            overflow_needed = fitting < len(visible_items)
+            more_button_w = more_btn.sizeHint().width() if overflow_needed else 0
+            more_gap = 8 if overflow_needed else 0
+            if overflow_needed:
+                fitting = fit_count(edges, width - more_button_w - more_gap)
+            row1_items = visible_items[:fitting]
+            overflow_items = visible_items[fitting:]
+            fill_row(row1, row1_items)
+            for item in overflow_items:
+                item.setParent(container)
+                item.hide()
+            if os.environ.get('DEBUG_TOOLBAR_DETAILED'):
+                print(f"[RESERVE] width={width} edges={edges} row1={len(row1_items)} over={len(overflow_items)}")
+            # Additional rows are never used in reserve-space mode.
+            for index, row in enumerate(rows[1:], start=1):
+                row.setVisible(False)
+                fill_row(row, [])
+                place_row(row, 0, index * line_h, width, 0)
+            self._context_overflow_items = overflow_items
+            more_x = max(0, width - more_button_w)
+            more_btn.setGeometry(more_x, 0, more_button_w, line_h)
+            more_btn.setVisible(overflow_needed)
+            if overflow_items:
+                more_btn.raise_()
+            row1.setMaximumHeight(line_h)
+            row_width = max(0, more_x - more_gap) if overflow_needed else width
+            place_row(row1, 0, 0, row_width, line_h)
+            row1.setVisible(True)  # Ensure row1 stays visible after items are re-added
+            row1.adjustSize()
+            row1.repaint()
+            self._canvas_container.update()  # Force container repaint
+            row1.raise_()
+            if overflow_items:
+                more_btn.raise_()
+            self._context_toolbar_row_height = line_h
+            self.canvas.setGeometry(0, line_h, width, max(0, container.height() - line_h))
+
+        # A widget added via QToolBar.addWidget() doesn't necessarily report isVisible() as
+        # True until Qt processes a posted event for it — flush those now (targeted, not a
+        # full processEvents() call) so callers observing the change immediately afterward
+        # (e.g. right after selecting an annotation) see correct, final visibility/geometry.
+        QCoreApplication.sendPostedEvents()
+        for row in rows:
+            hide_native_extension(row)
+
+    def _show_context_overflow_menu(self) -> None:
+        """Show the controls that don't fit row 1 (reserve-space mode) in a popup menu."""
+        if not self._context_overflow_items:
+            return
+        items = list(self._context_overflow_items)
+        if self._context_overflow_menu is None:
+            self._context_overflow_menu = QMenu(self)
+        menu = self._context_overflow_menu
+        popup_actions: list[tuple[QWidgetAction, QWidget]] = []
+        self._context_overflow_menu_active = True
+        try:
+            for item in items:
+                item.show()
+                action = QWidgetAction(menu)
+                action.setDefaultWidget(item)
+                menu.addAction(action)
+                popup_actions.append((action, item))
+            pos = self._context_more_btn.mapToGlobal(QPoint(0, self._context_more_btn.height()))
+            menu.exec(pos)
+        finally:
+            for action, item in popup_actions:
+                menu.removeAction(action)
+                action.releaseWidget(item)
+                item.setParent(self._canvas_container)
+            menu.clear()
+            self._context_overflow_menu_active = False
+            self._sync_context_toolbar()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._sync_context_toolbar()
+
+    def eventFilter(self, obj, event) -> bool:
+        if obj is getattr(self, "_canvas_container", None) and event.type() == QEvent.Resize:
+            self._sync_context_toolbar()
+        return super().eventFilter(obj, event)
 
     def _rebuild_sig_ann_menu(self) -> None:
         if self._sig_ann_menu is None:
@@ -928,12 +1333,19 @@ class MainWindow(QMainWindow):
         if not has_selection:
             self._update_color_btn()
 
+        # Capture which items are conceptually visible for this selection, BEFORE _refresh_toolbar_layout
+        # changes visibility states based on space constraints. This allows _sync_context_toolbar to
+        # use this stable set instead of relying on isVisible(), which can be False due to temporary
+        # hiding for overflow or previous lack of space.
+        self._context_conceptually_visible = set(
+            item for item in self._context_items if item.isVisible()
+        )
+
         self._refresh_toolbar_layout()
 
     def _update_color_control_visibility(self, selected, has_selection: bool) -> bool:
         """Color control applies to vector annotations only; Signature/Image has no color control."""
         color_visible = has_selection and isinstance(selected, VectorAnnotation)
-        self._color_btn.setVisible(color_visible)
         self._color_btn.setEnabled(color_visible)
         self._color_btn_action.setVisible(color_visible)
         return color_visible
@@ -945,26 +1357,25 @@ class MainWindow(QMainWindow):
             isinstance(selected, VectorAnnotation) and
             selected.ann_type != AnnotationType.TEXT
         )
-        self._width_spinner.setVisible(width_visible)
-        self._width_label.setVisible(width_visible)
-        self._width_spinner_action.setVisible(width_visible)
-        self._width_label_action.setVisible(width_visible)
+        self._width_group.setVisible(width_visible)
         if width_visible:
             # Reflect the selected annotation's actual width (e.g. after a [ / ] shortcut).
             self._set_value_silently(self._width_spinner, selected._line_width_pt)
         return width_visible
 
     def _update_font_control_visibility(self, selected, has_selection: bool) -> bool:
-        """Font size/family controls: visible only for TEXT annotations (v1.2.22)."""
+        """Font size/family/spacing controls: visible only for TEXT annotations (v1.2.22)."""
         font_visible = (
             has_selection and
             isinstance(selected, VectorAnnotation) and
             selected.ann_type == AnnotationType.TEXT
         )
-        self._font_size_spinner.setVisible(font_visible)
-        self._font_size_label.setVisible(font_visible)
-        self._character_spacing_spinner.setVisible(font_visible)
-        self._character_spacing_label.setVisible(font_visible)
+        for group in (
+            self._font_size_group,
+            self._font_family_group,
+            self._character_spacing_group,
+        ):
+            group.setVisible(font_visible)
         if font_visible:
             # Reflect the selected annotation's actual font size (e.g. after a [ / ] shortcut).
             self._set_value_silently(self._font_size_spinner, selected._font_size_pt)
@@ -972,25 +1383,12 @@ class MainWindow(QMainWindow):
                 self._character_spacing_spinner,
                 selected._character_spacing_pt,
             )
-        self._font_family_combo.setVisible(font_visible)
-        self._font_label.setVisible(font_visible)
-        self._font_size_spinner_action.setVisible(font_visible)
-        self._font_size_label_action.setVisible(font_visible)
-        self._character_spacing_spinner_action.setVisible(font_visible)
-        self._character_spacing_label_action.setVisible(font_visible)
-        self._font_family_combo_action.setVisible(font_visible)
-        self._font_label_action.setVisible(font_visible)
         return font_visible
 
     def _update_angle_control_visibility(self, selected, has_selection: bool) -> bool:
         """Angle spinner/reset: visible for any selected annotation (all types support rotation)."""
         angle_visible = has_selection
-        self._angle_label.setVisible(angle_visible)
-        self._angle_spinner.setVisible(angle_visible)
-        self._reset_angle_btn.setVisible(angle_visible)
-        self._angle_label_action.setVisible(angle_visible)
-        self._angle_spinner_action.setVisible(angle_visible)
-        self._reset_angle_action.setVisible(angle_visible)
+        self._angle_group.setVisible(angle_visible)
         if angle_visible:
             self._set_value_silently(self._angle_spinner, round(selected.rotation) % 360)
         return angle_visible
@@ -1232,6 +1630,13 @@ class MainWindow(QMainWindow):
             checked = self._auto_save_project_action.isChecked()
         self._settings.auto_save_project = checked
         self._save_settings_safe()
+
+    def _toggle_overlay_selection_toolbar(self, checked: bool | None = None) -> None:
+        if checked is None:
+            checked = self._overlay_selection_toolbar_action.isChecked()
+        self._settings.overlay_selection_toolbar = checked
+        self._save_settings_safe()
+        self._sync_context_toolbar()
 
     def save_project_as(self) -> bool:
         if not self.canvas.has_document or not self.document_path:
@@ -2237,8 +2642,12 @@ class MainWindow(QMainWindow):
         a4_ratio = a4_size.width() / a4_size.height()
         if abs(doc_w / doc_h - a4_ratio) < 0.005:
             doc_w, doc_h = a4_size.width(), a4_size.height()
-        toolbar_hint_w = self.findChildren(QToolBar)[0].sizeHint().width() if self.findChildren(QToolBar) else 0
-        chrome_h = self._main_toolbar.height()
+        toolbar_hint_w = self._main_toolbar.sizeHint().width()
+        # In reserve-space mode, the selection-properties row will push the canvas down once
+        # something is selected; reserve its height up front so selecting an annotation later
+        # never needs to resize the window. In overlay mode it never resizes the canvas.
+        reserved_context_h = 0 if self._settings.overlay_selection_toolbar else self._context_toolbar_row_height
+        chrome_h = self._main_toolbar.height() + reserved_context_h
 
         screen = self.screen()
         if screen is None:
@@ -2254,18 +2663,23 @@ class MainWindow(QMainWindow):
         scale_w = max_canvas_w / doc_w
         scale = min(scale_h, scale_w, 1.0)  # Don't upscale beyond 100%
 
+        # Enforce the minimum canvas size (640x520) by scaling both dimensions together,
+        # rather than clamping height/width independently, which would distort the
+        # document's aspect ratio.
+        min_scale = max(640 / doc_h, 520 / doc_w)
+        scale = max(scale, min_scale)
+
         target_canvas_h = round(doc_h * scale)
         target_canvas_w = round(doc_w * scale)
-
-        # Ensure minimum canvas size
-        target_canvas_h = max(640, target_canvas_h)
-        target_canvas_w = max(520, target_canvas_w)
 
         target_w = max(target_canvas_w, toolbar_hint_w + 32)
         target_h = target_canvas_h + chrome_h
 
-        target_w = min(target_w, avail.width() - 20)
-        target_h = min(target_h, avail.height() - 20)
+        # No further independent width/height clamping against the available screen size here:
+        # `scale` already keeps the window within the screen budget (max_canvas_h/w above)
+        # except when the minimum-size floor (min_scale) requires more — clamping width and
+        # height independently at this point would distort the document's aspect ratio, which
+        # matters more than a rare overflow on an unusually small screen.
         self.resize(target_w, target_h)
 
         # Center the window on screen to ensure it's fully visible
@@ -2273,6 +2687,10 @@ class MainWindow(QMainWindow):
             avail.x() + (avail.width() - target_w) // 2,
             avail.y() + (avail.height() - target_h) // 2
         )
+        # Belt-and-suspenders: resize() above should trigger the container's resize event
+        # (see the eventFilter installed on it) and re-sync the context toolbar, but do it
+        # explicitly too in case that event is deferred past this point on some platforms.
+        self._sync_context_toolbar()
 
     def _update_title(self) -> None:
         doc_name = Path(self.document_path).name if self.document_path else "(no document)"

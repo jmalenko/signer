@@ -55,6 +55,27 @@ macOS still exposes its CoreText fonts, whereas a headless Windows runner may re
 that exercise font controls must use the application's guaranteed common-font choices rather than
 assuming any particular font is installed by the host.
 
+### On-screen toolbar tests
+
+Some selection-toolbar bugs cannot reproduce offscreen. Offscreen, a control's `sizeHint()`
+happens to equal the width Qt later allocates inside the styled toolbar row, and Qt honours a
+shrink below a stale minimum — on a real window server neither holds. That is why toolbar issues
+were repeatedly marked fixed while still reproducing for users.
+
+`tests/unit/test_toolbar_onscreen.py` runs as part of the normal `pytest` suite. Each test starts
+a subprocess with the host's native platform plugin so it can coexist with the main suite's
+offscreen `QApplication`. It skips only when no window server is available (for example, a
+headless Linux runner without `DISPLAY` or `WAYLAND_DISPLAY`). It can also be run directly:
+
+```bash
+QT_QPA_PLATFORM=cocoa pytest tests/unit/test_toolbar_onscreen.py   # macOS
+QT_QPA_PLATFORM=xcb   pytest tests/unit/test_toolbar_onscreen.py   # X11
+```
+
+It drives the window programmatically and needs no interaction. The resize scenario validates
+every dynamically created overlay row, including widths that require three or more rows. The
+offscreen suite alone is not sufficient evidence for toolbar layout work.
+
 ## Static Analysis with Ruff
 
 Install Ruff in the active virtual environment if needed:

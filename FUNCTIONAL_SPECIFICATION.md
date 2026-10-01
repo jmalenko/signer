@@ -53,12 +53,23 @@ from it), `document.pdf`, `document.doc` / `document.docx`, `document1.pdf` (mul
 
 ### 2.1 Toolbar layout (left to right)
 
+The toolbar consists of a **main row** plus a selection-properties area. The main row is always
+visible and never changes size based on selection, so it always fits an A4-proportioned window:
+
 | Control | Behavior |
 |---|---|
 | **Open** (with dropdown arrow) | Click opens the file picker directly; dropdown also offers Recent Documents |
 | **Add** (annotation picker) | Clicking the button opens the same menu as its dropdown arrow (whole button is clickable) |
 | **Save** | Opens the Save As dialog |
 | Page navigation (◀ / label / ▶) | Only visible when the document has more than one page (see [§6](#6-page-navigation)) |
+| Hamburger menu (☰, far right) | See §2.2 |
+
+The **selection-properties area** holds the controls that depend on the current selection,
+built from real toolbar rows so it always looks consistent with the main row (including under
+dark color schemes):
+
+| Control | Behavior |
+|---|---|
 | **Duplicate** / **Delete** | Only visible when at least one annotation is selected |
 | Color button | Annotation color; see context-sensitivity table below |
 | Width spinner | Line width in points (vector types only) |
@@ -66,7 +77,44 @@ from it), `document.pdf`, `document.doc` / `document.docx`, `document1.pdf` (mul
 | Font combo | Text annotations only |
 | Spacing spinner | Character spacing in points; text annotations only |
 | Angle spinner | Rotation in degrees; all annotation types |
-| Hamburger menu (☰, far right) | See §2.2 |
+
+Font Size, Font, and Spacing are independent toolbar items and overflow from right to left as
+the available width decreases. Angle and its reset button remain grouped as one atomic item.
+
+Whether the area's own height changes with selection, and how it handles controls that don't fit
+the available width, depends on the "Overlay Selection Toolbar on Document" setting (Tools menu,
+§2.2, default **off**):
+
+- **Off (reserve space)**: the area is exactly one real toolbar row whose height is always
+  reserved, whether or not anything is selected — its space is never given to/reclaimed from the
+  canvas, so selecting or deselecting an annotation never resizes or rescales the document, and
+  never adds a second row. A control that doesn't fit the row is instead placed behind a "…"
+  button at the row's right edge (only shown when needed); clicking it shows the missing
+  controls in a popup list anchored below the button.
+- **On (overlay)**: the area floats over the top of the document canvas instead, and is visible
+  if and only if an annotation is selected — the canvas keeps its size and the document is never
+  rescaled, but the area covers its top strip while visible. It uses as many rows as needed: a
+  control that doesn't fit the current row wraps onto the next one instead of an overflow button.
+
+As the window narrows in reserve-space mode, a control moves into the "…" popup *before* it would
+overlap that button, or before it would extend past the window edge when no button is shown yet.
+The "…" button appears in the same resize step in which the first control moves into it. Every
+control that leaves the row stays reachable — in the popup (reserve-space) or on a subsequent
+row (overlay); controls are never clipped or silently dropped.
+
+Switching the setting produces exactly the layout the app would show if it had been launched in
+that mode: no reserved space or leftover strip remains from the previous mode.
+
+Which individual controls are visible within the area still follows the selection/annotation-type
+rules below.
+
+The window's minimum width is driven only by the always-visible first row (Open/Add/Save/page
+navigation/hamburger); the selection-properties area never affects it, in either mode — so
+switching to an annotation type with more controls (e.g. Text) never changes the window's size.
+We don't rely on Qt's own toolbar overflow ("»") button for this: it doesn't work for custom
+widget controls like our labeled spinners/combos (its popup ends up empty), so it is suppressed
+entirely and item placement (an overlay row vs. the reserve-space overflow menu) is decided by
+our own logic.
 
 The **Add** menu (and the hamburger **Annotations** menu) list: Checkmark, Crossmark, Line,
 Arrow, Rectangle / Square, Ellipse / Circle, Text (submenu: Free text, Current date, Current
@@ -114,7 +162,9 @@ recent images).
 │   ├── Text ▶ (Free text / Current date / time / date & time, then recent texts)
 │   └── Signature / Image
 ├── Tools
-│   └── Prepare Signature…
+│   ├── Prepare Signature…
+│   ├── ──────────────
+│   └── Overlay Selection Toolbar on Document      (checkable toggle, default off)
 └── Help
     └── Homepage
 ```
@@ -146,10 +196,12 @@ selected annotations that support that property):
 | Character spacing spinner | hidden | hidden | hidden | hidden | hidden | hidden | ✓ | hidden |
 | Angle spinner | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-When nothing is selected, all annotation-specific property controls are hidden. Duplicate and
-Delete toolbar buttons are visible only when an annotation is selected. The page-navigation
-block is hidden entirely (including the "Page 1/1" label) when the document has exactly one
-page. Hidden control groups never leave two adjacent toolbar separators.
+When nothing is selected, all annotation-specific property controls are hidden; in overlay mode
+(§2.1) the whole selection-properties row also collapses, while in reserve-space mode its height
+stays reserved regardless. Duplicate and Delete toolbar buttons are visible only when an
+annotation is selected. The page-navigation block is hidden entirely (including the "Page 1/1"
+label) when the document has exactly one page. Hidden control groups never leave two adjacent
+toolbar separators.
 
 **Hamburger menu enablement:**
 
@@ -252,7 +304,8 @@ Up to 10 recently opened documents/projects, most-recent-first, persisted across
   document is opened.
 - Canvas space outside the document is minimized: vertical window chrome is derived from the
   fixed toolbar height, so the canvas follows the document aspect ratio with no avoidable bars
-  above/below an A4 page.
+  above/below an A4 page. In reserve-space mode (§2.1), the selection-properties row's height is
+  also reserved up front, so selecting an annotation later never triggers a window resize.
 - Performance targets: open/render the current page in under 1 second for common office
   documents; drag/scale interaction has no visible lag; export quality suits typical print/email
   workflows.

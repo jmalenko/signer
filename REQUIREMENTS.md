@@ -607,3 +607,55 @@ instead of a resize.
    handles stay on their endpoints.
 2. The whole visible area of a resize handle shall start a resize; no part of it shall start a
    move. Grabbing a handle shall not jump the annotation's size on the first pointer move.
+
+## Version 1.2.43 - Collapsible selection-properties toolbar row
+
+Motivation: when an annotation is selected, the toolbar reveals a large group of extra controls
+(Duplicate, Delete, color, width, font, spacing, angle). On a window sized to an A4-proportioned
+document, that group didn't fit in the available width and controls were silently clipped, with
+no reliable way to reach them without maximizing the window.
+
+1. Selection-dependent controls shall live in a second area, separate from the always-visible
+   row (Open, Add, Save, page navigation, hamburger menu), built from real toolbar rows so its
+   look (including dark-theme contrast) always matches the always-visible row.
+2. In overlay mode (see below), the second area shall be visible if and only if an annotation is
+   selected, so it never forces a minimum window width or height when nothing is selected.
+3. Which individual controls are visible within that area still follows the existing selection/
+   annotation-type rules (e.g. width only for vector shapes, font controls only for text).
+   Font size, font family, and character spacing are independent toolbar items and shall hide
+   from right to left as the available width decreases. Angle and its reset button remain one
+   atomic item.
+4. A setting, "Overlay selection toolbar on document" (checkable, default **off**), controls how
+   the second area is shown when an annotation is selected:
+   - **On (overlay)**: the area floats above the canvas — the canvas keeps its size and the
+     document is never rescaled, but the area visually covers the document's top strip while
+       visible. It uses as many rows as needed: a control that doesn't fit the current row wraps
+       onto the next one instead of being hidden.
+   - **Off (reserve space)**: the area is exactly one real toolbar row that reserves its height
+     at all times (whether or not anything is selected), so its space is never given to/
+     reclaimed from the canvas — selecting or deselecting an annotation never resizes or
+     rescales the document, and never adds a second row. A control that doesn't fit the row is
+     instead placed behind a "…" button at the row's right edge; clicking it (or activating it
+     via keyboard) shows the missing controls in a popup list anchored below the button.
+5. The window's minimum width is driven only by the always-visible first row; the
+   selection-properties area never affects it, in either mode — so selecting an annotation type
+   with more controls (e.g. Text) never resizes the window.
+6. The setting is available from the hamburger **Tools** menu and persists across sessions
+   (`AppSettings`/`config.json`). Switching it takes effect immediately, without a restart.
+7. In reserve-space mode, startup window sizing shall account for the reserved row height up
+   front, so opening an A4-sized document and then selecting an annotation never triggers a
+   window resize.
+8. In overlay mode, selection-property controls shall be placed in order across as many rows as
+   needed. No control may be clipped at the current window width or hidden behind Qt's native
+   overflow button, whose popup does not work reliably for custom widget controls.
+9. In reserve-space mode, selection-property controls shall use exactly one reserved row.
+   Controls that do not fit shall be available through the application's own `…` popup.
+   - A control shall leave the row *before* it would overlap the `…` button, or extend past the
+   window edge when no `…` button is shown. The `…` button shall become visible in the same
+   resize step in which the first control moves into it — never a step later.
+   - Every control removed from the row shall remain reachable: in the `…` popup in
+   reserve-space mode, or on the second row in overlay mode. A control shall never simply
+   disappear, and Qt's native toolbar extension button shall never be used.
+10. Switching the setting shall produce exactly the layout the application would have shown had
+    it been launched in the target mode. No reserved space or painted strip may remain from the
+    previous mode, whether or not an annotation is selected.

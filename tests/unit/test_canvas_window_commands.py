@@ -31,7 +31,7 @@ def _canvas_with_window(qapp, monkeypatch):
     canvas = DocumentCanvas()
     canvas.set_pages([Image.new("RGB", (400, 400), "white")])
     window = _RecordingWindow()
-    monkeypatch.setattr(canvas, "parent", lambda: window)
+    monkeypatch.setattr(canvas, "window", lambda: window)
     return canvas, window
 
 
@@ -74,7 +74,7 @@ def test_missing_window_command_is_logged(qapp, monkeypatch, caplog):
     of making the shortcut silently dead."""
     canvas = DocumentCanvas()
     canvas.set_pages([Image.new("RGB", (400, 400), "white")])
-    monkeypatch.setattr(canvas, "parent", lambda: object())
+    monkeypatch.setattr(canvas, "window", lambda: object())
 
     with caplog.at_level("WARNING"):
         canvas.keyPressEvent(_key_event(Qt.Key_Z, Qt.ControlModifier))
