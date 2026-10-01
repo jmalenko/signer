@@ -680,3 +680,28 @@ multi-page document.
 2. Pressing Enter after entering a valid page number shall navigate to that page.
 3. Invalid or out-of-range page numbers shall leave the current page unchanged and restore the
    field to the current page number.
+
+## Version 1.3 - Automatic release publishing
+
+Motivation: publishing a tested executable for every main-branch update should not require
+manually choosing a version, creating a tag, or uploading platform builds.
+
+1. Every push to any branch shall run the existing cross-platform build and unit tests, then
+   upload the Windows, macOS, and Linux executables as workflow artifacts. A push to `main` shall
+   additionally publish those executables as a GitHub Release.
+2. Requirement headings shall specify only the major and minor release version (for example,
+   `1.3`). The release version shall use the standard `MAJOR.MINOR.PATCH` form; the patch
+   component is also known as the patch version.
+3. The release major and minor components shall come from the latest version heading in this
+   file. The commit that adds that heading shall publish patch version `0`; each subsequent
+   commit descended from that commit and reachable from `main` shall increment the patch version
+   by one, including commits merged from other branches and merge commits, until a new requirement
+   heading is added.
+4. Before publishing, the calculated release version shall not be lower than the highest existing
+   `vMAJOR.MINOR.PATCH` release tag. If it would be lower, the release job shall fail without
+   publishing a release.
+5. Pull requests and manual workflow runs shall continue to build and upload workflow artifacts
+   without publishing a GitHub Release. A release shall be published automatically only for
+   pushes to `main`; manually pushing a version tag shall not publish a release.
+
+See [DESIGN.md §6](DESIGN.md#6-distribution--build-details) for the release workflow.

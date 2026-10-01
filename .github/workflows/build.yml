@@ -2,8 +2,6 @@ name: Build executables
 
 on:
   push:
-    tags:
-      - 'v*'
   pull_request:
   workflow_dispatch:
 
@@ -73,11 +71,20 @@ jobs:
 
   release:
     name: Publish release artifacts
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Calculate release version
+        id: release_version
+        run: echo "version=$(python signer/release_version.py)" >> "$GITHUB_OUTPUT"
+
       - name: Download executable artifacts
         uses: actions/download-artifact@v8
         with:
@@ -87,4 +94,6 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.release_version.outputs.version }}
+          target_commitish: ${{ github.sha }}
           files: release/*

@@ -36,9 +36,9 @@ python -m PyInstaller --clean --noconfirm signer.spec
 ```
 Produces `dist/signer.exe` (Windows) or `dist/signer` (macOS/Linux). See §6 for target-specific
 details and constraints (PyInstaller does not cross-compile). The GitHub Actions workflow in
-`.github/workflows/build.yml` builds all three platform artifacts on native runners. Pull requests
-and manual workflow runs upload the executables as artifacts; pushing a `v*` tag also publishes them
-to a GitHub release.
+`.github/workflows/build.yml` builds all three platform artifacts on native runners for pushes to
+any branch, pull requests, and manual workflow runs. These runs upload the executables as
+workflow artifacts; pushes to `main` also publish them to a versioned GitHub release.
 
 **Developer setup:**
 ```bash
@@ -257,10 +257,22 @@ target used for the build. For Linux, also test at least one X11 and one Wayland
 both are supported. LibreOffice remains an external optional dependency for Word/ODT input and
 is never bundled.
 
-To publish a release, push a tag such as `v1.0.0`. The workflow builds all three executables and
-attaches them to the corresponding GitHub release. Pull requests do the same build and test work,
-but retain the outputs only as workflow artifacts. Code signing and macOS notarization are not
-configured yet and require platform-specific credentials and certificates.
+Every branch push runs the platform-stable unit tests and builds all three executables, uploading
+them as workflow artifacts. A push to `main` also attaches them to a GitHub release. The latest
+`## Version MAJOR.MINOR` heading in
+`REQUIREMENTS.md` supplies the first two version components. The commit introducing that heading
+gets patch version `0`; subsequent commits descended from it and reachable from `main` increment
+the patch component.
+For example, a `1.3` requirement starts at `v1.3.0`, then advances to `v1.3.1`, `v1.3.2`, and so
+on. All commits descended from the requirement commit and reachable from `main` count, including
+commits merged from other branches and merge commits. A new requirement heading resets the patch
+component to `0`. Before publishing, the workflow compares the calculated version with existing
+`vMAJOR.MINOR.PATCH` tags and fails rather than publishing a downgrade. The calculation is
+implemented in `signer/release_version.py` and covered by unit tests.
+
+Pull requests and manual workflow runs build and test the executables but retain them only as
+workflow artifacts. Code signing and macOS notarization are not configured yet and require
+platform-specific credentials and certificates.
 
 On Linux build/CI machines without a display, run the suite headlessly with
 `QT_QPA_PLATFORM=offscreen python -m pytest`. Missing Qt system libraries or platform plugins at
