@@ -533,6 +533,7 @@ class MainWindow(QMainWindow):
         self._context_overflow_items: list[QWidget] = []
         self._context_overflow_menu: QMenu | None = None
         self._context_overflow_menu_active = False
+        self._context_toolbar_syncing = False
         self._context_edge_cache: dict[tuple, list[int]] = {}
         # Track which items are "conceptually visible" per the current selection, separately from
         # their actual isVisible() state (which changes as items move to/from overflow). This
@@ -1001,6 +1002,15 @@ class MainWindow(QMainWindow):
         return group
 
     def _sync_context_toolbar(self) -> None:
+        if self._context_toolbar_syncing:
+            return
+        self._context_toolbar_syncing = True
+        try:
+            self._sync_context_toolbar_impl()
+        finally:
+            self._context_toolbar_syncing = False
+
+    def _sync_context_toolbar_impl(self) -> None:
         """Assign each selection-properties item to an overlay row or reserve-space overflow.
 
         Overlay mode creates as many rows as needed. Reserve-space mode uses one row and the
