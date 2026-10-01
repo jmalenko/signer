@@ -11,7 +11,7 @@
       "justMyCode": true
     },
     {
-      "name": "Signer: Launch with examples",
+      "name": "Signer: Launch with example and signature",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/main.py",
@@ -20,6 +20,19 @@
         "${workspaceFolder}/examples/document.pdf",
         "-signature",
         "${workspaceFolder}/examples/signature.png"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Signer: Launch with example project",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "args": [
+        "-document",
+        "${workspaceFolder}/examples/project.signer"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
