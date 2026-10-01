@@ -1,0 +1,83 @@
+name: Build executables
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-latest
+            executable: signer.exe
+            release_name: signer-windows.exe
+          - platform: macos
+            runner: macos-13
+            executable: signer
+            release_name: signer-macos
+          - platform: linux
+            runner: ubuntu-22.04
+            executable: signer
+            release_name: signer-linux
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest
+        env:
+          QT_QPA_PLATFORM: ${{ matrix.platform == 'linux' && 'offscreen' || '' }}
+
+      - name: Build executable
+        run: python -m PyInstaller --clean --noconfirm signer.spec
+
+      - name: Name release executable
+        run: >-
+          python -c "from pathlib import Path;
+          source = Path('dist') / '${{ matrix.executable }}';
+          source.rename(Path('dist') / '${{ matrix.release_name }}')"
+
+      - name: Upload executable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signer-${{ matrix.platform }}
+          path: dist/${{ matrix.release_name }}
+          if-no-files-found: error
+
+  release:
+    name: Publish release artifacts
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download executable artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*

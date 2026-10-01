@@ -35,7 +35,10 @@ See [TESTING.md](TESTING.md) for test selection, coverage, troubleshooting, and 
 python -m PyInstaller --clean --noconfirm signer.spec
 ```
 Produces `dist/signer.exe` (Windows) or `dist/signer` (macOS/Linux). See §6 for target-specific
-details and constraints (PyInstaller does not cross-compile).
+details and constraints (PyInstaller does not cross-compile). The GitHub Actions workflow in
+`.github/workflows/build.yml` builds all three platform artifacts on native runners. Pull requests
+and manual workflow runs upload the executables as artifacts; pushing a `v*` tag also publishes them
+to a GitHub release.
 
 **Developer setup:**
 ```bash
@@ -225,8 +228,10 @@ them.
 ## 6. Distribution / Build Details
 
 PyInstaller does not cross-compile: build each release on the target operating system and CPU
-architecture. A Linux build is tied to its architecture and to a compatible glibc baseline;
-build on the oldest Linux distribution the release intends to support.
+architecture. The checked-in GitHub Actions workflow provides the recommended one-push build:
+it uses native Windows, macOS, and Ubuntu runners, runs the tests on each runner, and uploads one
+artifact per platform. A Linux build is tied to its architecture and to a compatible glibc baseline;
+the workflow therefore uses Ubuntu 22.04 as the supported Linux build baseline.
 
 Create and populate a clean virtual environment on each build machine (see §1 for the commands),
 then run the build command from §1. On Windows, activate with `.venv\Scripts\activate` first.
@@ -248,6 +253,11 @@ Before publishing an artifact, run the full automated suite and the smoke test o
 target used for the build. For Linux, also test at least one X11 and one Wayland session when
 both are supported. LibreOffice remains an external optional dependency for Word/ODT input and
 is never bundled.
+
+To publish a release, push a tag such as `v1.0.0`. The workflow builds all three executables and
+attaches them to the corresponding GitHub release. Pull requests do the same build and test work,
+but retain the outputs only as workflow artifacts. Code signing and macOS notarization are not
+configured yet and require platform-specific credentials and certificates.
 
 On Linux build/CI machines without a display, run the suite headlessly with
 `QT_QPA_PLATFORM=offscreen python -m pytest`. Missing Qt system libraries or platform plugins at
