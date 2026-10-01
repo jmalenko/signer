@@ -114,6 +114,9 @@ CHECKMARK_MIDDLE_VERTEX_X_FACTOR = 0.38  # Checkmark's bottom vertex, as a fract
 ARROW_SHAFT_LENGTH_FACTOR = 0.33  # Arrow shaft half-length from center.
 ARROW_HEAD_LENGTH_FACTOR = 0.18  # Arrowhead barb length.
 ARROW_HEAD_ANGLE_DEG = 35  # Arrowhead barb angle from the reversed shaft direction.
+ARROW_HEAD_SPREAD_FACTOR = ARROW_HEAD_LENGTH_FACTOR * math.sin(
+    math.radians(ARROW_HEAD_ANGLE_DEG)
+)
 
 
 class CanvasObject:
@@ -694,34 +697,63 @@ class VectorAnnotation(CanvasObject):
             return []
 
         if self.ann_type == AnnotationType.LINE:
-            angle = getattr(self, '_angle', None)
-            if angle is None:
-                points = [QPointF(vx, vy + vh), QPointF(vx + vw, vy)]
-                return self._rotate_endpoint_points(points, vx, vy, vw, vh, rotation)
-
-            cx, cy = vx + vw / 2.0, vy + vh / 2.0
-            half_len = min(vw, vh) / 2.0
-            a_rad = math.radians(angle)
-            cos_a = math.cos(a_rad)
-            sin_a = math.sin(a_rad)
-            points = [
-                QPointF(cx - cos_a * half_len, cy - sin_a * half_len),
-                QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
-            ]
+            points = self._line_endpoint_points_viewport(vx, vy, vw, vh)
             return self._rotate_endpoint_points(points, vx, vy, vw, vh, rotation)
 
-        # ARROW: use actual drawn tail/tip so endpoint anchors match visuals.
+        points = self._arrow_points_viewport(vx, vy, vw, vh)
+        return self._rotate_endpoint_points(points[:2], vx, vy, vw, vh, rotation)
+
+    def _arrow_points_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+    ) -> list[QPointF]:
+        """Return Arrow tail, tip, and both barb endpoints."""
         angle_deg = getattr(self, '_angle', None)
         if angle_deg is None:
             angle_deg = 0.0
         angle_rad = math.radians(angle_deg)
         cx, cy = vx + vw / 2.0, vy + vh / 2.0
-        shaft = min(vw, vh) * 0.33
+        shaft = min(vw, vh) * ARROW_SHAFT_LENGTH_FACTOR
+        head = min(vw, vh) * ARROW_HEAD_LENGTH_FACTOR
         cos_a = math.cos(angle_rad)
         sin_a = math.sin(angle_rad)
         tail = QPointF(cx - cos_a * shaft, cy + sin_a * shaft)
         tip = QPointF(cx + cos_a * shaft, cy - sin_a * shaft)
-        return self._rotate_endpoint_points([tail, tip], vx, vy, vw, vh, rotation)
+        left_angle = angle_rad + math.pi - math.radians(ARROW_HEAD_ANGLE_DEG)
+        right_angle = angle_rad - math.pi + math.radians(ARROW_HEAD_ANGLE_DEG)
+        left_tip = QPointF(
+            tip.x() + math.cos(left_angle) * head,
+            tip.y() - math.sin(left_angle) * head,
+        )
+        right_tip = QPointF(
+            tip.x() + math.cos(right_angle) * head,
+            tip.y() - math.sin(right_angle) * head,
+        )
+        return [tail, tip, left_tip, right_tip]
+
+    def _line_endpoint_points_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+    ) -> list[QPointF]:
+        angle = self._angle
+        if angle is None:
+            return [QPointF(vx, vy + vh), QPointF(vx + vw, vy)]
+
+        cx, cy = vx + vw / 2.0, vy + vh / 2.0
+        half_len = min(vw, vh) / 2.0
+        angle_rad = math.radians(angle)
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        return [
+            QPointF(cx - cos_a * half_len, cy - sin_a * half_len),
+            QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
+        ]
 
     def _rotate_endpoint_points(
         self,
@@ -735,6 +767,100 @@ class VectorAnnotation(CanvasObject):
         angle = self.rotation if rotation is None else rotation
         center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
         return [self._rotate_point(point, center, angle) for point in points]
+
+    def _pen_radius_viewport(self, vw: float, vh: float) -> float:
+        scale_x = vw / self.scaled_width if self.scaled_width else 1.0
+        scale_y = vh / self.scaled_height if self.scaled_height else 1.0
+        doc_scale = min(abs(scale_x), abs(scale_y))
+        return max(
+            1.5,
+            self._line_width_pt * DPI_SCALE * doc_scale,
+        ) / 2.0
+
+    def _line_content_rect_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+    ) -> QRectF:
+        points = self._line_endpoint_points_viewport(vx, vy, vw, vh)
+        pen_radius = self._pen_radius_viewport(vw, vh)
+        content_width = abs(points[1].x() - points[0].x()) + 2.0 * pen_radius
+        content_height = abs(points[1].y() - points[0].y()) + 2.0 * pen_radius
+        minimum_size = min(vw, vh) * ARROW_HEAD_SPREAD_FACTOR
+        width = max(content_width, minimum_size)
+        height = max(content_height, minimum_size)
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        return QRectF(
+            center.x() - width / 2.0,
+            center.y() - height / 2.0,
+            width,
+            height,
+        )
+
+    def _arrow_content_rect_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+    ) -> QRectF:
+        pen_radius = self._pen_radius_viewport(vw, vh)
+        points = self._arrow_points_viewport(vx, vy, vw, vh)
+        left = min(point.x() for point in points) - pen_radius
+        right = max(point.x() for point in points) + pen_radius
+        top = min(point.y() for point in points) - pen_radius
+        bottom = max(point.y() for point in points) + pen_radius
+        return QRectF(left, top, right - left, bottom - top)
+
+    def boundary_points_viewport(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        rotation: float | None = None,
+    ) -> list[QPointF]:
+        if self.ann_type == AnnotationType.LINE:
+            rect = self._line_content_rect_viewport(vx, vy, vw, vh)
+        elif self.ann_type == AnnotationType.ARROW:
+            rect = self._arrow_content_rect_viewport(vx, vy, vw, vh)
+        else:
+            return super().boundary_points_viewport(vx, vy, vw, vh, rotation)
+
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        return [
+            self._rotate_point(point, center, angle)
+            for point in (
+                rect.topLeft(),
+                rect.topRight(),
+                rect.bottomRight(),
+                rect.bottomLeft(),
+            )
+        ]
+
+    def contains_viewport_point(
+        self,
+        vx: float,
+        vy: float,
+        vw: float,
+        vh: float,
+        pt: QPointF,
+        rotation: float | None = None,
+    ) -> bool:
+        if self.ann_type == AnnotationType.LINE:
+            rect = self._line_content_rect_viewport(vx, vy, vw, vh)
+        elif self.ann_type == AnnotationType.ARROW:
+            rect = self._arrow_content_rect_viewport(vx, vy, vw, vh)
+        else:
+            return super().contains_viewport_point(vx, vy, vw, vh, pt, rotation)
+
+        angle = self.rotation if rotation is None else rotation
+        center = QPointF(vx + vw / 2.0, vy + vh / 2.0)
+        local_point = self._rotate_point(pt, center, -angle)
+        return rect.contains(local_point)
 
     def handle_rects_viewport(
         self,
@@ -884,24 +1010,8 @@ class VectorAnnotation(CanvasObject):
         pen.setCapStyle(Qt.RoundCap)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
-        angle = getattr(self, '_angle', None)
-        if angle is not None:
-            # Draw a rotated line through the center of the bounding box.
-            # Use min(vw, vh)/2 so the line always fits inside the box
-            # regardless of angle.  The bounding box should be square for
-            # full-length lines in all directions.
-            cx, cy = vx + vw / 2.0, vy + vh / 2.0
-            half_len = min(vw, vh) / 2.0
-            a_rad = math.radians(angle)
-            cos_a = math.cos(a_rad)
-            sin_a = math.sin(a_rad)
-            painter.drawLine(
-                QPointF(cx - cos_a * half_len, cy - sin_a * half_len),
-                QPointF(cx + cos_a * half_len, cy + sin_a * half_len),
-            )
-        else:
-            # Default: diagonal line from bottom-left to top-right (like /)
-            painter.drawLine(QPointF(vx, vy + vh), QPointF(vx + vw, vy))
+        points = self._line_endpoint_points_viewport(vx, vy, vw, vh)
+        painter.drawLine(points[0], points[1])
 
     def _draw_rectangle(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
         pen = QPen(self.color)
@@ -949,18 +1059,9 @@ class VectorAnnotation(CanvasObject):
             )
 
     def _draw_arrow(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
-        # ARROW uses _angle for free rotation
-        angle_deg = getattr(self, '_angle', None)
-        if angle_deg is None:
-            angle_deg = 0.0
-        angle_rad = math.radians(angle_deg)
-        cx, cy = vx + vw / 2, vy + vh / 2
-        shaft = min(vw, vh) * ARROW_SHAFT_LENGTH_FACTOR
-        head = min(vw, vh) * ARROW_HEAD_LENGTH_FACTOR
-        cos_a = math.cos(angle_rad)
-        sin_a = math.sin(angle_rad)
-        tip = QPointF(cx + cos_a * shaft, cy - sin_a * shaft)
-        tail = QPointF(cx - cos_a * shaft, cy + sin_a * shaft)
+        tail, tip, left_tip, right_tip = self._arrow_points_viewport(
+            vx, vy, vw, vh
+        )
         pen = QPen(self.color)
         pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
         pen.setCapStyle(Qt.RoundCap)
@@ -968,12 +1069,6 @@ class VectorAnnotation(CanvasObject):
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawLine(tail, tip)
-        # Barbs point back from the tip, offset by ARROW_HEAD_ANGLE_DEG from the reversed shaft.
-        la = angle_rad + math.pi - math.radians(ARROW_HEAD_ANGLE_DEG)
-        ra = angle_rad - math.pi + math.radians(ARROW_HEAD_ANGLE_DEG)
-        left_tip = QPointF(tip.x() + math.cos(la) * head, tip.y() - math.sin(la) * head)
-        right_tip = QPointF(tip.x() + math.cos(ra) * head, tip.y() - math.sin(ra) * head)
-        # Draw all arrowheads as stroked segments so head width matches stem.
         painter.drawLine(tip, left_tip)
         painter.drawLine(tip, right_tip)
 

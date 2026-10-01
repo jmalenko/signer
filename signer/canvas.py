@@ -1175,16 +1175,9 @@ class DocumentCanvas(QWidget):
                 painter.save()
                 painter.setPen(QColor("#00a2ff"))
                 painter.setBrush(Qt.NoBrush)
-                if obj is self._selected and obj.supports_endpoint_handles():
-                    pts = obj.endpoint_points_viewport(
-                        r.x(), r.y(), r.width(), r.height(), display_rotation
-                    )
-                    if len(pts) == 2:
-                        painter.drawLine(pts[0], pts[1])
-                else:
-                    painter.drawPolygon(QPolygonF(obj.boundary_points_viewport(
-                        r.x(), r.y(), r.width(), r.height(), display_rotation
-                    )))
+                painter.drawPolygon(QPolygonF(obj.boundary_points_viewport(
+                    r.x(), r.y(), r.width(), r.height(), display_rotation
+                )))
                 # Only draw resize handles for primary selected object
                 if obj is self._selected and not self.is_multi_selected():
                     for hr in obj.handle_rects_viewport(
