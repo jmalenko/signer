@@ -47,19 +47,13 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
 
-      - name: Run tests
-        if: matrix.platform != 'windows'
-        run: python -m pytest
-        env:
-          QT_QPA_PLATFORM: ${{ matrix.platform == 'linux' && 'offscreen' || '' }}
-
-      - name: Run Windows-compatible tests
-        if: matrix.platform == 'windows'
+      - name: Run platform-stable tests
         run: >-
-          python -m pytest
+          python -m pytest tests/unit
           --ignore=tests/unit/test_toolbar_onscreen.py
           --ignore=tests/unit/test_window_sizing.py
-          -k "not pixel_perfect"
+        env:
+          QT_QPA_PLATFORM: ${{ matrix.platform == 'linux' && 'offscreen' || '' }}
 
       - name: Build executable
         run: python -m PyInstaller --clean --noconfirm signer.spec
