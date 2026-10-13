@@ -31,11 +31,24 @@ The platform-stable unit-test step explicitly uses `QT_QPA_PLATFORM=offscreen` o
 To reproduce it locally on macOS/Linux:
 
 ```bash
-QT_QPA_PLATFORM=offscreen python -m pytest tests/unit --ignore=tests/unit/test_toolbar_onscreen.py --ignore=tests/unit/test_window_sizing.py
+QT_QPA_PLATFORM=offscreen python -m pytest tests/unit --ignore=tests/unit/test_toolbar_onscreen.py --ignore=tests/unit/test_window_sizing.py --capture=no --no-qt-log
 ```
 
-On PowerShell, first set `$env:QT_QPA_PLATFORM = "offscreen"`, then run the same
-`python -m pytest` command. An empty `QT_QPA_PLATFORM` is not equivalent to offscreen:
+On PowerShell, first configure the backend and font directory, then run the same
+`python -m pytest` command:
+
+```powershell
+$env:QT_QPA_PLATFORM = "offscreen"
+$env:QT_QPA_FONTDIR = Join-Path $env:WINDIR "Fonts"
+```
+
+Windows offscreen Qt uses FreeType instead of the native Windows font database. Without
+`QT_QPA_FONTDIR`, Qt may discover no fonts, producing blank text and invalid text bounds.
+CI points it at `C:/Windows/Fonts` and checks font availability and text metrics before tests.
+The test step disables Python and pytest-qt output capture so native fatal messages and crash
+traces remain visible even when the process aborts before pytest can report a failure.
+
+An empty `QT_QPA_PLATFORM` is not equivalent to offscreen:
 it lets Qt select the native backend, whose window constraints and widget metrics differ.
 Matching the backend does not guarantee identical results across dependency versions or hosts.
 

@@ -297,7 +297,12 @@ run time are distribution-specific packaging issues and should be resolved on th
 supported build/test image, not worked around at build time.
 
 Qt's offscreen platform can report no installed font families on headless Windows runners, while
-macOS offscreen runs normally retain access to CoreText fonts. The font-family toolbar therefore
+macOS offscreen runs normally retain access to CoreText fonts. CI supplies `QT_QPA_FONTDIR`
+with `C:/Windows/Fonts` on Windows, whose offscreen backend uses FreeType rather than native
+font discovery. Before testing, a font preflight checks that families are available and that
+text metrics are valid. The platform-stable test step disables Python and pytest-qt output
+capture so native abort diagnostics are not lost with the test process.
+The font-family toolbar therefore
 starts with the application's common-font choices before appending families discovered by Qt;
 tests explicitly cover the empty-database case and must not rely on host-installed fonts.
 
