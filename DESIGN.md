@@ -100,7 +100,7 @@ flowchart TD
 | `app.py` | Entry point: builds `QApplication`, loads settings, constructs `MainWindow`, wires up optional action recording, runs the startup document/signature load |
 | `cli.py` | Parses `-document` / `-signature` startup arguments |
 | `main_window.py` | Toolbar and hamburger-menu construction, document/project lifecycle (open/save/print/change document), menu/toolbar context-sensitivity |
-| `canvas.py` | Page rendering and fit-to-window, annotation selection/move/resize/drag-drop, keyboard handling, page navigation, rotation, clipboard |
+| `canvas.py` | Page rendering, fit-to-window and zoom/pan transforms, annotation selection/move/resize/drag-drop, keyboard handling, page navigation, rotation, clipboard |
 | `objects.py` | `CanvasObject` and `VectorAnnotation` hierarchy: per-type geometry, defaults, rendering, serialization |
 | `compositor.py` | Compositing annotations onto page bitmaps and exporting to JPG/PNG/PDF/TIFF/BMP |
 | `document_loader.py` | `DocumentLoaderRegistry`: format detection and per-format loading (PyMuPDF for PDF, LibreOffice conversion for Word/ODT, Pillow for images) |
@@ -133,6 +133,14 @@ flowchart TD
 - **Coordinates stored in PDF points, rendered at 300 DPI internally**: keeps annotation
   geometry resolution-independent (matches how PDF/print measurements are normally expressed)
   while giving crisp rendering; a single `DPI_SCALE` constant converts between the two.
+- **Zoom is a canvas-only transform**: `DocumentCanvas` keeps a zoom multiplier and pan offsets
+  separate from the document and annotation coordinates. Zoom steps multiply or divide by
+  `ZOOM_STEP` (`1.25`), with `1.0` as the fit-to-window floor. Pointer-anchored zoom adjusts
+  the pan offsets to keep the document point under the pointer stationary, then clamps the page
+  edges to the canvas. If an axis becomes smaller than the canvas, the clamp preserves the side
+  where gray space was already visible instead of flipping the margin by recentering. Fit to
+  Window and page/document resets explicitly restore zoom `1.0` and zero pan. Export, printing,
+  hit testing, and annotation serialization continue to use document coordinates.
 - **Rotation composed around annotation centers**: each annotation retains an unrotated local
   bounding box and an intrinsic clockwise angle. Canvas painting, hit-testing, handles, and
   export apply the angle around the center; page rotation is a separate per-document transform

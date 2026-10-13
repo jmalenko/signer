@@ -15,6 +15,7 @@ from PySide6.QtGui import (
     QPainter,
     QPixmap,
     QPolygonF,
+    QWheelEvent,
 )
 from PySide6.QtWidgets import QApplication, QWidget
 
@@ -58,6 +59,9 @@ logger = logging.getLogger(__name__)
 # Arrow-key nudge distance for selected annotations, in document points.
 KEYBOARD_MOVE_STEP_PT: float = 12.0
 KEYBOARD_MOVE_FINE_STEP_PT: float = 1.0
+ZOOM_STEP: float = 1.25
+MIN_ZOOM: float = 1.0
+MAX_ZOOM: float = 8.0
 
 
 def _normalize_page_rotation(angle: int) -> int:
@@ -71,6 +75,7 @@ def _normalize_page_rotation(angle: int) -> int:
 class DocumentCanvas(QWidget):
     objectChanged = Signal()        # emitted on move/scale/add/remove
     pageChanged = Signal(int, int)  # (current_page_0indexed, total_pages)
+    zoomChanged = Signal(float)
     editRequested = Signal(object)  # CanvasObject — double-click
     fileDrop = Signal(str)          # emitted when file is dropped (file path)
     pasteIncomplete = Signal(int, int)  # (skipped_count, total_count) — some items couldn't be pasted
@@ -129,8 +134,16 @@ class DocumentCanvas(QWidget):
         self._hdrag_grab_offset_local = QPointF()
 
         self._fit_scale: float = 1.0
+        self._zoom: float = 1.0
+        self._zoom_started_from_fit: bool = False
+        self._pan_x: float = 0.0
+        self._pan_y: float = 0.0
         self._doc_offset_x: float = 0.0
         self._doc_offset_y: float = 0.0
+        self._panning: bool = False
+        self._pan_start_view = QPointF()
+        self._pan_start_x: float = 0.0
+        self._pan_start_y: float = 0.0
 
     # ---------------------------------------------------------------- document API
 
@@ -208,6 +221,10 @@ class DocumentCanvas(QWidget):
         self._object_map = {}
         self._next_object_id = 0
         self._page_rotations = {}
+        self._zoom = 1.0
+        self._zoom_started_from_fit = False
+        self._pan_x = 0.0
+        self._pan_y = 0.0
         self._clear_selection_state()
         self._reset_drag_state()
         self.history.clear()
@@ -258,6 +275,10 @@ class DocumentCanvas(QWidget):
             return
         self._clear_selection_state()
         self._current_page = page
+        self._zoom = 1.0
+        self._zoom_started_from_fit = False
+        self._pan_x = 0.0
+        self._pan_y = 0.0
         self._recompute_fit()
         self.pageChanged.emit(self._current_page, len(self._pages))
         self._invalidate_display()
@@ -1111,6 +1132,9 @@ class DocumentCanvas(QWidget):
     def _recompute_fit(self) -> None:
         if not self._pages:
             self._fit_scale = 1.0
+            self._zoom = 1.0
+            self._pan_x = 0.0
+            self._pan_y = 0.0
             self._doc_offset_x = 0.0
             self._doc_offset_y = 0.0
             return
@@ -1120,9 +1144,110 @@ class DocumentCanvas(QWidget):
         if rotation in (90, 270):
             dw, dh = dh, dw  # Swap dimensions for 90/270 degree rotations
         vw, vh = max(1, self.width()), max(1, self.height())
-        self._fit_scale = min(vw / dw, vh / dh)
-        self._doc_offset_x = (vw - dw * self._fit_scale) / 2
-        self._doc_offset_y = (vh - dh * self._fit_scale) / 2
+        fit_scale = min(vw / dw, vh / dh)
+        self._fit_scale = fit_scale * self._zoom
+        self._doc_offset_x = (vw - dw * self._fit_scale) / 2 + self._pan_x
+        self._doc_offset_y = (vh - dh * self._fit_scale) / 2 + self._pan_y
+
+    def _clamp_pan(self, previous_offsets: tuple[float, float] | None = None) -> None:
+        if not self._pages:
+            return
+        dw, dh = self._pages[self._current_page].size
+        rotation = self._page_rotations.get(self._current_page, 0)
+        if rotation in (90, 270):
+            dw, dh = dh, dw
+
+        vw, vh = max(1, self.width()), max(1, self.height())
+        displayed_width = dw * self._fit_scale
+        displayed_height = dh * self._fit_scale
+        previous_left, previous_top = previous_offsets or (
+            self._doc_offset_x,
+            self._doc_offset_y,
+        )
+        previous_right = vw - (previous_left + displayed_width)
+        previous_bottom = vh - (previous_top + displayed_height)
+
+        def clamp_axis(
+            viewport: float,
+            displayed: float,
+            current_start: float,
+            previous_start: float,
+            previous_end: float,
+        ) -> float:
+            centered = (viewport - displayed) / 2.0
+            if displayed >= viewport:
+                return min(0.0, max(viewport - displayed, current_start))
+            if previous_start > previous_end + 1e-9:
+                return viewport - displayed
+            if previous_end > previous_start + 1e-9:
+                return 0.0
+            return centered
+
+        target_left = clamp_axis(
+            vw, displayed_width, self._doc_offset_x, previous_left, previous_right
+        )
+        target_top = clamp_axis(
+            vh, displayed_height, self._doc_offset_y, previous_top, previous_bottom
+        )
+        self._pan_x = target_left - (vw - displayed_width) / 2.0
+        self._pan_y = target_top - (vh - displayed_height) / 2.0
+        self._recompute_fit()
+
+    def zoom_in(self) -> None:
+        """Increase the document zoom around the canvas center."""
+        self._set_zoom(self._zoom * ZOOM_STEP)
+
+    def zoom_out(self) -> None:
+        """Decrease the document zoom around the canvas center."""
+        self._set_zoom(self._zoom / ZOOM_STEP)
+
+    def fit_to_window(self) -> None:
+        """Restore the complete-page fit view."""
+        self._zoom = 1.0
+        self._zoom_started_from_fit = False
+        self._pan_x = 0.0
+        self._pan_y = 0.0
+        self._recompute_fit()
+        self.zoomChanged.emit(self._zoom)
+        self._invalidate_display()
+
+    def _set_zoom(self, zoom: float, anchor: QPointF | None = None) -> None:
+        if not self._pages:
+            return
+        requested_zoom = max(MIN_ZOOM, min(MAX_ZOOM, zoom))
+        if self.is_fit_to_window and requested_zoom > MIN_ZOOM:
+            self._zoom_started_from_fit = True
+        previous_offsets = (self._doc_offset_x, self._doc_offset_y)
+        if anchor is None:
+            anchor = QPointF(self.width() / 2.0, self.height() / 2.0)
+        anchor_doc = self._view_to_doc(anchor)
+        self._zoom = requested_zoom
+        self._recompute_fit()
+        new_anchor_view = self._doc_point_to_view(anchor_doc)
+        self._pan_x += anchor.x() - new_anchor_view.x()
+        self._pan_y += anchor.y() - new_anchor_view.y()
+        self._recompute_fit()
+        if self._zoom == MIN_ZOOM and self._zoom_started_from_fit:
+            self._pan_x = 0.0
+            self._pan_y = 0.0
+            self._zoom_started_from_fit = False
+            self._recompute_fit()
+        else:
+            self._clamp_pan(previous_offsets)
+        self.zoomChanged.emit(self._zoom)
+        self._invalidate_display()
+
+    @property
+    def zoom(self) -> float:
+        return self._zoom
+
+    @property
+    def is_fit_to_window(self) -> bool:
+        return (
+            self._zoom == 1.0
+            and self._pan_x == 0.0
+            and self._pan_y == 0.0
+        )
 
     def default_position_for(self, obj: CanvasObject) -> tuple[float, float]:
         """Default for annotations: center of current page."""
@@ -1252,6 +1377,14 @@ class DocumentCanvas(QWidget):
         return bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
 
     def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MiddleButton and self._pages:
+            self._panning = True
+            self._pan_start_view = event.position()
+            self._pan_start_x = self._pan_x
+            self._pan_start_y = self._pan_y
+            self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
         if event.button() != Qt.LeftButton or not self._pages:
             return
         # A press begins a new gesture: nothing recorded from here on should merge
@@ -1593,6 +1726,15 @@ class DocumentCanvas(QWidget):
     def mouseMoveEvent(self, event) -> None:
         pt = event.position()
 
+        if self._panning:
+            delta = pt - self._pan_start_view
+            self._pan_x = self._pan_start_x + delta.x()
+            self._pan_y = self._pan_start_y + delta.y()
+            self._recompute_fit()
+            self._clamp_pan()
+            self._invalidate_display()
+            return
+
         if self._dragging and self._selected is not None:
             if self._character_spacing_dragging:
                 self._apply_character_spacing_drag(pt)
@@ -1837,6 +1979,11 @@ class DocumentCanvas(QWidget):
         self.setCursor(Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MiddleButton and self._panning:
+            self._panning = False
+            self.setCursor(Qt.ArrowCursor)
+            event.accept()
+            return
         if event.button() == Qt.LeftButton:
             if self._character_spacing_dragging and isinstance(self._selected, VectorAnnotation):
                 new_spacing = self._selected._character_spacing_pt
@@ -1884,12 +2031,23 @@ class DocumentCanvas(QWidget):
                 delattr(obj, '_rotation_handle_flip_cache')
         
         self._dragging = False
+        self._panning = False
         self._character_spacing_dragging = False
         self._rotating = False
         self._rotation_drag_states = []
         self._drag_handle = -1
         self._drag_endpoint_handles = False
         self._action_recorded_this_drag = False
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        if not self._pages or event.angleDelta().y() == 0:
+            event.ignore()
+            return
+        if event.angleDelta().y() > 0:
+            self._set_zoom(self._zoom * ZOOM_STEP, event.position())
+        else:
+            self._set_zoom(self._zoom / ZOOM_STEP, event.position())
+        event.accept()
 
     def mouseDoubleClickEvent(self, event) -> None:
         if event.button() == Qt.LeftButton and self._selected is not None:

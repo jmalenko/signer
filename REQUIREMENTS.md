@@ -718,3 +718,23 @@ needs a usable bounding rectangle even when it is horizontal or vertical.
 2. A Line's bounding box shall contain the complete stroke and remain easy to see and select,
    even when the Line is horizontal or vertical. Its minimum thickness shall match the height of
    an Arrow's head, with any extra space added evenly on both sides so the Line stays centered.
+
+## Version 1.5 - Document zoom
+
+Motivation: allow users to inspect document details and position annotations precisely without
+changing the exported document's resolution or annotation geometry.
+
+1. The document view shall support zooming in and out. The initial view shall fit the current
+   page to the available canvas, and the user shall be able to restore this fit-to-window view.
+2. Zooming shall affect only the on-screen view: annotation positions and sizes shall remain in
+   document coordinates, and export and print shall use the document's normal 300 DPI output
+   independently of the current zoom level.
+3. Zoom Out shall stop at the fit-to-window scale. The document shall not become smaller than
+   the canvas in both dimensions, so gray space shall never appear on all four sides at once.
+4. When zooming out leaves gray space on one side, the opposite document edge shall remain aligned
+   with the corresponding window edge instead of moving the gray space to the opposite side.
+5. When zoomed in, the user shall be able to pan the document with the middle mouse button or
+   by holding Space while dragging with the left mouse button.
+
+See [FUNCTIONAL_SPECIFICATION.md §4.6](FUNCTIONAL_SPECIFICATION.md#46-document-zoom) for the
+interaction and view behavior.

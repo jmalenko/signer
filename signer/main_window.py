@@ -50,7 +50,7 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
-from .canvas import DocumentCanvas
+from .canvas import MAX_ZOOM, MIN_ZOOM, DocumentCanvas
 from .compositor import (
     ExportFormat,
     _composite_objects,
@@ -391,6 +391,10 @@ class MainWindow(QMainWindow):
         self._toolbar_save_as_action: QAction | None = None
         self._toolbar_undo_action: QAction | None = None
         self._toolbar_redo_action: QAction | None = None
+        self._toolbar_zoom_separator_action: QAction | None = None
+        self._toolbar_zoom_out_action: QAction | None = None
+        self._toolbar_fit_to_window_action: QAction | None = None
+        self._toolbar_zoom_in_action: QAction | None = None
         self._menu_save_as_action: QAction | None = None
         self._menu_print_action: QAction | None = None
         self._menu_undo_action: QAction | None = None
@@ -405,8 +409,12 @@ class MainWindow(QMainWindow):
         self._menu_rotate_page_right_action: QAction | None = None
         self._menu_rotate_all_left_action: QAction | None = None
         self._menu_rotate_all_right_action: QAction | None = None
+        self._menu_zoom_in_action: QAction | None = None
+        self._menu_zoom_out_action: QAction | None = None
+        self._menu_fit_to_window_action: QAction | None = None
         self._toolbar_page_nav_prev_action: QAction | None = None
         self._toolbar_page_nav_next_action: QAction | None = None
+        self._toolbar_page_nav_end_separator_action: QAction | None = None
         self._toolbar_page_nav_label: QLineEdit | None = None
         self._toolbar_page_nav_label_action: QAction | None = None
         self._toolbar_page_nav_total_label: QLabel | None = None
@@ -440,6 +448,7 @@ class MainWindow(QMainWindow):
 
         self.canvas.objectChanged.connect(self._on_object_changed)
         self.canvas.pageChanged.connect(self._on_page_changed)
+        self.canvas.zoomChanged.connect(self._update_zoom_action_state)
         self.canvas.editRequested.connect(self._on_edit_requested)
         self.canvas.fileDrop.connect(self._on_file_drop)
         self.canvas.pasteIncomplete.connect(self._on_paste_incomplete)
@@ -632,6 +641,8 @@ class MainWindow(QMainWindow):
         self._toolbar_page_nav_next_action.triggered.connect(lambda: self.canvas.goto_page(self.canvas.current_page + 1))
         tb.addAction(self._toolbar_page_nav_next_action)
 
+        self._toolbar_page_nav_end_separator_action = tb.addSeparator()
+
         # Undo and redo are available in the main toolbar as well as the Edit menu.
         self._toolbar_undo_action = QAction("⟲ Undo", self)
         self._toolbar_undo_action.setToolTip("Undo (Z)")
@@ -642,6 +653,15 @@ class MainWindow(QMainWindow):
         self._toolbar_redo_action.setToolTip("Redo (Y)")
         self._toolbar_redo_action.triggered.connect(self.redo)
         tb.addAction(self._toolbar_redo_action)
+
+        self._toolbar_zoom_separator_action = tb.addSeparator()
+        self._toolbar_zoom_out_action = big_action("−", self._zoom_out)
+        self._toolbar_zoom_out_action.setToolTip("Zoom Out")
+        self._toolbar_fit_to_window_action = big_action("⛶", self._fit_to_window)
+        self._toolbar_fit_to_window_action.setToolTip("Fit to Window")
+        self._toolbar_zoom_in_action = big_action("＋", self._zoom_in)
+        self._toolbar_zoom_in_action.setToolTip("Zoom In")
+        QTimer.singleShot(0, self._update_min_window_width)
 
         self._dup_action = ctx_button("❏ Duplicate", lambda: self.canvas.duplicate_selected())
         self._del_action = ctx_button("🗑 Delete", lambda: self.canvas.remove_selected())
@@ -809,6 +829,16 @@ class MainWindow(QMainWindow):
         self._menu_rotate_all_right_action.setShortcut("R")
         edit_menu.aboutToShow.connect(self._update_menu_state)
 
+        # View menu
+        view_menu = hamburger_menu.addMenu("View")
+        self._menu_zoom_in_action = view_menu.addAction("Zoom In\tCtrl+=", self._zoom_in)
+        self._menu_zoom_in_action.setShortcuts(["Ctrl+=", "="])
+        self._menu_zoom_out_action = view_menu.addAction("Zoom Out\tCtrl+-", self._zoom_out)
+        self._menu_zoom_out_action.setShortcuts(["Ctrl+-", "-"])
+        self._menu_fit_to_window_action = view_menu.addAction("Fit to Window\tCtrl+0", self._fit_to_window)
+        self._menu_fit_to_window_action.setShortcuts(["Ctrl+0", "0"])
+        view_menu.aboutToShow.connect(self._update_menu_state)
+
         # Annotations menu
         annotations_menu = hamburger_menu.addMenu("Annotations")
         self._hamburger_annotations_menu = annotations_menu
@@ -855,6 +885,32 @@ class MainWindow(QMainWindow):
         if self._toolbar_add_annotation_btn.isEnabled():
             self._toolbar_add_annotation_btn.showMenu()
 
+    def _zoom_in(self) -> None:
+        self.canvas.zoom_in()
+
+    def _zoom_out(self) -> None:
+        self.canvas.zoom_out()
+
+    def _fit_to_window(self) -> None:
+        self.canvas.fit_to_window()
+
+    def _update_zoom_action_state(self) -> None:
+        has_doc = self.canvas.has_document
+        epsilon = 1e-9
+        zoom_in_enabled = has_doc and self.canvas.zoom < MAX_ZOOM - epsilon
+        zoom_out_enabled = has_doc and self.canvas.zoom > MIN_ZOOM + epsilon
+        fit_enabled = has_doc and not self.canvas.is_fit_to_window
+        for action, enabled in (
+            (self._toolbar_zoom_in_action, zoom_in_enabled),
+            (self._menu_zoom_in_action, zoom_in_enabled),
+            (self._toolbar_zoom_out_action, zoom_out_enabled),
+            (self._menu_zoom_out_action, zoom_out_enabled),
+            (self._toolbar_fit_to_window_action, fit_enabled),
+            (self._menu_fit_to_window_action, fit_enabled),
+        ):
+            if action is not None:
+                action.setEnabled(enabled)
+
     def _populate_annotation_type_actions(self, menu: QMenu, with_icons: bool = False) -> None:
         """Add the shared vector annotation commands to an annotation menu."""
         labels = {
@@ -895,6 +951,9 @@ class MainWindow(QMainWindow):
             self._menu_rotate_all_left_action,
             self._menu_rotate_all_right_action,
         )
+        zoom_in_enabled = has_doc and self.canvas.zoom < MAX_ZOOM - 1e-9
+        zoom_out_enabled = has_doc and self.canvas.zoom > MIN_ZOOM + 1e-9
+        fit_enabled = has_doc and not self.canvas.is_fit_to_window
         action_conditions = [
             (self._menu_print_action, has_doc),
             (self._menu_undo_action, self.canvas.can_undo()),
@@ -908,6 +967,9 @@ class MainWindow(QMainWindow):
             (self._menu_select_all_action, has_page_objects),
             (self._menu_delete_action, has_selection),
             *((action, has_doc) for action in rotation_actions),
+            (self._menu_zoom_in_action, zoom_in_enabled),
+            (self._menu_zoom_out_action, zoom_out_enabled),
+            (self._menu_fit_to_window_action, fit_enabled),
         ]
         for action, enabled in action_conditions:
             if action is not None:
@@ -921,6 +983,7 @@ class MainWindow(QMainWindow):
             self._toolbar_add_annotation_btn.setEnabled(has_doc)
         if self._toolbar_save_as_action is not None:
             self._toolbar_save_as_action.setEnabled(has_doc)
+        self._update_zoom_action_state()
         if self._menu_save_as_action is not None:
             self._menu_save_as_action.setEnabled(has_doc)
         if self._hamburger_annotations_menu is not None:
@@ -944,6 +1007,8 @@ class MainWindow(QMainWindow):
             self._toolbar_page_nav_label_action.setVisible(show_navigation)
         if self._toolbar_page_nav_total_label_action is not None:
             self._toolbar_page_nav_total_label_action.setVisible(show_navigation)
+        if self._toolbar_page_nav_end_separator_action is not None:
+            self._toolbar_page_nav_end_separator_action.setVisible(show_navigation)
 
         self._update_page_nav_separator_visibility()
         self._refresh_toolbar_layout()
@@ -988,7 +1053,21 @@ class MainWindow(QMainWindow):
         main_toolbar = getattr(self, "_main_toolbar", None)
         if main_toolbar is None:
             return
-        self.setMinimumWidth(main_toolbar.sizeHint().width())
+        minimum_width = main_toolbar.sizeHint().width()
+        zoom_actions = (
+            self._toolbar_zoom_separator_action,
+            self._toolbar_zoom_out_action,
+            self._toolbar_fit_to_window_action,
+            self._toolbar_zoom_in_action,
+        )
+        zoom_width = sum(
+            widget.sizeHint().width()
+            for action in zoom_actions
+            if action is not None
+            and (widget := main_toolbar.widgetForAction(action)) is not None
+        )
+        minimum_width = min(minimum_width, max(0, minimum_width - zoom_width))
+        self.setMinimumWidth(minimum_width)
 
     def _make_control_group(self, *widgets: QWidget) -> QWidget:
         """Bundle related widgets (e.g. a label and its spinner) into a single toolbar item

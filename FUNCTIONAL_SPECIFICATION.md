@@ -61,8 +61,14 @@ visible and never changes size based on selection, so it always fits an A4-propo
 | **Open** (with dropdown arrow) | Click opens the file picker directly; dropdown also offers Recent Documents |
 | **Add** (annotation picker) | Clicking the button opens the same menu as its dropdown arrow (whole button is clickable) |
 | **Save** | Opens the Save As dialog |
+| **Separator** | Visual separator |
 | Page navigation (◀ / current page / total pages / ▶) | Only visible when the document has more than one page; enter a page number in the current-page field and press Enter to navigate (see [§6](#6-page-navigation)) |
+| **Separator** | Visual separator; visible when page navigation is visible |
 | **Undo** / **Redo** | Reverses or reapplies the most recent undoable action; enabled only when available; shown after page navigation |
+| **Separator** | Visual separator |
+| **Zoom Out** (minus icon) | Decreases the current document zoom |
+| **Fit to Window** (fit icon) | Restores the complete-page view |
+| **Zoom In** (plus icon) | Increases the current document zoom |
 | Hamburger menu (☰, far right) | See §2.2 |
 
 The **selection-properties area** holds the controls that depend on the current selection,
@@ -109,8 +115,7 @@ that mode: no reserved space or leftover strip remains from the previous mode.
 Which individual controls are visible within the area still follows the selection/annotation-type
 rules below.
 
-The window's minimum width is driven only by the always-visible first row (Open/Add/Save/page
-navigation/hamburger); the selection-properties area never affects it, in either mode — so
+The window's minimum width is driven only by the always-visible first row; the selection-properties area never affects it, in either mode — so
 switching to an annotation type with more controls (e.g. Text) never changes the window's size.
 We don't rely on Qt's own toolbar overflow ("»") button for this: it doesn't work for custom
 widget controls like our labeled spinners/combos (its popup ends up empty), so it is suppressed
@@ -153,6 +158,10 @@ recent images).
 │   ├── Rotate Current Page Right
 │   ├── Rotate All Pages Left
 │   └── Rotate All Pages Right
+├── View
+│   ├── Zoom In
+│   ├── Zoom Out
+│   └── Fit to Window
 ├── Annotations
 │   ├── Checkmark
 │   ├── Crossmark
@@ -208,7 +217,7 @@ toolbar separators.
 
 | Item(s) | Enabled when |
 |---|---|
-| Save As…, Print, Save Project, Save Project As…, Change Document…, rotation actions | A document is open |
+| Save As…, Print, Save Project, Save Project As…, Change Document…, rotation actions, zoom actions | A document is open |
 | Undo (toolbar and Edit menu) | An action is available to undo |
 | Redo (toolbar and Edit menu) | An action is available to redo |
 | Cut, Copy, Duplicate, Delete | At least one annotation is selected |
@@ -310,6 +319,36 @@ Up to 10 recently opened documents/projects, most-recent-first, persisted across
 - Performance targets: open/render the current page in under 1 second for common office
   documents; drag/scale interaction has no visible lag; export quality suits typical print/email
   workflows.
+
+### 4.6 Document zoom
+
+- The document view starts in **Fit to Window** mode, showing the complete current page within
+  the available canvas while preserving its aspect ratio.
+- The user can zoom in and out of the current page. Zooming is centered on the canvas unless the
+  interaction provides a specific focal point; the view shall keep the focal document position
+  under the pointer when zooming with a pointer-based interaction.
+- Zoom steps shall be reversible within the available range: one Zoom In followed by one Zoom Out,
+  or one Zoom Out followed by one Zoom In, shall restore the exact zoom level that was effective
+  before the two actions when neither action is limited by a zoom boundary. At Fit to Window,
+  Zoom Out is a no-op; the next Zoom In starts from the fit level.
+- The user can restore **Fit to Window** at any time. Changing pages restores the complete-page
+  view for the newly selected page.
+- Zoom Out shall not reduce the document below its Fit to Window scale. The document must never
+  become smaller than the canvas in both dimensions, which prevents gray space from appearing on
+  all four sides at once.
+- When zooming out leaves gray space on one side of an axis, the opposite document edge remains
+  aligned with the corresponding window edge. The view must not recenter the document and move the
+  gray space to the opposite side; the focal position is adjusted to preserve that edge alignment.
+- When zoomed beyond the available canvas, the user can pan the page to reach any document area.
+  Panning is available by dragging with the middle mouse button or by holding Space while
+  dragging with the left mouse button.
+  The page shall not be scaled up beyond the fit-to-window scale when fit mode is restored.
+- Zoom changes only the display transform. Annotation coordinates, hit testing, selection,
+  moving, and resizing are converted through the current view transform and remain in document
+  coordinates.
+- Export and print always render the document and annotations at the normal 300 DPI output
+  resolution; the current on-screen zoom and pan position never affect exported or printed
+  output.
 
 ---
 
@@ -651,6 +690,9 @@ text input field currently has focus (this avoids accidental triggers while typi
 | Ctrl+R | R | Rotate all pages right |
 | Shift+Ctrl+L | Shift+L | Rotate current page left |
 | Shift+Ctrl+R | Shift+R | Rotate current page right |
+| Ctrl++ / Ctrl+= | = | Zoom in |
+| Ctrl+- | - | Zoom out |
+| Ctrl+0 | 0 | Fit document to window |
 | `[` / `]` | — | Decrease/increase line width or font size (context-dependent), stepping through the fixed lists in §7.2 (font) / below (line width) |
 | `+` | — | Open the Add Annotation toolbar menu |
 
