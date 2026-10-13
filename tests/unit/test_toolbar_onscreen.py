@@ -197,7 +197,19 @@ def _scenario_mode_switch(tmp_path):
                     f"{label}: canvas {actual_canvas.getRect()} != {expected_canvas.getRect()}"
                 )
             if actual_image != expected_image:
-                failures.append(f"{label}: stale toolbar strip after switching modes")
+                snapshot_name = (
+                    "native-toolbar-to-"
+                    f"{'overlay' if target_overlay else 'reserve'}"
+                    f"-selected-{str(select).lower()}"
+                )
+                expected_path = REPO_ROOT / f"{snapshot_name}-expected.png"
+                actual_path = REPO_ROOT / f"{snapshot_name}-actual.png"
+                assert expected_image.save(str(expected_path))
+                assert actual_image.save(str(actual_path))
+                failures.append(
+                    f"{label}: image mismatch after switching modes; "
+                    f"snapshots: {expected_path.name}, {actual_path.name}"
+                )
     return failures
 
 

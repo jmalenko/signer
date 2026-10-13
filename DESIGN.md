@@ -306,6 +306,14 @@ The font-family toolbar therefore
 starts with the application's common-font choices before appending families discovered by Qt;
 tests explicitly cover the empty-database case and must not rely on host-installed fonts.
 
+PySide6 is pinned to the locally validated `6.11.2` release in `requirements.txt`. CI previously
+installed `6.12.0` through the open-ended dependency range; Linux then aborted with a native
+`none_dealloc` reference-count error during `QPainter.fillRect` in the signature checkerboard.
+The pin prevents unreviewed binding upgrades and is a conservative rollback, pending Linux
+verification. Native mode-switch image failures save expected/actual snapshots in the repository
+root, uploaded as per-platform CI artifacts. The strict image comparison is retained so a real
+layout regression is not hidden by relaxing the check.
+
 **Portable build**: after building, copy the executable from `dist/` to any writable directory;
 optionally place a `config.json` next to it to enable portable mode (see
 [FUNCTIONAL_SPECIFICATION.md §15](FUNCTIONAL_SPECIFICATION.md#15-persistence--settings) for the

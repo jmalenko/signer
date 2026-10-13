@@ -76,6 +76,14 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
+      - name: Upload native toolbar failure snapshots
+        if: failure() && matrix.platform != 'linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-toolbar-${{ matrix.platform }}
+          path: native-toolbar-*.png
+          if-no-files-found: ignore
+
       - name: Build executable
         run: python -m PyInstaller --clean --noconfirm signer.spec
 

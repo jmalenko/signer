@@ -52,6 +52,12 @@ An empty `QT_QPA_PLATFORM` is not equivalent to offscreen:
 it lets Qt select the native backend, whose window constraints and widget metrics differ.
 Matching the backend does not guarantee identical results across dependency versions or hosts.
 
+Install from `requirements.txt` before comparing results. PySide6 is pinned to `6.11.2`,
+the locally validated version. A Linux CI run with `6.12.0` aborted with
+`none_dealloc: deallocating None` during checkerboard painting; the pin is a conservative
+rollback while that native reference-count failure is investigated. It is not proof that all
+cross-platform failures are resolved.
+
 The three-row overlay regression deliberately widens controls relative to the actual canvas
 width, then verifies that all controls remain visible in order. It does not assume that the
 window manager honours a requested 400px window width.
@@ -118,6 +124,13 @@ QT_QPA_PLATFORM=offscreen python -m pytest tests/unit/test_toolbar_onscreen.py
 On PowerShell, set `$env:QT_QPA_PLATFORM = "offscreen"` before the same pytest command.
 The headless Linux CI runner has no native desktop session, so native toolbar checks remain
 local X11/Wayland checks there.
+
+When the mode-switch image comparison fails, it saves expected and actual screenshots as
+`native-toolbar-*.png` in the repository root. CI uploads them as the
+`native-toolbar-windows` or `native-toolbar-macos` artifact even when the job fails.
+The pixel-equality assertion remains unchanged. Compare the images before attributing a
+mismatch to a stale toolbar strip: native focus or hover states can also change pixels.
+Remove locally generated snapshots after investigation and before committing.
 
 ## Static Analysis with Ruff
 
