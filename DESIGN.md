@@ -245,9 +245,11 @@ them.
 PyInstaller does not cross-compile: build each release on the target operating system and CPU
 architecture. The checked-in GitHub Actions workflow provides the recommended one-push build:
 it uses native Windows, macOS, and Ubuntu runners, runs the platform-stable unit tests on each
-runner, and uploads one artifact per platform. Hosted runners skip native-desktop and full
-pixel-baseline tests that require a stable interactive display, font rasterizer, or Qt desktop
-session; those suites remain available for local/platform-specific validation. A Linux build is
+runner with `QT_QPA_PLATFORM=offscreen`, and uploads one artifact per platform. A separate step
+runs the native toolbar subprocess tests on Windows and macOS. The headless Linux runner skips
+native toolbar checks; these remain available locally with an X11 or Wayland session. Hosted
+runners skip the full pixel-baseline and window-sizing suites that require a stable display or
+font rasterizer; those remain available for local/platform-specific validation. A Linux build is
 tied to its architecture and to a compatible glibc baseline;
 the workflow therefore uses Ubuntu 22.04 as the supported Linux build baseline.
 

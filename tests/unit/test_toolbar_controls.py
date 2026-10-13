@@ -524,8 +524,22 @@ class TestOverlaySelectionToolbarWrapping:
         main_window.resize(400, 700)
         QApplication.processEvents()
 
+        expected = [
+            item for item in main_window._context_items
+            if item in main_window._context_conceptually_visible
+        ]
+        for item in expected:
+            item.setMinimumWidth(main_window._canvas_container.width() // 3 + 1)
+        main_window._context_edge_cache.clear()
+        main_window._sync_context_toolbar()
+        QApplication.processEvents()
+
         used_rows = [row for row in main_window._context_rows if _row_widgets(row)]
         assert len(used_rows) >= 3
+        assert [
+            widget for row in used_rows for widget in _row_widgets(row)
+            if widget.isVisible()
+        ] == expected
 
     def test_overflow_button_never_used_in_overlay_mode(self, main_window, sample_pdf):
         main_window._toggle_overlay_selection_toolbar(True)

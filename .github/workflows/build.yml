@@ -50,7 +50,13 @@ jobs:
           --ignore=tests/unit/test_toolbar_onscreen.py
           --ignore=tests/unit/test_window_sizing.py
         env:
-          QT_QPA_PLATFORM: ${{ matrix.platform == 'linux' && 'offscreen' || '' }}
+          QT_QPA_PLATFORM: offscreen
+
+      - name: Run native toolbar tests
+        if: matrix.platform != 'linux'
+        run: python -m pytest tests/unit/test_toolbar_onscreen.py
+        env:
+          QT_QPA_PLATFORM: offscreen
 
       - name: Build executable
         run: python -m PyInstaller --clean --noconfirm signer.spec

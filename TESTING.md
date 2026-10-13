@@ -25,6 +25,24 @@ See [DESIGN.md](DESIGN.md) for architecture, and
 
 ## Running Tests
 
+### Matching the GitHub test run
+
+The platform-stable unit-test step explicitly uses `QT_QPA_PLATFORM=offscreen` on every OS.
+To reproduce it locally on macOS/Linux:
+
+```bash
+QT_QPA_PLATFORM=offscreen python -m pytest tests/unit --ignore=tests/unit/test_toolbar_onscreen.py --ignore=tests/unit/test_window_sizing.py
+```
+
+On PowerShell, first set `$env:QT_QPA_PLATFORM = "offscreen"`, then run the same
+`python -m pytest` command. An empty `QT_QPA_PLATFORM` is not equivalent to offscreen:
+it lets Qt select the native backend, whose window constraints and widget metrics differ.
+Matching the backend does not guarantee identical results across dependency versions or hosts.
+
+The three-row overlay regression deliberately widens controls relative to the actual canvas
+width, then verifies that all controls remain visible in order. It does not assume that the
+window manager honours a requested 400px window width.
+
 ### All tests
 ```bash
 pytest tests/
@@ -75,6 +93,18 @@ QT_QPA_PLATFORM=xcb   pytest tests/unit/test_toolbar_onscreen.py   # X11
 It drives the window programmatically and needs no interaction. The resize scenario validates
 every dynamically created overlay row, including widths that require three or more rows. The
 offscreen suite alone is not sufficient evidence for toolbar layout work.
+
+CI runs this file in a separate step on Windows and macOS. The parent pytest process remains
+offscreen, while each scenario subprocess explicitly selects `windows` or `cocoa`. Reproduce
+that step locally with:
+
+```bash
+QT_QPA_PLATFORM=offscreen python -m pytest tests/unit/test_toolbar_onscreen.py
+```
+
+On PowerShell, set `$env:QT_QPA_PLATFORM = "offscreen"` before the same pytest command.
+The headless Linux CI runner has no native desktop session, so native toolbar checks remain
+local X11/Wayland checks there.
 
 ## Static Analysis with Ruff
 
