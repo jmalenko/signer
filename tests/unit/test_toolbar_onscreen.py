@@ -122,6 +122,32 @@ def _row_widgets(row):
     return [a.defaultWidget() for a in row.actions() if isinstance(a, QWidgetAction)]
 
 
+def _settle_window_layout(window):
+    """Wait for native window and child geometry to stabilize."""
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    stable_samples = 0
+    previous_geometry = None
+    for _ in range(100):
+        QApplication.processEvents()
+        geometry = (
+            window.geometry().getRect(),
+            window._canvas_container.geometry().getRect(),
+            window.canvas.geometry().getRect(),
+            tuple(row.geometry().getRect() for row in window._context_rows),
+        )
+        if geometry == previous_geometry:
+            stable_samples += 1
+            if stable_samples >= 3:
+                return True
+        else:
+            stable_samples = 0
+            previous_geometry = geometry
+        QTest.qWait(10)
+    return False
+
+
 def _scenario_sweep(tmp_path):
     from PySide6.QtCore import QPoint
     from PySide6.QtWidgets import QApplication
@@ -170,23 +196,26 @@ def _scenario_sweep(tmp_path):
 
 
 def _scenario_mode_switch(tmp_path):
-    from PySide6.QtWidgets import QApplication
-
     failures = []
     for target_overlay in (True, False):
         for select in (False, True):
             native = _build(target_overlay, tmp_path, select)
             native.resize(900, 700)
-            QApplication.processEvents()
+            if not _settle_window_layout(native):
+                failures.append("fresh window geometry did not stabilize")
             expected_image = native.grab().toImage()
             expected_canvas = native.canvas.geometry()
             native.close()
 
             switched = _build(not target_overlay, tmp_path, select)
             switched.resize(900, 700)
-            QApplication.processEvents()
+            if not _settle_window_layout(switched):
+                failures.append("pre-switch window geometry did not stabilize")
             switched._toggle_overlay_selection_toolbar(target_overlay)
-            QApplication.processEvents()
+            if not _settle_window_layout(switched):
+                failures.append(
+                    "post-switch window geometry did not stabilize"
+                )
             actual_image = switched.grab().toImage()
             actual_canvas = switched.canvas.geometry()
             switched.close()
