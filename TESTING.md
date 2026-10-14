@@ -125,6 +125,12 @@ On PowerShell, set `$env:QT_QPA_PLATFORM = "offscreen"` before the same pytest c
 The headless Linux CI runner has no native desktop session, so native toolbar checks remain
 local X11/Wayland checks there.
 
+The mode-switch comparison places both windows at the same position and a size that fits the
+available desktop, then waits for stable geometry. It checks that the actual outer window
+geometry matches the request and remains unchanged by the mode switch, before comparing
+canvas geometry and pixels exactly. This prevents native screen clamping of a fixed 700px
+height from silently comparing differently sized windows on smaller CI desktops.
+
 When the mode-switch image comparison fails, it saves expected and actual screenshots as
 `native-toolbar-*.png` in the repository root. CI uploads them as the
 `native-toolbar-windows` or `native-toolbar-macos` artifact even when the job fails.

@@ -196,31 +196,59 @@ def _scenario_sweep(tmp_path):
 
 
 def _scenario_mode_switch(tmp_path):
+    from PySide6.QtCore import QRect
+    from PySide6.QtWidgets import QApplication
+
+    available = QApplication.primaryScreen().availableGeometry()
+    comparison_geometry = QRect(
+        available.x() + 40,
+        available.y() + 40,
+        min(900, available.width() - 80),
+        min(700, available.height() - 80),
+    )
     failures = []
     for target_overlay in (True, False):
         for select in (False, True):
             native = _build(target_overlay, tmp_path, select)
-            native.resize(900, 700)
+            native.setGeometry(comparison_geometry)
             if not _settle_window_layout(native):
                 failures.append("fresh window geometry did not stabilize")
+            expected_window = native.geometry()
             expected_image = native.grab().toImage()
             expected_canvas = native.canvas.geometry()
             native.close()
 
             switched = _build(not target_overlay, tmp_path, select)
-            switched.resize(900, 700)
+            switched.setGeometry(comparison_geometry)
             if not _settle_window_layout(switched):
                 failures.append("pre-switch window geometry did not stabilize")
+            initial_window = switched.geometry()
             switched._toggle_overlay_selection_toolbar(target_overlay)
             if not _settle_window_layout(switched):
                 failures.append(
                     "post-switch window geometry did not stabilize"
                 )
+            actual_window = switched.geometry()
             actual_image = switched.grab().toImage()
             actual_canvas = switched.canvas.geometry()
             switched.close()
 
             label = f"to={'overlay' if target_overlay else 'reserve'} selected={select}"
+            if expected_window != comparison_geometry:
+                failures.append(
+                    f"{label}: fresh window {expected_window.getRect()} "
+                    f"!= requested {comparison_geometry.getRect()}"
+                )
+            if initial_window != expected_window:
+                failures.append(
+                    f"{label}: pre-switch window {initial_window.getRect()} "
+                    f"!= fresh {expected_window.getRect()}"
+                )
+            if actual_window != initial_window:
+                failures.append(
+                    f"{label}: mode switch changed window geometry from "
+                    f"{initial_window.getRect()} to {actual_window.getRect()}"
+                )
             if actual_canvas != expected_canvas:
                 failures.append(
                     f"{label}: canvas {actual_canvas.getRect()} != {expected_canvas.getRect()}"
