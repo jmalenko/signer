@@ -66,6 +66,8 @@ class AppSettings:
     recent_font_size_pt: int = DEFAULT_TEXT_FONT_PT
     # Recent character spacing (points)
     recent_character_spacing_pt: float = DEFAULT_CHARACTER_SPACING_PT
+    # Recent hand-drawn style of vector annotations (v1.6)
+    recent_hand_drawn: bool = False
     
     # LibreOffice path (for Word/ODT support)
     libreoffice_path: str | None = None

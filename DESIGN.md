@@ -102,6 +102,7 @@ flowchart TD
 | `main_window.py` | Toolbar and hamburger-menu construction, document/project lifecycle (open/save/print/change document), menu/toolbar context-sensitivity |
 | `canvas.py` | Page rendering, fit-to-window and zoom/pan transforms, annotation selection/move/resize/drag-drop, keyboard handling, page navigation, rotation, clipboard |
 | `objects.py` | `CanvasObject` and `VectorAnnotation` hierarchy: per-type geometry, defaults, rendering, serialization |
+| `hand_drawn.py` | Pure, deterministic geometry of the hand-drawn style: wobbly polylines, rectangles, and closed-spline ellipses as `QPainterPath`s, computed in PDF points and scaled to the viewport |
 | `compositor.py` | Compositing annotations onto page bitmaps and exporting to JPG/PNG/PDF/TIFF/BMP |
 | `document_loader.py` | `DocumentLoaderRegistry`: format detection and per-format loading (PyMuPDF for PDF, LibreOffice conversion for Word/ODT, Pillow for images) |
 | `pdf_utils.py` | Thin `render_all_pages()` wrapper delegating to `DocumentLoaderRegistry` |
@@ -232,6 +233,83 @@ flowchart TD
 - **Qt's native toolbar extension is suppressed**: `QToolBar` creates a `qt_toolbar_ext_button`
   ("»") and moves controls behind it on its own. Its popup is empty for widget actions, so the
   app hides and zero-sizes that button and supplies its own `…` button and popup instead.
+- **Hand-drawn strokes are a pure function of (seed, local size)**: each
+  Checkmark/Crossmark/Line/Arrow/Rectangle/Ellipse stores `hand_drawn: bool` and
+  `hand_drawn_seed: int`. When on, `VectorAnnotation._draw_checkmark/_draw_crossmark/_draw_line/
+  _draw_arrow/_draw_rectangle/_draw_ellipse` draw a `QPainterPath` from `hand_drawn.py` instead of
+  calling `drawLine/drawRect/drawEllipse`. Each straight segment is cut into knots about every
+  12pt and every inner knot is moved sideways by a gentle bow plus jitter, then the knots are
+  joined with a Catmull-Rom spline (converted to cubic Béziers); segment endpoints get no offset.
+  Each stroke uses its own `random.Random` derived from the seed and the stroke index. Lengths
+  and deviations are computed in PDF points and multiplied by `unit` (viewport pixels per point,
+  `DPI_SCALE` times the zoom) only at the end, so the shape is identical at every zoom, in
+  `render_to_pil()` for export/print, and across repaints. A per-paint random call or pixel-based
+  spacing would make the wobble shimmer when zooming and differ between screen and export. How
+  much it wobbles is described in the next item.
+  A Rectangle is four separate wobbly sides that meet at the same corners as the straight rectangle (the stroke centre line, half a pen width in from the box).
+  The Ellipse is a single closed periodic spline with no start or end: its outline is divided
+  into knots (one per ~14pt of perimeter, at least 8), each pushed along the outward normal by
+  noise, and joined with a closed Catmull-Rom spline whose neighbour indices wrap around, so the
+  curve is C1-continuous where the knot list begins and ends, leaving no gap, overlap, or end
+  cap. Hand-drawn shapes use round joins and caps. The shapes are not inset: a hand-drawn
+  Rectangle has its corners exactly where the straight one has them, so toggling the style does
+  not move them. The price is that wobble (and the round caps of a line at the box edge) can
+  bulge past the bounding box, and `render_to_pil()` clips at the box. Export therefore uses
+  `VectorAnnotation.render_for_compositing()`, which renders a hand-drawn annotation into an image
+  padded on every side by `_hand_drawn_export_padding_px()` (the largest possible deviation plus
+  one pen width) and places it offset by that padding, so nothing is cut off. Non-hand-drawn
+  annotations and `render_to_pil()` (used for hit-testing against the box) are unchanged.
+- **Wobbliness is a handful of constants at the top of `hand_drawn.py`**: there is no single
+  "wobble factor" and no user setting; the look comes from these values, which can be tuned by
+  looking at the reference image of `tests/feature/test_hand_drawn_annotations.py`. All
+  distances are in PDF points, so the result does not depend on zoom or output resolution.
+
+  | Constant | Value | Effect |
+  |---|---|---|
+  | `AMPLITUDE_PER_LENGTH` | 0.012 | Deviation grows by 1.2% of the stroke length, so long strokes wobble more in absolute terms |
+  | `AMPLITUDE_PER_LINE_WIDTH` | 0.4 | Deviation grows with line width, so short strokes drawn with a thick pen still read as hand-drawn |
+  | `MAX_AMPLITUDE_PER_LENGTH` | 0.04 | Upper limit: the deviation never exceeds 4% of the stroke length, so short strokes stay recognizable |
+  | `MAX_AMPLITUDE_PER_SHORT_SIDE` | 0.06 | Same limit for Rectangle/Ellipse relative to the shorter side, so thin shapes do not collapse |
+  | `KNOT_SPACING_PT`, `ELLIPSE_KNOT_SPACING_PT` | 12, 14 | Distance between spline knots: smaller means the line changes direction more often (busier wobble) |
+  | `BOW_SHARE` | 0.6 | Share of the deviation that is one smooth bend of the whole stroke; the rest is per-knot jitter |
+  | `ELLIPSE_HARMONICS`, `ELLIPSE_HARMONIC_SHARE_RANGE` | 1-3, 0.25-0.5 | Ellipse only: the lopsided "egg" irregularity |
+
+  The maximum deviation of one stroke is `deviation_amplitude_pt()` =
+  `min(0.012 * length + 0.4 * line width, 0.04 * length)` (additionally capped for Rectangle and
+  Ellipse). For example, an 80pt line at the default 1.5pt width deviates by up to
+  `0.012 * 80 + 0.4 * 1.5 = 1.56pt` (about 2% of its length; the cap of 3.2pt does not apply),
+  while the short (about 8pt) stroke of a default checkmark is held by the cap to about 0.3pt. Where that amplitude is
+  spent is decided in `wobbly_knots()` (bow plus jitter along a stroke) and
+  `wobbly_ellipse_path()` (radial noise around the outline). To make everything wobblier or
+  calmer, scale `AMPLITUDE_PER_LENGTH`, `AMPLITUDE_PER_LINE_WIDTH` and both `MAX_AMPLITUDE_*` caps
+  together; changing any constant changes every seed's shape, so the reference image must be
+  regenerated.
+- **Hand-drawn style does not affect geometry**: bounding boxes, `contains_viewport_point()`,
+  handles, endpoint snapping, and `ARROW_HEAD_SPREAD_FACTOR` padding keep using the ideal
+  straight geometry, so selection feels identical whether the style is on or off and no new
+  bounds math is needed. Hit-testing against rendered pixels
+  (`distance_to_visible_pixel`) naturally sees the wobbly pixels.
+- **Hand-drawn is a `PropertyChangeAction`**: a new `ChangeHandDrawnAction` follows
+  `ChangeLineWidthAction` (grouped in `CompositeAction` for multi-selection). The seed is set
+  once in `VectorAnnotation.__init__` (random) and never changed by the toggle, so toggling off
+  and on again restores the same look. `to_dict()`/`from_dict()`, `duplicate()`, and clipboard
+  copy carry the seed; `ProjectFile.from_annotations()`/`load_annotations()` must be extended
+  explicitly (see the project-schema note above) and write the two fields only when
+  `hand_drawn` is true, so older files and unaffected types are unchanged. Missing fields load
+  as off. The initial value of a new annotation comes from
+  `DocumentCanvas.hand_drawn_default(last_used)`: it follows the annotations already in the
+  document (all pages; off if any supporting annotation is not hand-drawn, on if all are) so a
+  document stays consistent, e.g. after opening a project, and only falls back to
+  `AppSettings.recent_hand_drawn` (default `False`) when the document has none.
+  `recent_hand_drawn` is written whenever the user toggles the property, like
+  `recent_color`/`recent_line_width_pt`. `MainWindow._add_vector()` is the only caller;
+  duplicate and paste copy the source's value.
+- **Hand-drawn toggle is a selection-toolbar item**: a checkable `QToolButton` registered with
+  `ctx_item()` like the other property controls (so it takes part in `_sync_context_toolbar()`
+  fitting and the overlay/reserve-space modes), visible when any selected annotation supports the
+  style. It is created after the Angle group on purpose: items overflow from the end, and putting
+  it earlier pushed Angle into the overflow popup at the minimum window width. It has no
+  hamburger-menu entry, matching color and width.
 
 ## 5. Testing Architecture
 
@@ -239,6 +317,10 @@ Tests are split into unit tests (`tests/unit/`) and feature tests (`tests/featur
 against reference images), plus an action-recording system (`tests/recording/`) used to produce
 new feature-test fixtures. See [TESTING.md](TESTING.md) for how to run, troubleshoot, and extend
 them.
+
+`tests/feature/test_hand_drawn_annotations.py` replays `tests/fixtures/hand_drawn_annotations.json`
+(six hand-drawn shapes of each type, with fixed seeds) and compares page 3 with its reference image.
+The reference is also meant to be looked at when tuning the wobble parameters in `hand_drawn.py`.
 
 ## 6. Distribution / Build Details
 

@@ -26,6 +26,7 @@ from .history import (
     ChangeColorAction,
     ChangeFontFamilyAction,
     ChangeFontSizeAction,
+    ChangeHandDrawnAction,
     ChangeLineWidthAction,
     CompositeAction,
     DeleteAnnotationAction,
@@ -896,6 +897,36 @@ class DocumentCanvas(QWidget):
                 line_width_pt=width_pt,
                 from_line_width_pt=old_width,
             ))
+        self._record_composite_action(actions)
+        self._invalidate_display()
+
+    def hand_drawn_default(self, last_used: bool) -> bool:
+        """Initial hand-drawn value for a new annotation: follow the annotations already in the
+        document (all pages) that support it, or `last_used` if there are none."""
+        supporting = [
+            obj for objects in self._page_objects.values() for obj in objects
+            if isinstance(obj, VectorAnnotation) and obj.supports_hand_drawn
+        ]
+        if not supporting:
+            return last_used
+        return all(obj.hand_drawn for obj in supporting)
+
+    def set_hand_drawn_selected(self, hand_drawn: bool) -> None:
+        """Switch the hand-drawn style on or off for the selected annotations that support it."""
+        selected = [
+            obj for obj in self.get_selected_annotations()
+            if isinstance(obj, VectorAnnotation) and obj.supports_hand_drawn and obj.hand_drawn != hand_drawn
+        ]
+        if not selected:
+            return
+        actions = []
+        for obj in selected:
+            actions.append(ChangeHandDrawnAction(
+                object_id=self._stable_id_for(obj),
+                hand_drawn=hand_drawn,
+                from_hand_drawn=obj.hand_drawn,
+            ))
+            obj.hand_drawn = hand_drawn
         self._record_composite_action(actions)
         self._invalidate_display()
 

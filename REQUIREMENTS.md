@@ -738,3 +738,49 @@ changing the exported document's resolution or annotation geometry.
 
 See [FUNCTIONAL_SPECIFICATION.md §4.6](FUNCTIONAL_SPECIFICATION.md#46-document-zoom) for the
 interaction and view behavior.
+
+## Version 1.6 - Hand-drawn line style
+
+Motivation: annotations are drawn with perfectly straight, geometric strokes, which looks
+rigid and formal. Users want an optional sketch-like look (as in Balsamiq Mockups) so
+annotations read as informal, hand-marked notes.
+
+1. The annotations composed of lines shall have a "Hand-drawn" on/off property. Text and
+   Signature/Image are unaffected.
+2. When on, each stroke (a checkmark's or crossmark's strokes, a line, an arrow's shaft and
+   head, a shape's outline) shall be rendered as a slightly wobbly, imperfect path that still
+   follows the annotation's geometry. It shall keep the annotation's color and width, and
+   shall start and end at the same points as the straight version. An ellipse outline has no
+   start or end: it shall be one continuous wobbly closed curve.
+3. The hand-drawn look shall be stable. It shall not change between repaints, zoom levels,
+   moves, selection changes, undo/redo, or save and reload. Resizing or rotating the
+   annotation may change it. Each annotation shall store its own seed for the randomness.
+   Two annotations with identical geometry may look different, and the same annotation shall
+   look the same on screen, in print, and in export.
+4. The deviation from the ideal path shall scale with the annotation's size and line width. It
+   shall stay small enough that the annotation's meaning is unchanged. Switching the style
+   shall not move the annotation: for example, a rectangle keeps its corners. The wobble may
+   bulge slightly past the bounding box, and print and export shall not cut it off. Selection,
+   hit-testing, and resize handles shall continue to use the ideal (straight) geometry.
+5. The property shall be a toggle in the selection-properties toolbar row. It shall be visible
+   only when at least one selected annotation supports it, consistent with the other property
+   controls.
+6. The initial value of the property of a newly created annotation of a supported type shall
+   be chosen by the first rule that applies:
+   1. If any annotation in the document (on any page) supports the property and is not
+      hand-drawn, the new annotation shall not be hand-drawn.
+   2. Otherwise, if the document has annotations that support the property (so all of them are
+      hand-drawn), the new annotation shall be hand-drawn.
+   3. Otherwise (no such annotation in the document), the last-used value of the property
+      (the most recent value set by the user) shall apply, as for color and line width. It
+      shall initially be **off**, so existing documents and new annotations look as they do
+      today. It is stored with the other application settings (see Version 1.2.3), not in the
+      document.
+   This keeps a document consistent, for example after opening a project: new annotations
+   look like the ones already there.
+7. The property of an annotation shall be stored with the annotation: it shall be saved with the
+   document's annotations, restored on reload, and retained by copy and paste, and data saved
+   without it shall load as off.
+
+See [FUNCTIONAL_SPECIFICATION.md §7.10](FUNCTIONAL_SPECIFICATION.md#710-hand-drawn-style) for the
+behavior.

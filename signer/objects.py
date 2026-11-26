@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import random
 import re
 from datetime import datetime, timezone
 from enum import Enum
@@ -33,6 +34,12 @@ from .constants import (
     DPI_SCALE,
     FONT_SIZE_STEPS_PT,
     LINE_WIDTH_STEPS_PT,
+)
+from .hand_drawn import (
+    add_wobbly_polyline,
+    deviation_amplitude_pt,
+    wobbly_ellipse_path,
+    wobbly_rectangle_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,6 +91,9 @@ VECTOR_WITH_WIDTH: set[AnnotationType] = {
     AnnotationType.ELLIPSE,
     AnnotationType.ARROW,  # v1.2.24
 }
+
+# v1.6: Annotation types that support the hand-drawn style (everything made of strokes)
+HAND_DRAWN_TYPES: set[AnnotationType] = VECTOR_WITH_WIDTH
 
 LARGE_DEFAULT_TYPES: set[AnnotationType] = {
     AnnotationType.LINE,
@@ -515,12 +525,19 @@ class VectorAnnotation(CanvasObject):
         font_size_pt: int = DEFAULT_TEXT_FONT_PT,
         line_width_pt: float = DEFAULT_LINE_WIDTH_PT,  # v1.2.22
         character_spacing_pt: float = DEFAULT_CHARACTER_SPACING_PT,
+        hand_drawn: bool = False,
+        hand_drawn_seed: int | None = None,
     ) -> None:
         self._font_family = font_family
         self._font_size_pt = font_size_pt
         self._character_spacing_pt = character_spacing_pt
         self._line_width_pt = line_width_pt  # v1.2.22
         self._angle: float | None = None  # Rotation angle in degrees for LINE/ARROW
+        self.hand_drawn = bool(hand_drawn) and ann_type in HAND_DRAWN_TYPES
+        # Fixes the wobble of the hand-drawn style; never changes once the annotation exists.
+        self.hand_drawn_seed = (
+            random.randrange(1 << 31) if hand_drawn_seed is None else int(hand_drawn_seed)
+        )
         if ann_type == AnnotationType.TEXT:
             # Text box: 180×36 points, scale for 300 DPI rendering
             super().__init__(x, y, 180.0 * DPI_SCALE, 36.0 * DPI_SCALE, page)
@@ -987,22 +1004,77 @@ class VectorAnnotation(CanvasObject):
         if drawer is not None:
             drawer(painter, vx, vy, vw, vh, doc_scale)
 
+    @property
+    def supports_hand_drawn(self) -> bool:
+        return self.ann_type in HAND_DRAWN_TYPES
+
+    @property
+    def _draws_hand_drawn(self) -> bool:
+        return self.hand_drawn and self.supports_hand_drawn
+
+    def _hand_drawn_unit(self, vw: float) -> float:
+        """Viewport pixels per PDF point, the scale in which the wobble is computed."""
+        zoom = vw / self.scaled_width if self.scaled_width else 1.0
+        return DPI_SCALE * abs(zoom)
+
+    def _wobbly_strokes_path(self, strokes: list[list[QPointF]], vw: float) -> QPainterPath:
+        """Path of independent open strokes, each segment drawn as its own wobbly line."""
+        path = QPainterPath()
+        unit = self._hand_drawn_unit(vw)
+        stroke_index = 0
+        for points in strokes:
+            add_wobbly_polyline(path, points, self.hand_drawn_seed, stroke_index, unit, self._line_width_pt)
+            stroke_index += len(points) - 1
+        return path
+
+    def _draw_hand_drawn_strokes(
+        self, painter: QPainter, strokes: list[list[QPointF]], vw: float, doc_scale: float,
+    ) -> None:
+        painter.setPen(self._pen(doc_scale))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPath(self._wobbly_strokes_path(strokes, vw))
+
+    def _hand_drawn_export_padding_px(self, width_px: int, height_px: int) -> int:
+        """Pixels of room needed around the bounding box so the wobble, which may bulge past
+        it, is not clipped when rendering for export."""
+        if not self._draws_hand_drawn:
+            return 0
+        unit = DPI_SCALE
+        deviation_pt = deviation_amplitude_pt(max(width_px, height_px) / unit, self._line_width_pt)
+        pen_px = max(1.5, self._line_width_pt * DPI_SCALE)
+        return math.ceil(deviation_pt * unit + pen_px)
+
     def _draw_checkmark(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
         m = min(vw, vh) * SYMBOL_MARGIN_FACTOR
         painter.setPen(self._pen(doc_scale))
         painter.setBrush(Qt.NoBrush)
+        corners = [
+            QPointF(vx + m, vy + vh * CHECKMARK_LOWER_VERTEX_Y_FACTOR),
+            QPointF(vx + vw * CHECKMARK_MIDDLE_VERTEX_X_FACTOR, vy + vh - m),
+            QPointF(vx + vw - m, vy + m),
+        ]
+        if self._draws_hand_drawn:
+            self._draw_hand_drawn_strokes(painter, [corners], vw, doc_scale)
+            return
         path = QPainterPath()
-        path.moveTo(vx + m, vy + vh * CHECKMARK_LOWER_VERTEX_Y_FACTOR)
-        path.lineTo(vx + vw * CHECKMARK_MIDDLE_VERTEX_X_FACTOR, vy + vh - m)
-        path.lineTo(vx + vw - m, vy + m)
+        path.moveTo(corners[0])
+        path.lineTo(corners[1])
+        path.lineTo(corners[2])
         painter.drawPath(path)
 
     def _draw_crossmark(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
         m = min(vw, vh) * SYMBOL_MARGIN_FACTOR
         painter.setPen(self._pen(doc_scale))
         painter.setBrush(Qt.NoBrush)
-        painter.drawLine(QPointF(vx + m, vy + m), QPointF(vx + vw - m, vy + vh - m))
-        painter.drawLine(QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m))
+        diagonals = [
+            [QPointF(vx + m, vy + m), QPointF(vx + vw - m, vy + vh - m)],
+            [QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m)],
+        ]
+        if self._draws_hand_drawn:
+            self._draw_hand_drawn_strokes(painter, diagonals, vw, doc_scale)
+            return
+        for start, end in diagonals:
+            painter.drawLine(start, end)
 
     def _draw_line(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
         pen = QPen(self.color)
@@ -1011,22 +1083,45 @@ class VectorAnnotation(CanvasObject):
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         points = self._line_endpoint_points_viewport(vx, vy, vw, vh)
+        if self._draws_hand_drawn:
+            self._draw_hand_drawn_strokes(painter, [points], vw, doc_scale)
+            return
         painter.drawLine(points[0], points[1])
 
     def _draw_rectangle(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
         pen = QPen(self.color)
         pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
         pen.setJoinStyle(Qt.MiterJoin)
-        painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
+        if self._draws_hand_drawn:
+            pen.setJoinStyle(Qt.RoundJoin)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            half_pw = pen.widthF() / 2.0
+            rect = QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF())
+            painter.drawPath(
+                wobbly_rectangle_path(rect, self.hand_drawn_seed, self._hand_drawn_unit(vw), self._line_width_pt)
+            )
+            return
+        painter.setPen(pen)
         half_pw = pen.widthF() / 2.0
         painter.drawRect(QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF()))
 
     def _draw_ellipse(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
         pen = QPen(self.color)
         pen.setWidthF(max(1.5, self._line_width_pt * DPI_SCALE * doc_scale))
-        painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
+        if self._draws_hand_drawn:
+            pen.setJoinStyle(Qt.RoundJoin)
+            pen.setCapStyle(Qt.RoundCap)
+            painter.setPen(pen)
+            half_pw = pen.widthF() / 2.0
+            rect = QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF())
+            painter.drawPath(
+                wobbly_ellipse_path(rect, self.hand_drawn_seed, self._hand_drawn_unit(vw), self._line_width_pt)
+            )
+            return
+        painter.setPen(pen)
         half_pw = pen.widthF() / 2.0
         painter.drawEllipse(QRectF(vx + half_pw, vy + half_pw, vw - pen.widthF(), vh - pen.widthF()))
 
@@ -1068,6 +1163,11 @@ class VectorAnnotation(CanvasObject):
         pen.setJoinStyle(Qt.RoundJoin)
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
+        if self._draws_hand_drawn:
+            self._draw_hand_drawn_strokes(
+                painter, [[tail, tip], [tip, left_tip], [tip, right_tip]], vw, doc_scale,
+            )
+            return
         painter.drawLine(tail, tip)
         painter.drawLine(tip, left_tip)
         painter.drawLine(tip, right_tip)
@@ -1075,13 +1175,35 @@ class VectorAnnotation(CanvasObject):
     # ------------------------------------------------------------------ PIL render
 
     def render_to_pil(self) -> Image.Image:
+        return self._render_to_pil(0)
+
+    def render_for_compositing(self) -> tuple[Image.Image, float, float]:
+        """Like the base class, but a hand-drawn annotation is rendered with room around its
+        bounding box so wobble that bulges past the box is not cut off."""
         w = max(1, round(self._base_width * self.scale))
         h = max(1, round(self._base_height * self.scale))
+        padding = self._hand_drawn_export_padding_px(w, h)
+        if padding == 0:
+            return super().render_for_compositing()
+        unrotated = self._render_to_pil(padding)
+        angle = self.rotation % 360.0
+        image = unrotated
+        if abs(angle) >= 1e-9:
+            image = unrotated.rotate(-angle, expand=True, resample=Image.Resampling.BICUBIC)
+        center_x = self.x + self.scaled_width / 2.0
+        center_y = self.y + self.scaled_height / 2.0
+        return image, center_x - image.width / 2.0, center_y - image.height / 2.0
+
+    def _render_to_pil(self, padding: int) -> Image.Image:
+        """Render the annotation's box with `padding` transparent pixels added on every side."""
+        box_w = max(1, round(self._base_width * self.scale))
+        box_h = max(1, round(self._base_height * self.scale))
+        w, h = box_w + 2 * padding, box_h + 2 * padding
         qimage = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
         qimage.fill(Qt.transparent)
         painter = QPainter(qimage)
         painter.setRenderHint(QPainter.Antialiasing)
-        self._draw_symbol(painter, 0.0, 0.0, float(w), float(h), doc_scale=1.0)
+        self._draw_symbol(painter, float(padding), float(padding), float(box_w), float(box_h), doc_scale=1.0)
         painter.end()
         qimage = qimage.convertToFormat(QImage.Format_RGBA8888)
         ptr = qimage.bits()
@@ -1106,6 +1228,8 @@ class VectorAnnotation(CanvasObject):
             font_size_pt=self._font_size_pt,
             character_spacing_pt=self._character_spacing_pt,
             line_width_pt=self._line_width_pt,  # v1.2.22
+            hand_drawn=self.hand_drawn,
+            hand_drawn_seed=self.hand_drawn_seed,
         )
         obj.scale = self.scale
         obj.rotation = self.rotation
@@ -1135,6 +1259,9 @@ class VectorAnnotation(CanvasObject):
         data["natural_height"] = self._natural_height
         if self._angle is not None:
             data["angle"] = self._angle
+        if self._draws_hand_drawn:
+            data["hand_drawn"] = True
+            data["hand_drawn_seed"] = self.hand_drawn_seed
         return data
 
     @classmethod
@@ -1151,6 +1278,8 @@ class VectorAnnotation(CanvasObject):
             font_size_pt=data.get("font_size_pt", DEFAULT_TEXT_FONT_PT),
             character_spacing_pt=data.get("character_spacing_pt", DEFAULT_CHARACTER_SPACING_PT),
             line_width_pt=data.get("line_width_pt", DEFAULT_LINE_WIDTH_PT),  # v1.2.22
+            hand_drawn=bool(data.get("hand_drawn", False)),
+            hand_drawn_seed=data.get("hand_drawn_seed"),
         )
         obj._base_width = data["base_width"]
         obj._base_height = data["base_height"]
@@ -1262,6 +1391,9 @@ class ProjectFile:
                 data["natural_height"] = obj._natural_height
                 if obj._angle is not None:
                     data["angle"] = obj._angle
+                if obj._draws_hand_drawn:
+                    data["hand_drawn"] = True
+                    data["hand_drawn_seed"] = obj.hand_drawn_seed
             serialized_annotations.append(data)
 
         return {

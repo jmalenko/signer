@@ -1097,6 +1097,35 @@ class ChangeLineWidthAction(PropertyChangeAction):
         )
 
 
+@Action.register("change_hand_drawn")
+class ChangeHandDrawnAction(PropertyChangeAction):
+    """Action: Switch the hand-drawn style of vector annotations on or off."""
+
+    action_type_str = "change_hand_drawn"
+    data_key = "hand_drawn"
+    from_data_key = "from_hand_drawn"
+    attr_name = "hand_drawn"
+
+    def __init__(self, object_id: int | None = None, hand_drawn: bool = False, from_hand_drawn: bool | None = None) -> None:
+        """Initialize hand-drawn style change action.
+
+        Args:
+            object_id: ID of object
+            hand_drawn: New hand-drawn state
+            from_hand_drawn: Previous hand-drawn state (for undo)
+        """
+        self._init_property_data(object_id, hand_drawn, from_hand_drawn, always_include_object_id=True)
+
+    @classmethod
+    def from_data(cls, data: dict[str, Any]) -> ChangeHandDrawnAction:
+        """Create action from serialized data."""
+        return cls(
+            object_id=data.get("object_id"),
+            hand_drawn=bool(data.get("hand_drawn", False)),
+            from_hand_drawn=data.get("from_hand_drawn"),
+        )
+
+
 @Action.register("change_font_size")
 class ChangeFontSizeAction(PropertyChangeAction):
     """Action: Change font size of text annotations."""

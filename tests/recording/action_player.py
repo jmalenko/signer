@@ -17,6 +17,15 @@ from signer.history import (
 from signer.main_window import MainWindow
 from signer.objects import AnnotationType, CanvasObject
 
+# Types whose recorded width/height are applied when the annotation is added. Line, Arrow and
+# Text are excluded: their geometry is set by endpoint resizes or by fitting the text.
+SIZED_ON_ADD_TYPES = {
+    AnnotationType.CHECKMARK,
+    AnnotationType.CROSSMARK,
+    AnnotationType.RECTANGLE,
+    AnnotationType.ELLIPSE,
+}
+
 
 def normalize_recorded_path(path: str | Path) -> str:
     """Normalize fixture paths written with either Windows or POSIX separators."""
@@ -162,6 +171,21 @@ class ActionPlayer:
                 if hasattr(self.canvas.selected, 'fit_text_box'):
                     self.canvas.selected.fit_text_box()
             
+            # Plain-resize types take the recorded size directly, so no separate resize is needed
+            if (
+                ann_type in SIZED_ON_ADD_TYPES
+                and "width" in action
+                and "height" in action
+            ):
+                self.canvas.selected.set_scaled_size(float(action["width"]), float(action["height"]))
+
+            # Hand-drawn style (v1.6); an explicit seed makes the wobble reproducible
+            if hasattr(self.canvas.selected, 'hand_drawn'):
+                if "hand_drawn" in action:
+                    self.canvas.selected.hand_drawn = bool(action["hand_drawn"])
+                if "hand_drawn_seed" in action:
+                    self.canvas.selected.hand_drawn_seed = int(action["hand_drawn_seed"])
+
             self.canvas.objectChanged.emit()
             self.canvas.update()
             

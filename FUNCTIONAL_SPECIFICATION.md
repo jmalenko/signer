@@ -84,6 +84,7 @@ dark color schemes):
 | Font combo | Text annotations only |
 | Spacing spinner | Character spacing in points; text annotations only |
 | Angle spinner | Rotation in degrees; all annotation types |
+| Hand-drawn toggle | Checkable "✎ Hand-drawn" button; sketch-like stroke style (all vector types except Text; see [§7.10](#710-hand-drawn-style)) |
 
 Font Size, Font, and Spacing are independent toolbar items and overflow from right to left as
 the available width decreases. Angle and its reset button remain grouped as one atomic item.
@@ -205,6 +206,7 @@ selected annotations that support that property):
 | Font family combo | hidden | hidden | hidden | hidden | hidden | hidden | ✓ | hidden |
 | Character spacing spinner | hidden | hidden | hidden | hidden | hidden | hidden | ✓ | hidden |
 | Angle spinner | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Hand-drawn toggle | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | hidden | hidden |
 
 When nothing is selected, all annotation-specific property controls are hidden; in overlay mode
 (§2.1) the whole selection-properties row also collapses, while in reserve-space mode its height
@@ -511,7 +513,7 @@ top-right corner); for Line/Arrow this can flip the line's effective direction.
 
 ### 7.7 Duplicate & default placement
 
-- **Duplicate** preserves size and color, offsetting the copy by 20px (`DUPLICATE_OFFSET`).
+- **Duplicate** preserves size, color, and hand-drawn style (§7.10), offsetting the copy by 20px (`DUPLICATE_OFFSET`).
 - New annotations default to the **center of the current page**: `x = (page_width -
   object_width)/2`, `y = (page_height - object_height)/2`, clamped to page bounds.
 
@@ -520,7 +522,8 @@ top-right corner); for Line/Arrow this can flip the line's effective direction.
 The color and line-width toolbar controls are visible only when a compatible annotation is
 selected (§2.3); there is no toolbar control for either when nothing is selected. Changing a
 control updates the selected annotation(s) directly, and as a side effect also becomes the
-default applied to the next newly-added annotation.
+default applied to the next newly-added annotation. The Hand-drawn toggle (§7.10) follows the
+same visibility rule; its default additionally looks at the annotations already in the document.
 
 ### 7.9 Rotation
 
@@ -543,6 +546,52 @@ default applied to the next newly-added annotation.
   endpoints rigidly around its center.
 - Rotation changes are undoable and redoable. Duplicate, cut, copy, and paste preserve the
   angle. Export and print render the same orientation shown on the canvas.
+
+### 7.10 Hand-drawn style
+
+Applies to Checkmark, Crossmark, Line, Arrow, Rectangle / Square, and Ellipse / Circle. Text and
+Signature / Image have no such property.
+
+- Each supported annotation has a boolean **hand-drawn** property, edited with the "Hand-drawn"
+  toggle in the selection-properties area (§2.1, §2.3). The toggle is visible when at least one
+  selected annotation supports it and shows the primary selected annotation's value; clicking it
+  applies the new value to every selected supported annotation and ignores the others. There is
+  no keyboard shortcut.
+- When off, the annotation is drawn exactly as before. When on, an annotation that is composed
+  of lines (Checkmark, Crossmark, Line, Arrow, Rectangle / Square) is composed of wobbly lines
+  instead, drawn as slightly wobbly paths with the annotation's color, width, and round
+  caps/joins.
+- An Ellipse / Circle is one continuous closed curve with no start or end: its outline is
+  divided into several segments joined by a smooth spline, and the wobble is applied around the
+  whole outline, so no seam, gap, or overlap is visible where it would otherwise begin and end.
+- The endpoints of each wobbly line are exactly those of the straight version; only the interior
+  of each line deviates. The deviation grows with the stroke's length and line width, but is
+  capped to a small fraction of the line's length (and, for Rectangle and Ellipse, of the shorter
+  side) so the shape stays recognizable. A Rectangle's corners are exactly where the straight
+  Rectangle has them, so switching the style on or off does not move them. The wobble may bulge
+  slightly past the bounding box; print and export leave room for it, so it is never cut off.
+- The wobble is fully determined by the annotation's **seed**, an integer chosen at random when
+  the annotation is created, together with its local size. It is therefore identical across
+  repaints, zoom levels, moves, rotation, selection, undo/redo, save/reload, copy/paste, and
+  on-screen, printed, and exported rendering. Resizing changes the local size and so may change
+  the wobble. Duplicate and copy/paste preserve the seed (the copy looks identical); separately
+  created annotations get different seeds and so look different even when their geometry matches.
+- Selection boundary, resize handles, hit-testing, snapping (§7.5), and bounding-box rules (§7.1)
+  always use the ideal straight geometry, never the wobbly path.
+- Toggling the property is undoable; a toggle on a multi-selection is a single undo entry.
+- A newly created annotation of a supported type (Add menu/toolbar; not Duplicate or Paste, which
+  copy the source's value) gets its initial hand-drawn value from the first rule that applies. The
+  document means all of its pages, and only annotations that support the property are considered:
+  1. If any of them is not hand-drawn, the new annotation is **not** hand-drawn.
+  2. Otherwise, if there are any (so all are hand-drawn), the new annotation **is** hand-drawn.
+  3. Otherwise (the document has none) the last-used value applies: the most recently set value,
+     like color and width (§7.8). It is initially **off**, so existing and new annotations look as
+     before until the user turns it on, and is persisted as `recent_hand_drawn` (§15).
+
+  The rules choose only the initial value; the user can still change it with the toggle, which
+  also updates the last-used value. Text ignores the property.
+- The property and seed are stored in project files, action recording, and the clipboard (§16);
+  data without them loads as hand-drawn off.
 
 ---
 
@@ -639,9 +688,9 @@ The clipboard uses the same JSON annotation schema as project files and action r
   finalization time (adds `from_x`/`from_y` etc.) — both formats use the same action classes and
   serialization, so no separate conversion step exists.
 - **Undoable actions**: add, delete, move, resize, color change (annotation or default),
-  set text, duplicate, cut/copy/paste (incl. multi-selection), select, rotate annotation or page
-  (current or all), and multi-selection variants of delete/duplicate/color/width/rotation change
-  as single units.
+  set text, hand-drawn toggle (§7.10), duplicate, cut/copy/paste (incl. multi-selection), select,
+  rotate annotation or page (current or all), and multi-selection variants of
+  delete/duplicate/color/width/hand-drawn/rotation change as single units.
 - Undoing a page rotation restores each affected page's own previous angle, so rotating one page
   and then all pages does not collapse them to a single shared orientation.
 - Performing a new action while in an undone state clears the redo stack.
@@ -741,6 +790,7 @@ Stored as JSON in `config.json` (location depends on portable vs installed mode,
 | `recent_font_family` | string | `Arial` | Last-used text font family |
 | `recent_font_size_pt` | int | `11` | Last-used text font size |
 | `recent_character_spacing_pt` | float | `0.0` | Last-used text character spacing |
+| `recent_hand_drawn` | bool | `false` | Last-used hand-drawn style (§7.10) |
 | `libreoffice_path` | string \| null | `null` | Manual LibreOffice executable override |
 | `last_save_directory` | string \| null | `null` | Last save location |
 | `last_export_format` | string | `jpg` | Last-used export format |
@@ -796,8 +846,10 @@ UTF-8 JSON. Root object contains exactly:
   `annotation_type`, `x`, `y`, `width`, `height`, optional `page`, and only the type-specific
   fields needed to restore appearance (text/font properties, color, etc.). The optional
   `rotation` field stores the normalized clockwise annotation angle in degrees and defaults to
-  `0` when absent, preserving compatibility with existing files. There is no separate
-  project-only annotation schema.
+  `0` when absent, preserving compatibility with existing files. Checkmark, Crossmark, Line,
+  Arrow, Rectangle, and Ellipse entries additionally store `hand_drawn` (boolean) and `hand_drawn_seed` (integer, §7.10)
+  only when `hand_drawn` is true; absent means off. There is no separate project-only annotation
+  schema.
 - `width`/`height` are current rendered dimensions; when a `scale` field is present, base
   (unscaled) dimensions are derived by dividing by it, so scaling applies exactly once on load.
 - Per-page rotations (§10) are stored in the optional `rotations` map (page index → angle),

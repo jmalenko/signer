@@ -761,6 +761,15 @@ class MainWindow(QMainWindow):
             self._angle_label, self._angle_spinner, self._reset_angle_btn
         ))
 
+        # v1.6: Hand-drawn style toggle (all vector types except TEXT); last, so it is the first control to overflow
+        self._hand_drawn_btn = QToolButton()
+        self._hand_drawn_btn.setText("✎ Hand-drawn")
+        self._hand_drawn_btn.setCheckable(True)
+        self._hand_drawn_btn.setAutoRaise(True)
+        self._hand_drawn_btn.setToolTip("Draw the lines of the annotation with a hand-drawn look")
+        self._hand_drawn_btn.toggled.connect(self._on_hand_drawn_toggled)
+        ctx_item(self._hand_drawn_btn)
+
         # Add stretch to push hamburger menu to the right
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -1454,12 +1463,13 @@ class MainWindow(QMainWindow):
 
         color_visible = self._update_color_control_visibility(selected, has_selection)
         width_visible = self._update_width_control_visibility(selected, has_selection)
+        hand_drawn_visible = self._update_hand_drawn_control_visibility(selected)
         font_visible = self._update_font_control_visibility(selected, has_selection)
         angle_visible = self._update_angle_control_visibility(selected, has_selection)
 
         # Single separator before the whole property group; shown only if something in it is visible.
         self._properties_separator_action.setVisible(
-            color_visible or width_visible or font_visible or angle_visible
+            color_visible or width_visible or hand_drawn_visible or font_visible or angle_visible
         )
 
         self._update_page_nav_separator_visibility()
@@ -1497,6 +1507,19 @@ class MainWindow(QMainWindow):
             # Reflect the selected annotation's actual width (e.g. after a [ / ] shortcut).
             self._set_value_silently(self._width_spinner, selected._line_width_pt)
         return width_visible
+
+    def _update_hand_drawn_control_visibility(self, selected) -> bool:
+        """Hand-drawn toggle: visible when any selected annotation supports it (v1.6); it shows
+        the primary selected annotation's value, or the first supporting one's otherwise."""
+        supporting = [
+            obj for obj in self.canvas.get_selected_annotations()
+            if isinstance(obj, VectorAnnotation) and obj.supports_hand_drawn
+        ]
+        self._hand_drawn_btn.setVisible(bool(supporting))
+        if supporting:
+            reference = selected if selected in supporting else supporting[0]
+            self._set_value_silently(self._hand_drawn_btn, reference.hand_drawn, "setChecked")
+        return bool(supporting)
 
     def _update_font_control_visibility(self, selected, has_selection: bool) -> bool:
         """Font size/family/spacing controls: visible only for TEXT annotations (v1.2.22)."""
@@ -1618,6 +1641,12 @@ class MainWindow(QMainWindow):
                 self._settings.recent_line_width_pt = value
                 self._save_settings_safe()
 
+    def _on_hand_drawn_toggled(self, checked: bool) -> None:
+        """Handle the hand-drawn toggle: apply to the selection and remember it for new annotations."""
+        self.canvas.set_hand_drawn_selected(checked)
+        self._settings.recent_hand_drawn = checked
+        self._save_settings_safe()
+
     def _on_font_size_changed(self, value: int) -> None:
         """Handle font size spinner changes."""
         selected = self.canvas.selected
@@ -1710,6 +1739,7 @@ class MainWindow(QMainWindow):
             font_size_pt=self._settings.recent_font_size_pt,
             character_spacing_pt=self._settings.recent_character_spacing_pt,
             line_width_pt=self._settings.recent_line_width_pt,
+            hand_drawn=self.canvas.hand_drawn_default(self._settings.recent_hand_drawn),
         )
         obj.color = QColor(self._current_color)
         x, y = self.canvas.default_position_for(obj)
