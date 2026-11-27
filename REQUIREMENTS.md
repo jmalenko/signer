@@ -841,3 +841,18 @@ relative, which means nothing from another working directory.
    file was opened (dialog, recent list, drag-and-drop, command line).
 2. Opening a file that is already listed, by a relative or an absolute path, shall move that one
    entry to the front instead of adding a second one.
+
+## Version 1.8.2 - Bugfix: Text box fits the text at negative character spacing
+
+Bug: With a negative character spacing, the last characters of a text annotation stick out of its
+bounding box, so the box is narrower than the text.
+
+Steps to reproduce: Add a text annotation "WWW" and set its character spacing to -3pt.
+
+Expected: The bounding box contains the whole text. Actual: The text is about 11 pixels wider than
+the box; the more negative the spacing, the larger the overflow.
+
+1. The bounding box of a text annotation shall contain the whole text at any character spacing,
+   positive, zero, or negative, on the canvas as well as in the export.
+2. The spacing that follows the last character of a line is not part of the text, so it shall not
+   make the box wider (positive spacing) or narrower (negative spacing).

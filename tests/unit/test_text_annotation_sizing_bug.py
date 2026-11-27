@@ -21,32 +21,27 @@ def test_new_text_bounding_box_contains_rendered_font(qapp):
     assert annotation._base_height >= metrics.height()
 
 
-@pytest.mark.parametrize(
-    "spacing",
-    [
-        0.0,
-        pytest.param(
-            -3.0,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="known bug: with negative spacing the box is narrower than the exported text",
-            ),
-        ),
-    ],
-)
-def test_text_box_keeps_rightmost_glyph_inside(qapp, spacing):
+def exported_text_ink(text: str, spacing: float) -> tuple[VectorAnnotation, tuple[int, int, int, int]]:
     annotation = VectorAnnotation(
-        AnnotationType.TEXT,
-        100,
-        100,
-        text="WWW",
-        font_size_pt=12,
-        character_spacing_pt=spacing,
+        AnnotationType.TEXT, 100, 100, text=text, font_size_pt=12, character_spacing_pt=spacing,
     )
-    bbox = export_to_page(annotation).getchannel("A").getbbox()
+    return annotation, export_to_page(annotation).getchannel("A").getbbox()
+
+
+@pytest.mark.parametrize("text", ["WWW", "Hello World", "WWW\nW"])
+@pytest.mark.parametrize("spacing", [-6.0, -3.0, 0.0, 3.0, 6.0])
+def test_text_box_contains_the_exported_text_at_any_character_spacing(qapp, text, spacing):
+    annotation, bbox = exported_text_ink(text, spacing)
     assert bbox is not None
     assert bbox[0] >= 100 - 1  # anti-aliasing may bleed one pixel
-    assert bbox[2] <= 100 + annotation.scaled_width
+    assert bbox[2] <= 100 + annotation.scaled_width + 1
+
+
+# ---- documents the bug (to be deleted after review)
+
+def test_BUG_text_box_is_narrower_than_the_text_at_negative_character_spacing(qapp):
+    annotation, bbox = exported_text_ink("WWW", -3.0)
+    assert bbox[2] > 100 + annotation.scaled_width + 5
 
 
 def test_toolbar_property_labels_do_not_show_units(main_window):

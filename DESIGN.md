@@ -201,7 +201,11 @@ flowchart TD
   applies absolute spacing in 300-DPI pixels for both `QFontMetricsF` boundary fitting and Qt
   painting. View painting scales font size and spacing together, keeping the canvas, exported
   image, and selection geometry consistent. Spacing is stored in PDF points and defaults to zero
-  when loading older annotation or project data.
+  when loading older annotation or project data. The line extent used for fitting the box and for
+  positioning the text comes from `VectorAnnotation._text_line_extent()`: Qt's bounding rectangle
+  ends after the spacing that follows the last character, and with a negative spacing it is too
+  narrow or even empty, so that spacing is taken off and, for a negative spacing, the glyph
+  outline is taken into account too.
 - **Non-native Save As dialog**: Qt's native file dialogs don't expose their filename `QLineEdit`
   for real-time monitoring. Using a Qt-rendered dialog (`DontUseNativeDialog`) trades the native
   OS look for the ability to auto-correct the filename (page placeholder, extension) as the user

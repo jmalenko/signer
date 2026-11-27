@@ -948,6 +948,27 @@ class VectorAnnotation(CanvasObject):
         )
         return f
 
+    @staticmethod
+    def _text_line_extent(font: QFont, line: str) -> tuple[float, float]:
+        """Return the (left, right) extent of the text line, including the whitespace.
+
+        Qt's bounding rectangle ends after the spacing that follows the last character, so the
+        spacing is taken off again. With a negative spacing it makes the rectangle too narrow,
+        or even empty, so the outline of the glyphs is used as well.
+        """
+        rect = QFontMetricsF(font).boundingRect(line)
+        spacing = font.letterSpacing()
+        left = rect.left()
+        right = rect.right() - spacing if rect.width() > 0 else rect.right()
+        if spacing < 0:
+            outline = QPainterPath()
+            outline.addText(QPointF(0.0, 0.0), font, line)
+            if not outline.isEmpty():
+                bounds = outline.boundingRect()
+                left = min(left, bounds.left())
+                right = max(right, bounds.right())
+        return left, right
+
     def fit_text_box(self) -> None:
         """Resize the bounding box so it exactly fits the current text at the set font size."""
         if self.ann_type != AnnotationType.TEXT:
@@ -957,13 +978,14 @@ class VectorAnnotation(CanvasObject):
         try:
             if QGuiApplication.instance() is None:
                 raise RuntimeError("Qt font metrics require a GUI application")
-            fm = QFontMetricsF(self._make_font())
+            font = self._make_font()
+            fm = QFontMetricsF(font)
             left = 0.0
             right = 0.0
             for line in lines:
-                bounds = fm.boundingRect(line)
-                left = min(left, bounds.left())
-                right = max(right, bounds.right())
+                line_left, line_right = self._text_line_extent(font, line)
+                left = min(left, line_left)
+                right = max(right, line_right)
             line_h = fm.height()
             self._base_width = max(MIN_ANNOTATION_SIZE, math.ceil(right - left))
             self._base_height = max(MIN_ANNOTATION_SIZE, line_h * len(lines))
@@ -1142,7 +1164,7 @@ class VectorAnnotation(CanvasObject):
         painter.setBrush(Qt.NoBrush)
         metrics = QFontMetricsF(font)
         left = min(
-            (metrics.boundingRect(line).left() for line in (self.text or "").split("\n")),
+            (self._text_line_extent(font, line)[0] for line in (self.text or "").split("\n")),
             default=0.0,
         )
         first_line = (self.text or "").split("\n")[0]

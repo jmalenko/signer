@@ -480,7 +480,9 @@ reaches the left, bottom, top, and right edges.
   along the annotation's local horizontal axis changes character spacing without changing font
   size. The handle follows annotation rotation and spacing changes are undoable/redoable.
 - New text annotations render at the toolbar's current point size, with the boundary sized to
-  fit the full text (via Qt font metrics) without cropping, zero margin.
+  fit the full text (via Qt font metrics) without cropping, zero margin. The text is inside the
+  boundary at any character spacing; the spacing after the last character of a line does not
+  widen (or narrow) the boundary.
 - Ctrl+Enter inserts a newline in the text edit; Enter/closing the editor commits changes as
   per the current native editor behavior.
 - Toolbar font-size changes refit the boundary immediately (no click needed to force a
