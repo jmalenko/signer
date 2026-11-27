@@ -222,6 +222,35 @@ class TestSmallImageDrop:
         main_window_with_doc._on_file_drop(str(small_test_image))
         assert main_window_with_doc._has_unsaved_changes is True
     
+    def test_small_image_drop_adds_to_recent_signatures(self, main_window_with_doc, small_test_image):
+        """A dropped small image is added (absolute path, most recent first) to the signature history."""
+        other = "/other/older.png"
+        main_window_with_doc._settings.recent_signature_paths = [other]
+
+        main_window_with_doc._on_file_drop(str(small_test_image))
+
+        assert main_window_with_doc._settings.recent_signature_paths == [
+            str(small_test_image.absolute()), other
+        ]
+
+    def test_small_image_drop_twice_keeps_single_recent_entry(self, main_window_with_doc, small_test_image):
+        main_window_with_doc._on_file_drop(str(small_test_image))
+        main_window_with_doc._on_file_drop(str(small_test_image))
+
+        assert main_window_with_doc._settings.recent_signature_paths == [str(small_test_image.absolute())]
+
+    def test_big_image_drop_not_added_to_recent_signatures(self, main_window_with_doc, big_test_image):
+        with patch.object(main_window_with_doc, 'open_document'):
+            main_window_with_doc._on_file_drop(str(big_test_image))
+
+        assert main_window_with_doc._settings.recent_signature_paths == []
+
+    def test_small_image_drop_no_document_not_added_to_recent_signatures(self, main_window_no_doc, small_test_image):
+        with patch('signer.main_window.QMessageBox.critical'):
+            main_window_no_doc._on_file_drop(str(small_test_image))
+
+        assert main_window_no_doc._settings.recent_signature_paths == []
+
     def test_small_image_drop_corrupted(self, main_window_with_doc, corrupted_image):
         """Test dropping corrupted image shows error."""
         with patch('signer.main_window.QMessageBox.critical') as mock_error:

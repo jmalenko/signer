@@ -803,3 +803,13 @@ look smaller than their selected bounds.
 2. The Checkmark shall reach the left, bottom, top, and right edges of its bounding box.
 3. This geometry shall be the same in straight and hand-drawn styles; round caps may extend past
    the box.
+
+## Version 1.7 - Dropped images join the signature history
+
+Motivation: An image dropped onto the document becomes a Signature/Image annotation, but it was
+missing from the recent signatures, so the user had to browse for the same file again next time.
+
+1. A dropped image that is recognized as a signature (a small image that becomes an annotation)
+   shall be added, by its absolute path, to the history of recent signatures, exactly as if it had
+   been loaded with "From file…".
+2. Dropped documents (big images, PDFs) and drops that fail shall not change the history.

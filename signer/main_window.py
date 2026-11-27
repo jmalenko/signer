@@ -2192,6 +2192,10 @@ class MainWindow(QMainWindow):
             self._has_unsaved_changes = True
             self._update_title()
             self._update_document_workflow_state()
+
+            self._update_recent_signatures(str(Path(file_path).absolute()))
+            self._save_settings_safe()
+            self._rebuild_sig_ann_menu()
         except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
             logger.error("Error creating dropped image annotation: %s", exc)
             QMessageBox.critical(

@@ -296,6 +296,10 @@ The canvas accepts dropped files (`text/uri-list`):
 | **Small image** (fits A6 at 300 DPI, ≤1748px on both dimensions; PNG/JPG/JPEG/BMP) | Creates a Signature/Image annotation at the drop position, scaled to fit ~A6 while preserving aspect ratio | Error: *"Cannot drop image: No document is currently open"* |
 | **Big image** (exceeds A6 in any dimension) or **PDF** | Runs the unsaved-changes prompt (§4.2) if dirty, then loads the file as the document | Loads immediately as the document |
 
+A dropped small image that becomes an annotation is also added, by absolute path, to the
+recent images/signatures list (§7.3), as if it had been loaded with "From file…". Dropped
+documents (big images, PDFs) are not.
+
 Other error cases: corrupted/unsupported dropped image → *"Cannot load image: Unsupported
 format or corrupted file. Supported formats: PNG, JPG, JPEG, BMP."*; invalid/corrupted dropped
 document → *"Cannot open file: Invalid or corrupted file."*; permission error → *"Cannot open
@@ -483,7 +487,8 @@ reaches the left, bottom, top, and right edges.
 Signature and Image are unified as a single "Signature / Image" annotation type. Loading is via
 a file dialog ("From file…") or a recent-images submenu (up to 10 entries, LRU). Any image
 format supported by Pillow may be used; it is scaled to fit the bounding box while preserving
-aspect ratio. Color and line-width controls are hidden for this type.
+aspect ratio. Color and line-width controls are hidden for this type. An image dropped onto
+the canvas (§4.3) is added to the recent-images list as well.
 
 ### 7.4 Shape auto-detection (Rectangle/Square, Ellipse/Circle)
 
