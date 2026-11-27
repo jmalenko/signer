@@ -30,6 +30,17 @@ pytest
 ```
 See [TESTING.md](TESTING.md) for test selection, coverage, troubleshooting, and Ruff static analysis.
 
+**Run via the convenience launchers (repository root):**
+```bash
+signer.bat        # Windows thin wrapper -> wscript.exe -> hidden VBScript (brief cmd flash, then no console)
+./signer.sh       # macOS/Linux (chmod +x once if needed)
+signer.vbs        # Windows only – VBScript, fully windowless (no console at all)
+```
+All three scripts `cd` to the repository root, invoke `main.py` with the project's `.venv` Python,
+and forward any arguments (e.g. `-document`, `-signature`). The app itself runs with no visible console
+window; launchers may briefly flash a command prompt before closing (`signer.bat`), and `signer.vbs`
+is the most reliable zero-console option for Windows.
+
 **Build a single-file executable:**
 ```bash
 python -m PyInstaller --clean --noconfirm signer.spec

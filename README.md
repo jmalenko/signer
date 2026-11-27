@@ -48,6 +48,8 @@ python main.py -document examples/document.pdf -signature examples/signature.png
 Requires Python 3.10+. Opening Word/ODT documents additionally requires LibreOffice (optional,
 detected automatically or configured in `config.json`).
 
+For convenience, the repository root contains `signer.bat` (Windows) and `signer.sh` (macOS/Linux).
+
 To build a single-file executable, see [DESIGN.md](DESIGN.md#1-commands).
 
 ## Documentation
