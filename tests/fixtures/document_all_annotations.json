@@ -49,8 +49,8 @@
     {
       "type": "move_annotation",
       "object_id": 0,
-      "x": 285,
-      "y": 820
+      "x": 287,
+      "y": 813
     },
     {
       "type": "add_annotation",
@@ -67,8 +67,8 @@
     {
       "type": "move_annotation",
       "object_id": 1,
-      "x": 275,
-      "y": 945
+      "x": 277,
+      "y": 947
     },
     {
       "type": "add_annotation",
@@ -129,8 +129,8 @@
     {
       "type": "add_annotation",
       "annotation_type": "checkmark",
-      "x": 285,
-      "y": 820,
+      "x": 287,
+      "y": 813,
       "page": 1,
       "object_id": 5,
       "width": 83.33333333333334,
@@ -141,8 +141,8 @@
     {
       "type": "add_annotation",
       "annotation_type": "crossmark",
-      "x": 275,
-      "y": 945,
+      "x": 277,
+      "y": 947,
       "page": 1,
       "object_id": 6,
       "width": 83.33333333333334,
