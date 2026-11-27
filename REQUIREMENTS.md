@@ -943,3 +943,31 @@ first scan (and its selection).
 6. Opening an encrypted PDF shall ask for its password, like opening a document in the main
    window: up to three prompts, a password typed at any of them is accepted when correct, and
    cancelling the prompt opens nothing.
+
+## Version 1.8.5 - Bugfix: Editing annotations follows the specification
+
+Bug: Several editing actions did not do what the specification promises, mostly with more than one
+annotation selected.
+
+Steps to reproduce (examples): select two annotations with Shift+click and drag one of them: only
+the first one moves, and it jumps onto the other. Select a signature and a line: the color and
+width controls are missing. Resize a text box by 5%: the size shown in the toolbar does not match
+the drawn text.
+
+Expected: the behavior of the specification (§7.2, §7.7, §7.8, §8, §9). Actual: as described.
+
+1. Dragging any annotation of a multi-selection with the mouse shall move all of them by the same
+   distance (as one undo step); a click that does not move shall select just that annotation. A
+   multi-selection has no resize handles. A move with the mouse shall keep every type on the page.
+2. The arrow keys shall move the selection by 12pt, with Shift by 1pt (50 and about 4 pixels of the
+   300-DPI document).
+3. A property control shall be shown when at least one selected annotation supports it, and a
+   change shall apply to the annotations that support it, whichever of them is the primary
+   selection.
+4. Resizing a text box shall use the largest whole-point font size whose text fits the box.
+5. A line width, font size or character spacing that is changed with the keyboard shortcuts or by
+   resizing or dragging shall become the default of the next new annotation, as for the toolbar.
+6. Duplicating and pasting shall keep the relative positions and the stacking order of the copies
+   and keep them on the page, also for a single annotation; paste shall use the most recent copy,
+   also when it was made in another window.
+7. Rotating a group in several small steps shall end where one big step does.

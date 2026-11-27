@@ -605,21 +605,30 @@ class VectorAnnotation(CanvasObject):
         target_height = max(MIN_ANNOTATION_SIZE, height)
         width_factor = target_width / max(1.0, self.scaled_width)
         height_factor = target_height / max(1.0, self.scaled_height)
-        size_factor = min(width_factor, height_factor)
         old_font_size = self._font_size_pt
-        requested_font_size = round(old_font_size * size_factor)
+        estimate = math.floor(old_font_size * min(width_factor, height_factor) + 1e-9)
         # Clamp to the supported font-size range (not snapped to individual steps -
         # only the min/max bounds of FONT_SIZE_STEPS_PT are enforced here; the
         # `[` / `]` keyboard shortcuts are what step through the discrete sizes).
-        self._font_size_pt = max(
-            FONT_SIZE_STEPS_PT[0],
-            min(FONT_SIZE_STEPS_PT[-1], requested_font_size),
-        )
+        smallest, largest = int(FONT_SIZE_STEPS_PT[0]), int(FONT_SIZE_STEPS_PT[-1])
+
+        def fits(size: int) -> bool:
+            self._font_size_pt = size
+            self.fit_text_box()
+            return self.scaled_width <= target_width + 0.5 and self.scaled_height <= target_height + 0.5
+
+        # The largest whole-point size whose fitted box is inside the requested box; the
+        # estimate from the size ratio is only the starting point, as text does not scale
+        # exactly linearly with the font size.
+        size = max(smallest, min(largest, estimate))
+        while size > smallest and not fits(size):
+            size -= 1
+        while size < largest and fits(size + 1):
+            size += 1
+        self._font_size_pt = size
         self.fit_text_box()
-        if (
-            self._font_size_pt != old_font_size
-            and self._font_size_pt == requested_font_size
-        ):
+        if size != old_font_size and smallest <= estimate <= largest:
+            # The box keeps the requested size; resize_to_bounds() then refits it for the drag.
             self._base_width = target_width
             self._base_height = target_height
             self.scale = 1.0

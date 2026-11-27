@@ -482,6 +482,7 @@ class MainWindow(QMainWindow):
 
         self.canvas.objectChanged.connect(self._on_object_changed)
         self.canvas.viewChanged.connect(self._on_view_changed)
+        self.canvas.propertyChanged.connect(self._on_canvas_property_changed)
         self.canvas.pageChanged.connect(self._on_page_changed)
         self.canvas.zoomChanged.connect(self._update_zoom_action_state)
         self.canvas.editRequested.connect(self._on_edit_requested)
@@ -1499,6 +1500,16 @@ class MainWindow(QMainWindow):
         self._on_view_changed()
         self._has_unsaved_changes = True
 
+    def _on_canvas_property_changed(self, name: str, value) -> None:
+        """A property was changed by keyboard or mouse: it becomes the default for new annotations."""
+        attribute = {
+            "line_width": "recent_line_width_pt",
+            "font_size": "recent_font_size_pt",
+            "character_spacing": "recent_character_spacing_pt",
+        }[name]
+        setattr(self._settings, attribute, value)
+        self._save_settings_safe()
+
     def _on_view_changed(self) -> None:
         self._update_document_workflow_state()
         self._update_annotation_action_state()
@@ -1550,24 +1561,43 @@ class MainWindow(QMainWindow):
 
         self._refresh_toolbar_layout()
 
+    def _selected_supporting(self, predicate) -> list[VectorAnnotation]:
+        """The selected annotations that have a property (a control is shown when any has it)."""
+        return [obj for obj in self.canvas.get_selected_annotations() if predicate(obj)]
+
+    @staticmethod
+    def _has_color(obj) -> bool:
+        return isinstance(obj, VectorAnnotation)
+
+    @staticmethod
+    def _has_line_width(obj) -> bool:
+        return isinstance(obj, VectorAnnotation) and obj.ann_type != AnnotationType.TEXT
+
+    @staticmethod
+    def _is_text(obj) -> bool:
+        return isinstance(obj, VectorAnnotation) and obj.ann_type == AnnotationType.TEXT
+
+    def _reference_among(self, supporting: list[VectorAnnotation]):
+        """The annotation whose value a control shows: the primary selection if it supports the
+        property, otherwise the first one that does."""
+        selected = self.canvas.selected
+        return selected if selected in supporting else supporting[0]
+
     def _update_color_control_visibility(self, selected, has_selection: bool) -> bool:
         """Color control applies to vector annotations only; Signature/Image has no color control."""
-        color_visible = has_selection and isinstance(selected, VectorAnnotation)
+        color_visible = bool(self._selected_supporting(self._has_color))
         self._color_btn.setEnabled(color_visible)
         self._color_btn_action.setVisible(color_visible)
         return color_visible
 
     def _update_width_control_visibility(self, selected, has_selection: bool) -> bool:
         """Width spinner/label: visible for vector types except TEXT (v1.2.22)."""
-        width_visible = (
-            has_selection and
-            isinstance(selected, VectorAnnotation) and
-            selected.ann_type != AnnotationType.TEXT
-        )
+        supporting = self._selected_supporting(self._has_line_width)
+        width_visible = bool(supporting)
         self._width_group.setVisible(width_visible)
         if width_visible:
             # Reflect the selected annotation's actual width (e.g. after a [ / ] shortcut).
-            self._set_value_silently(self._width_spinner, selected._line_width_pt)
+            self._set_value_silently(self._width_spinner, self._reference_among(supporting)._line_width_pt)
         return width_visible
 
     def _update_hand_drawn_control_visibility(self, selected) -> bool:
@@ -1585,11 +1615,8 @@ class MainWindow(QMainWindow):
 
     def _update_font_control_visibility(self, selected, has_selection: bool) -> bool:
         """Font size/family/spacing controls: visible only for TEXT annotations (v1.2.22)."""
-        font_visible = (
-            has_selection and
-            isinstance(selected, VectorAnnotation) and
-            selected.ann_type == AnnotationType.TEXT
-        )
+        supporting = self._selected_supporting(self._is_text)
+        font_visible = bool(supporting)
         for group in (
             self._font_size_group,
             self._font_family_group,
@@ -1598,11 +1625,9 @@ class MainWindow(QMainWindow):
             group.setVisible(font_visible)
         if font_visible:
             # Reflect the selected annotation's actual font size (e.g. after a [ / ] shortcut).
-            self._set_value_silently(self._font_size_spinner, selected._font_size_pt)
-            self._set_value_silently(
-                self._character_spacing_spinner,
-                selected._character_spacing_pt,
-            )
+            reference = self._reference_among(supporting)
+            self._set_value_silently(self._font_size_spinner, reference._font_size_pt)
+            self._set_value_silently(self._character_spacing_spinner, reference._character_spacing_pt)
         return font_visible
 
     def _update_angle_control_visibility(self, selected, has_selection: bool) -> bool:
@@ -1690,14 +1715,10 @@ class MainWindow(QMainWindow):
     # v1.2.22: Line width, font size, and font family handlers
     def _on_width_changed(self, value: float) -> None:
         """Handle line width spinner changes."""
-        selected = self.canvas.selected
-        if selected is not None and isinstance(selected, VectorAnnotation):
-            from .objects import AnnotationType
-            # Only allow width change for vector types that support it
-            if selected.ann_type != AnnotationType.TEXT:
-                self.canvas.set_line_width_selected(value)
-                self._settings.recent_line_width_pt = value
-                self._save_settings_safe()
+        if self._selected_supporting(self._has_line_width):
+            self.canvas.set_line_width_selected(value)
+            self._settings.recent_line_width_pt = value
+            self._save_settings_safe()
 
     def _on_hand_drawn_toggled(self, checked: bool) -> None:
         """Handle the hand-drawn toggle: apply to the selection and remember it for new annotations."""
@@ -1707,36 +1728,21 @@ class MainWindow(QMainWindow):
 
     def _on_font_size_changed(self, value: int) -> None:
         """Handle font size spinner changes."""
-        selected = self.canvas.selected
-        if (
-            selected is not None
-            and isinstance(selected, VectorAnnotation)
-            and selected.ann_type == AnnotationType.TEXT
-        ):
+        if self._selected_supporting(self._is_text):
             self.canvas.set_font_size_selected(value)
             self._settings.recent_font_size_pt = value
             self._save_settings_safe()
 
     def _on_character_spacing_changed(self, value: float) -> None:
         """Handle character spacing changes."""
-        selected = self.canvas.selected
-        if (
-            selected is not None
-            and isinstance(selected, VectorAnnotation)
-            and selected.ann_type == AnnotationType.TEXT
-        ):
+        if self._selected_supporting(self._is_text):
             self.canvas.set_character_spacing_selected(value)
             self._settings.recent_character_spacing_pt = value
             self._save_settings_safe()
 
     def _on_font_family_changed(self, family: str) -> None:
         """Handle font family combo changes."""
-        selected = self.canvas.selected
-        if (
-            selected is not None
-            and isinstance(selected, VectorAnnotation)
-            and selected.ann_type == AnnotationType.TEXT
-        ):
+        if self._selected_supporting(self._is_text):
             self.canvas.set_font_family_selected(family)
             self._settings.recent_font_family = family
             self._save_settings_safe()

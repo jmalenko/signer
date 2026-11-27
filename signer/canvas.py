@@ -58,7 +58,7 @@ GROUP_ROTATION_HANDLE_RADIUS: float = 6.0
 logger = logging.getLogger(__name__)
 
 # Arrow-key nudge distance for selected annotations, in document points.
-KEYBOARD_MOVE_STEP_PT: float = 12.0
+KEYBOARD_MOVE_STEP_PT: float = 12.0  # points; multiplied by DPI_SCALE to get document pixels
 KEYBOARD_MOVE_FINE_STEP_PT: float = 1.0
 ZOOM_STEP: float = 1.25
 MIN_ZOOM: float = 1.0
@@ -78,6 +78,7 @@ class DocumentCanvas(QWidget):
     viewChanged = Signal()          # emitted when only what is shown changes (zoom, page, selection)
     pageChanged = Signal(int, int)  # (current_page_0indexed, total_pages)
     zoomChanged = Signal(float)
+    propertyChanged = Signal(str, object)  # ("line_width" | "font_size" | "character_spacing", value) changed by keyboard or mouse
     editRequested = Signal(object)  # CanvasObject — double-click
     fileDrop = Signal(str)          # emitted when file is dropped (file path)
     pasteIncomplete = Signal(int, int)  # (skipped_count, total_count) — some items couldn't be pasted
@@ -104,6 +105,7 @@ class DocumentCanvas(QWidget):
         self._dragging: bool = False
         self._drag_handle: int = -1
         self._cached_copy_data: list[dict] | None = None  # Cache copy data to preserve original positions
+        self._cached_copy_text: str | None = None  # Clipboard text the cache was made from
 
         self._drag_doc_offset_x: float = 0.0
         self._drag_doc_offset_y: float = 0.0
@@ -114,6 +116,10 @@ class DocumentCanvas(QWidget):
         self._drag_start_w: float = 0.0  # Initial size when resize starts
         self._drag_start_h: float = 0.0
         self._drag_start_geometry: dict = {}  # Complete geometry when a resize starts
+        self._group_drag_starts: list[tuple[CanvasObject, float, float]] = []  # members of a group move
+        self._collapse_to_on_release: CanvasObject | None = None
+        self._group_press_doc = QPointF()
+        self._group_rotation_pivot: tuple[tuple, tuple[float, float]] | None = None
         self._action_recorded_this_drag: bool = False  # Track if action was recorded yet
         self._drag_endpoint_handles: bool = False
         self._character_spacing_dragging: bool = False
@@ -491,6 +497,7 @@ class DocumentCanvas(QWidget):
             # Single selection - original behavior
             dup = self._selected.duplicate()
             dup.page = self._current_page
+            self._shift_group_into_page([dup])
             self.add_object(dup)
 
     # ---------------------------------------------------------------- multi-selection API
@@ -558,6 +565,28 @@ class DocumentCanvas(QWidget):
             return [self._selected]
         return []
 
+    def selected_in_stacking_order(self) -> list[CanvasObject]:
+        """The selected annotations, lowest in the stacking order first (copies keep that order)."""
+        page = self.current_page_objects()
+        position = {id(obj): index for index, obj in enumerate(page)}
+        return sorted(self.get_selected_annotations(), key=lambda obj: position.get(id(obj), len(page)))
+
+    def _shift_group_into_page(self, objects: list[CanvasObject]) -> None:
+        """Move the objects together so that all of them are on the page, keeping their
+        positions relative to each other."""
+        if not objects or not self.current_page_image:
+            return
+        pw, ph = self.current_page_image.size
+        left = min(o.x for o in objects)
+        top = min(o.y for o in objects)
+        right = max(o.x + o.scaled_width for o in objects)
+        bottom = max(o.y + o.scaled_height for o in objects)
+        dx = max(-left, 0.0) if left < 0 else min(pw - right, 0.0)
+        dy = max(-top, 0.0) if top < 0 else min(ph - bottom, 0.0)
+        for obj in objects:
+            obj.x += dx
+            obj.y += dy
+
     def is_multi_selected(self) -> bool:
         """Check if multiple annotations are currently selected."""
         return len(self._selected_multiple) > 1
@@ -609,9 +638,16 @@ class DocumentCanvas(QWidget):
         if abs(delta) < 1e-9:
             return
 
-        bounds = self._selection_doc_bounds(selected)
-        pivot_x = bounds.center().x()
-        pivot_y = bounds.center().y()
+        # The shared center is that of the selection boundary when the rotation starts. It is kept
+        # while the same selection keeps being rotated (e.g. by the spinner, one degree at a
+        # time), because the boundary changes while rotating and the result would depend on
+        # the steps taken.
+        state = tuple((id(obj), obj.x, obj.y, obj.rotation) for obj in selected)
+        if self._group_rotation_pivot is not None and self._group_rotation_pivot[0] == state:
+            pivot_x, pivot_y = self._group_rotation_pivot[1]
+        else:
+            bounds = self._selection_doc_bounds(selected)
+            pivot_x, pivot_y = bounds.center().x(), bounds.center().y()
         radians = math.radians(delta)
         cos_a = math.cos(radians)
         sin_a = math.sin(radians)
@@ -640,6 +676,10 @@ class DocumentCanvas(QWidget):
                 )
             )
 
+        self._group_rotation_pivot = (
+            tuple((id(obj), obj.x, obj.y, obj.rotation) for obj in selected),
+            (pivot_x, pivot_y),
+        )
         self._record_composite_action(actions)
         self._invalidate_display()
 
@@ -648,6 +688,7 @@ class DocumentCanvas(QWidget):
     def _adjust_annotation_property(self, selected: list[CanvasObject], direction: str) -> None:
         """Adjust line width for vector annotations or font size for text annotations."""
         actions = []
+        changed: dict[str, float] = {}
         for obj in selected:
             if isinstance(obj, VectorAnnotation):
                 obj_id = self._stable_id_for(obj)
@@ -657,6 +698,7 @@ class DocumentCanvas(QWidget):
                     new_size = step_size(old_size, FONT_SIZE_STEPS_PT, direction)
                     obj._font_size_pt = new_size
                     obj.fit_text_box()
+                    changed["font_size"] = new_size
                     actions.append(ChangeFontSizeAction(
                         object_id=obj_id,
                         font_size_pt=new_size,
@@ -667,6 +709,7 @@ class DocumentCanvas(QWidget):
                     old_width = obj._line_width_pt
                     new_width = step_size(old_width, LINE_WIDTH_STEPS_PT, direction)
                     obj._line_width_pt = new_width
+                    changed["line_width"] = new_width
                     actions.append(ChangeLineWidthAction(
                         object_id=obj_id,
                         line_width_pt=new_width,
@@ -675,6 +718,8 @@ class DocumentCanvas(QWidget):
 
         self._record_composite_action(actions)
         self._invalidate_display()
+        for name, value in changed.items():
+            self.propertyChanged.emit(name, value)
 
     def delete_selected(self) -> None:
         """Delete all selected annotations. Single undo unit (one Ctrl+Z restores all)."""
@@ -713,19 +758,15 @@ class DocumentCanvas(QWidget):
     def duplicate_selected_multi(self) -> None:
         """Duplicate all selected annotations. Single undo unit (one Ctrl+Z removes all)."""
         objs = self.current_page_objects()
-        selected = self.get_selected_annotations()
+        selected = self.selected_in_stacking_order()
         if not selected:
             return
         
-        new_objs = []
+        new_objs = [obj.duplicate() for obj in selected]
+        self._shift_group_into_page(new_objs)
         sub_actions = []
-        for obj in selected:
-            dup = obj.duplicate()
-            if self.current_page_image:
-                pw, ph = self.current_page_image.size
-                dup.clamp_to_page(pw, ph)
+        for dup in new_objs:
             objs.append(dup)
-            new_objs.append(dup)
 
             obj_id = self._register_object(dup)
             annotation_data = dup.to_dict()
@@ -753,7 +794,7 @@ class DocumentCanvas(QWidget):
         preventing intermediate copy operations (like external programs) from
         corrupting the cached positions.
         """
-        selected = self.get_selected_annotations()
+        selected = self.selected_in_stacking_order()
         if not selected:
             return
         
@@ -765,6 +806,7 @@ class DocumentCanvas(QWidget):
         
         # Update cache so new copy operations are reflected in pastes
         self._cached_copy_data = data
+        self._cached_copy_text = json_str
 
     def has_pasteable_data(self) -> bool:
         """Return True if there is annotation data available to paste (cached copy or clipboard)."""
@@ -804,6 +846,7 @@ class DocumentCanvas(QWidget):
                 skipped += 1
             else:
                 pasted_objs.append(obj)
+        self._shift_group_into_page(pasted_objs)
 
         # Select pasted annotations
         self._selected_multiple.clear()
@@ -828,28 +871,27 @@ class DocumentCanvas(QWidget):
         self.update()
 
     def _get_paste_data(self) -> list[dict] | None:
-        """Return the annotation dicts to paste: the cached copy if present, else parsed clipboard JSON.
+        """Return the annotation dicts to paste: the most recent copy.
 
-        Cache is set on the FIRST paste (when reading from clipboard) and then
-        persists for all subsequent pastes, even if the clipboard is updated by
-        intermediate copy operations. This ensures copy->paste->paste sequences
-        always use the position from the original copy.
+        The data is cached, so that copy -> paste -> paste always uses the positions of the
+        original copy and text copied by other programs in between does not disturb it.
+        A new annotation copy on the clipboard (made in this window or in another
+        window or instance) replaces the cache.
         """
-        if self._cached_copy_data is not None:
-            return self._cached_copy_data
-
         json_str = QApplication.clipboard().text()
-        if not json_str:
-            return None
+        if self._cached_copy_data is not None and (not json_str or json_str == self._cached_copy_text):
+            return self._cached_copy_data
         try:
             data = json.loads(json_str)
         except json.JSONDecodeError:
-            # Clipboard doesn't contain valid annotation JSON; ignore
-            return None
-        if not isinstance(data, list):
+            data = None  # not annotation data (e.g. words copied elsewhere)
+        if isinstance(data, dict):
             data = [data]
-        # Cache this data for all future pastes until a new copy-paste cycle
+        if not isinstance(data, list) or not all(isinstance(item, dict) for item in data):
+            return self._cached_copy_data  # the cache, or None when there is nothing to paste
+        # Cache this data for all future pastes until a new copy
         self._cached_copy_data = data
+        self._cached_copy_text = json_str
         return data
 
     def _paste_object(self, item: dict, objs: list[CanvasObject]) -> CanvasObject | None:
@@ -871,10 +913,6 @@ class DocumentCanvas(QWidget):
             if original_page == self._current_page:
                 obj.x += DUPLICATE_OFFSET
                 obj.y += DUPLICATE_OFFSET
-
-            if self.current_page_image:
-                pw, ph = self.current_page_image.size
-                obj.clamp_to_page(pw, ph)
 
             self._register_object(obj)
             objs.append(obj)
@@ -1463,24 +1501,28 @@ class DocumentCanvas(QWidget):
             if rotation_handle is not None and rotation_handle.contains(pt):
                 self._start_rotation_drag(pt)
                 return
-            r = self._object_view_rect(self._selected)
-            h_idx = self._selected.hit_test_handle(
-                r.x(), r.y(), r.width(), r.height(), pt, self._display_rotation(self._selected)
-            )
-            if h_idx >= 0:
-                self._start_handle_drag(h_idx, pt)
-                return
+            if not self.is_multi_selected():  # a multi-selection has no resize handles
+                r = self._object_view_rect(self._selected)
+                h_idx = self._selected.hit_test_handle(
+                    r.x(), r.y(), r.width(), r.height(), pt, self._display_rotation(self._selected)
+                )
+                if h_idx >= 0:
+                    self._start_handle_drag(h_idx, pt)
+                    return
 
         clicked_obj = self._hit_test_object_at_point(pt)
         if clicked_obj is not None:
-            # Check for Shift+click (multi-select)
-            if self._is_shift_pressed(event):
+            shift = self._is_shift_pressed(event)
+            # Pressing a member of a multi-selection starts moving the whole group; a click that
+            # does not move collapses the selection to that member when the button is released.
+            on_group_member = not shift and self.is_multi_selected() and clicked_obj in self._selected_multiple
+            self._collapse_to_on_release = clicked_obj if on_group_member else None
+            if shift:
                 self.select_annotation(clicked_obj, multi=True)
-            else:
-                # Regular click (single select)
+            elif not on_group_member:
                 self.select_annotation(clicked_obj, multi=False)
 
-            # Start dragging the clicked object
+            # Start dragging the clicked object (or the group)
             self._dragging = True
             self._drag_handle = -1
             doc_pt = self._view_to_doc(pt)
@@ -1491,6 +1533,10 @@ class DocumentCanvas(QWidget):
             self._drag_start_x = clicked_obj.x
             self._drag_start_y = clicked_obj.y
             self._action_recorded_this_drag = False
+            self._group_drag_starts = []
+            if self.is_multi_selected() and clicked_obj in self._selected_multiple:
+                self._group_drag_starts = [(obj, obj.x, obj.y) for obj in self.get_selected_annotations()]
+                self._group_press_doc = doc_pt
             return
 
         # Clicked on empty space
@@ -1799,6 +1845,8 @@ class DocumentCanvas(QWidget):
                 self._apply_character_spacing_drag(pt)
             elif self._rotating:
                 self._apply_rotation_drag(pt, self._is_shift_pressed(event))
+            elif self._drag_handle == -1 and self._group_drag_starts:
+                self._handle_group_move_drag(pt)
             elif self._drag_handle == -1:
                 self._handle_move_drag(pt)
                 record_drag = self._record_move_drag
@@ -1807,11 +1855,12 @@ class DocumentCanvas(QWidget):
                 record_drag = self._record_resize_drag
 
             is_endpoint_drag = self._drag_endpoint_handles and self._selected.supports_endpoint_handles()
+            is_move_drag = self._drag_handle == -1 and not self._character_spacing_dragging
             if (
                 not self._rotating
                 and self.current_page_image
-                and not self._selected.supports_free_resize()
-                and not is_endpoint_drag
+                and not self._group_drag_starts
+                and (is_move_drag or (not self._selected.supports_free_resize() and not is_endpoint_drag))
             ):
                 pw, ph = self.current_page_image.size
                 self._selected.clamp_to_page(pw, ph)
@@ -1838,6 +1887,24 @@ class DocumentCanvas(QWidget):
         doc_pt = self._view_to_doc(pt)
         self._selected.x = doc_pt.x() - self._drag_doc_offset_x
         self._selected.y = doc_pt.y() - self._drag_doc_offset_y
+
+    def _handle_group_move_drag(self, pt: QPointF) -> None:
+        """Move every member of a multi-selection by the pointer's distance from the press."""
+        doc_pt = self._view_to_doc(pt)
+        dx = doc_pt.x() - self._group_press_doc.x()
+        dy = doc_pt.y() - self._group_press_doc.y()
+        if self.current_page_image:
+            # Keep the whole group on the page without changing the members' relative positions.
+            pw, ph = self.current_page_image.size
+            left = min(x for _, x, _ in self._group_drag_starts)
+            top = min(y for _, _, y in self._group_drag_starts)
+            right = max(x + o.scaled_width for o, x, _ in self._group_drag_starts)
+            bottom = max(y + o.scaled_height for o, _, y in self._group_drag_starts)
+            dx = max(-left, min(dx, pw - right))
+            dy = max(-top, min(dy, ph - bottom))
+        for obj, start_x, start_y in self._group_drag_starts:
+            obj.x = start_x + dx
+            obj.y = start_y + dy
 
     def _record_move_drag(self) -> None:
         """Record the current position of a move drag as a coalescing MoveAnnotationAction."""
@@ -2066,6 +2133,16 @@ class DocumentCanvas(QWidget):
                         character_spacing_pt=new_spacing,
                         from_character_spacing_pt=self._character_spacing_drag_start_value,
                     ))
+                    self.propertyChanged.emit("character_spacing", new_spacing)
+            elif self._group_drag_starts:
+                self._finish_group_drag()
+            elif (
+                self._action_recorded_this_drag
+                and self._drag_handle != -1
+                and isinstance(self._selected, VectorAnnotation)
+                and self._selected.ann_type == AnnotationType.TEXT
+            ):
+                self.propertyChanged.emit("font_size", self._selected._font_size_pt)
             elif self._rotating:
                 actions = []
                 for obj, old_x, old_y, old_rotation in self._rotation_drag_states:
@@ -2086,6 +2163,21 @@ class DocumentCanvas(QWidget):
                 if actions:
                     self._record_composite_action(actions)
             self._end_drag_gesture()
+
+    def _finish_group_drag(self) -> None:
+        """Record a group move as one undo step, or collapse the selection after a plain click."""
+        actions = [
+            MoveAnnotationAction(
+                object_id=self._stable_id_for(obj), from_x=start_x, from_y=start_y, to_x=obj.x, to_y=obj.y,
+            )
+            for obj, start_x, start_y in self._group_drag_starts
+            if abs(obj.x - start_x) > 1e-9 or abs(obj.y - start_y) > 1e-9
+        ]
+        if actions:
+            self._record_composite_action(actions)
+            self._invalidate_display()
+        elif self._collapse_to_on_release is not None:
+            self.select_annotation(self._collapse_to_on_release, multi=False)
 
     def _end_drag_gesture(self) -> None:
         """Finish a drag: close the history coalescing window, then clear drag state.
@@ -2111,6 +2203,8 @@ class DocumentCanvas(QWidget):
         self._drag_handle = -1
         self._drag_endpoint_handles = False
         self._action_recorded_this_drag = False
+        self._group_drag_starts = []
+        self._collapse_to_on_release = None
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         if not self._pages or event.angleDelta().y() == 0:
@@ -2185,8 +2279,9 @@ class DocumentCanvas(QWidget):
 
         if key in (Qt.Key_Up, Qt.Key_Down, Qt.Key_Left, Qt.Key_Right):
             if selected:
-                # Movement: 12pt normal, 1px with Shift (per V1.2.18)
-                increment = KEYBOARD_MOVE_FINE_STEP_PT if modifiers & Qt.ShiftModifier else KEYBOARD_MOVE_STEP_PT
+                # Movement: 12pt normal, 1pt with Shift (spec §9), in document pixels
+                step_pt = KEYBOARD_MOVE_FINE_STEP_PT if modifiers & Qt.ShiftModifier else KEYBOARD_MOVE_STEP_PT
+                increment = step_pt * DPI_SCALE
 
                 if key == Qt.Key_Up:
                     self.move_selected(0, -increment)

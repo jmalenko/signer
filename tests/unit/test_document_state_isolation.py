@@ -20,6 +20,7 @@ _NOT_PER_DOCUMENT = {
     "_pages",            # the new document's own pages
     "_page_pixmaps",     # QPixmap objects, compared via _pages instead
     "_cached_copy_data",  # the clipboard deliberately survives a document change
+    "_cached_copy_text",  # the clipboard text that cache was made from
 }
 
 
