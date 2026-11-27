@@ -793,3 +793,13 @@ line looked shorter than the same line on screen.
 1. Export and print shall show every stroke completely, including the round caps at the ends of
    a line, arrow, checkmark, or crossmark, at any line width. An annotation that was not cut off
    before shall export exactly as before, and no annotation shall move.
+
+## Version 1.6.2 - Bugfix: Mark strokes meet their bounding boxes
+
+Bug: Checkmark and Crossmark strokes end noticeably inside their bounding boxes, making the marks
+look smaller than their selected bounds.
+
+1. Crossmark strokes shall end at the four corners of the annotation bounding box.
+2. The Checkmark shall reach the left, bottom, top, and right edges of its bounding box.
+3. This geometry shall be the same in straight and hand-drawn styles; round caps may extend past
+   the box.

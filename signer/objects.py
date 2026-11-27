@@ -117,7 +117,6 @@ MIN_ANNOTATION_SIZE: float = 8.0
 VISIBLE_ALPHA_RUN = re.compile(rb"[^\x00]+")
 
 # _draw_symbol() geometry constants (fractions of min(vw, vh) unless noted).
-SYMBOL_MARGIN_FACTOR = 0.12  # Checkmark/crossmark inset from the bounding box edge.
 CHECKMARK_LOWER_VERTEX_Y_FACTOR = 0.55  # Checkmark's left vertex, as a fraction of vh.
 CHECKMARK_MIDDLE_VERTEX_X_FACTOR = 0.38  # Checkmark's bottom vertex, as a fraction of vw.
 ARROW_SHAFT_LENGTH_FACTOR = 0.33  # Arrow shaft half-length from center.
@@ -1048,13 +1047,12 @@ class VectorAnnotation(CanvasObject):
         painter.drawPath(self._wobbly_strokes_path(strokes, vw))
 
     def _draw_checkmark(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
-        m = min(vw, vh) * SYMBOL_MARGIN_FACTOR
         painter.setPen(self._pen(doc_scale))
         painter.setBrush(Qt.NoBrush)
         corners = [
-            QPointF(vx + m, vy + vh * CHECKMARK_LOWER_VERTEX_Y_FACTOR),
-            QPointF(vx + vw * CHECKMARK_MIDDLE_VERTEX_X_FACTOR, vy + vh - m),
-            QPointF(vx + vw - m, vy + m),
+            QPointF(vx, vy + vh * CHECKMARK_LOWER_VERTEX_Y_FACTOR),
+            QPointF(vx + vw * CHECKMARK_MIDDLE_VERTEX_X_FACTOR, vy + vh),
+            QPointF(vx + vw, vy),
         ]
         if self._draws_hand_drawn:
             self._draw_hand_drawn_strokes(painter, [corners], vw, doc_scale)
@@ -1066,12 +1064,11 @@ class VectorAnnotation(CanvasObject):
         painter.drawPath(path)
 
     def _draw_crossmark(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
-        m = min(vw, vh) * SYMBOL_MARGIN_FACTOR
         painter.setPen(self._pen(doc_scale))
         painter.setBrush(Qt.NoBrush)
         diagonals = [
-            [QPointF(vx + m, vy + m), QPointF(vx + vw - m, vy + vh - m)],
-            [QPointF(vx + vw - m, vy + m), QPointF(vx + m, vy + vh - m)],
+            [QPointF(vx, vy), QPointF(vx + vw, vy + vh)],
+            [QPointF(vx + vw, vy), QPointF(vx, vy + vh)],
         ]
         if self._draws_hand_drawn:
             self._draw_hand_drawn_strokes(painter, diagonals, vw, doc_scale)

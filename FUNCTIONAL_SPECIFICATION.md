@@ -451,8 +451,9 @@ for which types support color/width/font controls.
 The Arrow retains an 80×80pt storage square for sizing and endpoint calculations, but its
 selection, hit-testing, and multi-selection boundary is the minimal local axis-aligned rectangle
 containing the rendered shaft, arrowhead, and full stroke. Transparent space between that tight
-rectangle and the storage square is not selectable. Checkmark and Crossmark continue to use their
-storage squares despite their visual inset.
+rectangle and the storage square is not selectable. Checkmark and Crossmark use their storage
+squares as their visual bounds: the Crossmark strokes end at the corners, and the Checkmark
+reaches the left, bottom, top, and right edges.
 
 ### 7.2 Text annotations
 

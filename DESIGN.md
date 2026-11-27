@@ -282,9 +282,9 @@ flowchart TD
   together; changing any constant changes every seed's shape, so the reference image must be
   regenerated.
 - **Export draws vector annotations directly onto the page**: a vector annotation can paint
-  past its bounding box: the round caps of a straight Line (its endpoints lie on the box edges
-  and a cap sticks out half a pen width), thick Checkmarks and Crossmarks (their 12% margin is
-  smaller than half of a thick pen), glyphs at the edge of a Text box, and the hand-drawn wobble.
+  past its bounding box: the round caps of a straight Line, Checkmark, or Crossmark (their
+  endpoints lie on the box edges and a cap sticks out half a pen width), glyphs at the edge of
+  a Text box, and the hand-drawn wobble.
   Rendering each annotation into an image of a fixed size and pasting it would cut those parts
   off, and sizing the image generously needs a per-type formula for how far each type reaches. So
   there is no intermediate image: `_composite_objects()` draws every `VectorAnnotation` with
