@@ -182,8 +182,8 @@ def test_rotated_boundary_and_hit_testing_use_inverse_transform():
     signature.rotation = 90
 
     corners = signature.boundary_points_viewport(100, 100, 40, 20)
-    assert [(point.x(), point.y()) for point in corners] == pytest.approx(
-        [(130, 90), (130, 130), (110, 130), (110, 90)]
+    assert [c for point in corners for c in (point.x(), point.y())] == pytest.approx(
+        [130, 90, 130, 130, 110, 130, 110, 90]
     )
     assert signature.hit_test_point(100, 100, 40, 20, QPointF(120, 125))
     assert not signature.hit_test_point(100, 100, 40, 20, QPointF(140, 110))

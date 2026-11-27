@@ -27,9 +27,9 @@ def test_arrow_boundary_is_minimal_rectangle_containing_stroked_arrow():
         * ARROW_HEAD_LENGTH_FACTOR
         * math.sin(math.radians(ARROW_HEAD_ANGLE_DEG))
     )
-    assert [(point.x(), point.y()) for point in boundary] == pytest.approx([
-        (100 - shaft - pen_radius, 100 - half_head_height - pen_radius),
-        (100 + shaft + pen_radius, 100 - half_head_height - pen_radius),
-        (100 + shaft + pen_radius, 100 + half_head_height + pen_radius),
-        (100 - shaft - pen_radius, 100 + half_head_height + pen_radius),
+    assert [c for point in boundary for c in (point.x(), point.y())] == pytest.approx([
+        100 - shaft - pen_radius, 100 - half_head_height - pen_radius,
+        100 + shaft + pen_radius, 100 - half_head_height - pen_radius,
+        100 + shaft + pen_radius, 100 + half_head_height + pen_radius,
+        100 - shaft - pen_radius, 100 + half_head_height + pen_radius,
     ])
