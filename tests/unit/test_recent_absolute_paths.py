@@ -47,13 +47,3 @@ def test_relative_document_path_is_recorded_as_absolute(main_window, tmp_path, s
     main_window.open_document(relative)
 
     assert main_window._settings.recent_document_paths == [absolute]
-
-
-# ---- documents the bug (to be deleted after review)
-
-def test_BUG_relative_signature_path_is_recorded_as_given(main_window, tmp_path, sample_signature, monkeypatch):
-    relative, _ = _relative_signature(tmp_path, sample_signature, monkeypatch)
-
-    main_window._load_signature_file(relative)
-
-    assert main_window._settings.recent_signature_paths == [relative]

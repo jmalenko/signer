@@ -57,7 +57,7 @@ def test_line_cap_is_cut_off_at_the_box_edge_BUG():
 
 @pytest.mark.parametrize("ann_type", [AnnotationType.CHECKMARK, AnnotationType.CROSSMARK])
 def test_thick_marks_are_not_cut_off(ann_type):
-    """Their margin is smaller than half of a thick pen, so a thick mark reaches past its box."""
+    """Their strokes end on the box edges, so the round caps of a thick mark reach past its box."""
     mark = VectorAnnotation(ann_type, BOX, BOX, line_width_pt=16.0)
     left, top, right, bottom = composite(mark).split()[3].getbbox()
     assert left < BOX and top < BOX
@@ -66,10 +66,7 @@ def test_thick_marks_are_not_cut_off(ann_type):
 
 @pytest.mark.parametrize(
     "ann_type",
-    [
-        AnnotationType.ARROW, AnnotationType.RECTANGLE, AnnotationType.ELLIPSE,
-        AnnotationType.CHECKMARK, AnnotationType.CROSSMARK,
-    ],
+    [AnnotationType.ARROW, AnnotationType.RECTANGLE, AnnotationType.ELLIPSE],
 )
 def test_annotations_that_fit_their_box_export_exactly_as_their_box_render(ann_type):
     """Direct drawing must not change anything that was never cut off."""
