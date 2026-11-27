@@ -959,8 +959,8 @@ class MainWindow(QMainWindow):
             AnnotationType.CHECKMARK: "✔ Checkmark" if with_icons else "Checkmark",
             AnnotationType.CROSSMARK: "✖ Crossmark" if with_icons else "Crossmark",
             AnnotationType.LINE: "— Line" if with_icons else "Line",
-            AnnotationType.ARROW: "➡ Arrow" if with_icons else "Arrow",
-            AnnotationType.RECTANGLE: "▭ Rectangle / Square" if with_icons else "Rectangle / Square",
+            AnnotationType.ARROW: "→ Arrow" if with_icons else "Arrow",
+            AnnotationType.RECTANGLE: "▢ Rectangle / Square" if with_icons else "Rectangle / Square",
             AnnotationType.ELLIPSE: "○ Ellipse / Circle" if with_icons else "Ellipse / Circle",
         }
         for annotation_type, label in labels.items():
