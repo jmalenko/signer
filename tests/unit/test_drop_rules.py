@@ -1,6 +1,7 @@
 """Dropping files on the canvas (spec §4.3)."""
 
 import shutil
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -57,7 +58,7 @@ def test_the_canvas_passes_the_drop_position_to_the_window(window, small_image):
 
     canvas.dropEvent(QDropEvent(QPointF(120, 150), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier))
 
-    assert received[0][0] == str(small_image)
+    assert Path(received[0][0]) == small_image  # Qt URLs use forward slashes
     assert received[0][1] == canvas._view_to_doc(QPointF(120, 150))
 
 

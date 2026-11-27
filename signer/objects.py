@@ -994,21 +994,26 @@ class VectorAnnotation(CanvasObject):
     def _text_line_extent(font: QFont, line: str) -> tuple[float, float]:
         """Return the (left, right) extent of the text line, including the whitespace.
 
-        Qt's bounding rectangle ends after the spacing that follows the last character, so the
-        spacing is taken off again. With a negative spacing it makes the rectangle too narrow,
-        or even empty, so the outline of the glyphs is used as well.
+        Whether Qt's bounding rectangle includes the spacing after the last character depends on
+        the platform, so a non-negative spacing is added to the extent measured without spacing.
+        The rectangle can be too narrow (or even empty with a negative spacing), so the outline
+        of the glyphs is used as well.
         """
         rect = QFontMetricsF(font).boundingRect(line)
         spacing = font.letterSpacing()
         left = rect.left()
-        right = rect.right() - spacing if rect.width() > 0 else rect.right()
-        if spacing < 0:
-            outline = QPainterPath()
-            outline.addText(QPointF(0.0, 0.0), font, line)
-            if not outline.isEmpty():
-                bounds = outline.boundingRect()
-                left = min(left, bounds.left())
-                right = max(right, bounds.right())
+        if spacing >= 0:
+            unspaced = QFont(font)
+            unspaced.setLetterSpacing(QFont.AbsoluteSpacing, 0.0)
+            right = QFontMetricsF(unspaced).boundingRect(line).right() + max(0, len(line) - 1) * spacing
+        else:
+            right = rect.right() - spacing if rect.width() > 0 else rect.right()
+        outline = QPainterPath()
+        outline.addText(QPointF(0.0, 0.0), font, line)
+        if not outline.isEmpty():
+            bounds = outline.boundingRect()
+            left = min(left, bounds.left())
+            right = max(right, bounds.right())
         return left, right
 
     def fit_text_box(self) -> None:
