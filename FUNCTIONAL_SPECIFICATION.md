@@ -116,7 +116,9 @@ that mode: no reserved space or leftover strip remains from the previous mode.
 Which individual controls are visible within the area still follows the selection/annotation-type
 rules below.
 
-The window's minimum width is driven only by the always-visible first row; the selection-properties area never affects it, in either mode — so
+The window's minimum width is driven only by the always-visible first row, including the zoom
+controls and the hamburger menu, which are never pushed out of view; the selection-properties
+area never affects it, in either mode — so
 switching to an annotation type with more controls (e.g. Text) never changes the window's size.
 We don't rely on Qt's own toolbar overflow ("»") button for this: it doesn't work for custom
 widget controls like our labeled spinners/combos (its popup ends up empty), so it is suppressed
@@ -125,8 +127,10 @@ our own logic.
 
 The **Add** menu (and the hamburger **Annotations** menu) list: Checkmark, Crossmark, Line,
 Arrow, Rectangle / Square, Ellipse / Circle, Text (submenu: Free text, Current date, Current
-time, Current date & time, then recent texts), Signature / Image (submenu: From file…, then
-recent images).
+time, Current date & time, then recent texts), Signature / Image. In the **Add** menu,
+Signature / Image is a submenu (From file…, then recent images); in the hamburger **Annotations**
+menu it is a single item that opens the file picker, and recent images are available only from
+the Add menu.
 
 ### 2.2 Hamburger menu structure
 
@@ -220,7 +224,8 @@ toolbar separators.
 
 | Item(s) | Enabled when |
 |---|---|
-| Save As…, Print, Save Project, Save Project As…, Change Document…, rotation actions, zoom actions | A document is open |
+| Save As…, Print, Save Project, Save Project As…, Change Document…, rotation actions | A document is open |
+| Zoom In / Zoom Out / Fit to Window (toolbar and View menu) | A document is open; in addition, Zoom In is disabled at the maximum zoom, Zoom Out at the minimum zoom, and Fit to Window while the complete page is already shown |
 | Undo (toolbar and Edit menu) | An action is available to undo |
 | Redo (toolbar and Edit menu) | An action is available to redo |
 | Cut, Copy, Duplicate, Delete | At least one annotation is selected |
@@ -237,7 +242,7 @@ toolbar separators.
 | PDF | PyMuPDF (fitz), direct | Yes | Supports encrypted PDFs (password prompt) |
 | Word (`.docx`, `.doc`) | LibreOffice headless → temp PDF → PyMuPDF | Yes | Requires LibreOffice |
 | ODT | LibreOffice headless → temp PDF → PyMuPDF | Yes | Requires LibreOffice |
-| JPG, PNG, BMP, WEBP, GIF, ICO | Pillow, direct | No (1 page; GIF uses first frame) | |
+| JPG, PNG, BMP, WEBP, GIF, ICO | Pillow, direct | No (1 page; of an animated GIF/WEBP/PNG or a multi-picture JPEG only the first frame is used) | |
 | TIFF | Pillow, direct | Yes (multi-frame) | |
 
 All pages, regardless of source format, are normalized to a list of `PIL.Image` objects
@@ -253,8 +258,8 @@ rendered internally at **300 DPI**.
    install LibreOffice, configure the LibreOffice path in the settings file
    (`config.json`, field `libreoffice_path`), or use a PDF or image file instead."*
 
-**Unsupported format**: *"File format not supported. Please choose a PDF, Word document, ODT,
-or image file (JPG, PNG, BMP, WEBP, GIF, TIFF)."*
+**Unsupported format**: *"File format '.xyz' is not supported. Please choose a PDF, Word
+document, ODT, or image file."* (shown in the "Could not open document" error dialog).
 
 **Corrupt image/document**: validation error shown; app remains responsive.
 
@@ -281,12 +286,16 @@ Title: "Save changes to '{filename}'?"
 Buttons: [Save] [Don't Save] [Cancel]   (default: Cancel)
 ```
 
-- **Save**: saves using the last-used format/path, then proceeds to load.
+- **Save**: opens the Save As dialog (pre-filled with the last-used format and path); proceeds to
+  load once the save succeeded, and stays on the current document if the dialog is cancelled.
 - **Don't Save**: discards the dirty flag, proceeds to load.
 - **Cancel**: aborts; current document/state is kept.
 
 This check runs once per open action; after the file dialog's event loop completes, keyboard
 focus returns to the canvas so page navigation works immediately without a preliminary click.
+
+Only changes to the annotations (including undo/redo, and rotating a page) count as unsaved
+changes. Zooming, panning, fitting to the window, navigating pages and selecting never do.
 
 ### 4.3 Drag-and-drop
 
@@ -294,17 +303,17 @@ The canvas accepts dropped files (`text/uri-list`):
 
 | Dropped item | With open document | Without open document |
 |---|---|---|
-| **Small image** (fits A6 at 300 DPI, ≤1748px on both dimensions; PNG/JPG/JPEG/BMP) | Creates a Signature/Image annotation at the drop position, scaled to fit ~A6 while preserving aspect ratio | Error: *"Cannot drop image: No document is currently open"* |
-| **Big image** (exceeds A6 in any dimension) or **PDF** | Runs the unsaved-changes prompt (§4.2) if dirty, then loads the file as the document | Loads immediately as the document |
+| **Small image** (fits A6 at 300 DPI, ≤1748px on both dimensions; any supported image format, §3) | Creates a Signature/Image annotation centered on the drop position (kept inside the page) at its pixel size, which is at most A6 by definition | Error: *"Cannot drop image: No document is currently open"* |
+| **Big image** (exceeds A6 in any dimension), **PDF**, **Word/ODT document**, or **project** (`.signer`) | Runs the unsaved-changes prompt (§4.2) if dirty, then opens the file exactly as the Open action does | Opens immediately, exactly as the Open action does |
 
 A dropped small image that becomes an annotation is also added, by absolute path, to the
 recent images/signatures list (§7.3), as if it had been loaded with "From file…". Dropped
 documents (big images, PDFs) are not.
 
-Other error cases: corrupted/unsupported dropped image → *"Cannot load image: Unsupported
-format or corrupted file. Supported formats: PNG, JPG, JPEG, BMP."*; invalid/corrupted dropped
-document → *"Cannot open file: Invalid or corrupted file."*; permission error → *"Cannot open
-file: Access denied."*; a drop while a dialog is open is ignored.
+Other error cases: a dropped file of an unsupported type, or an image that cannot be read →
+*"Cannot open file: Unsupported format or corrupted file."*; a dropped document that cannot be
+opened shows the same error as the Open action (§3); a dropped file that no longer exists →
+*"File not found: …"*; a drop while a dialog is open is ignored.
 
 ### 4.4 Recent documents
 
@@ -313,7 +322,8 @@ Up to 10 recently opened documents/projects, most-recent-first, persisted across
 
 Entries are stored by absolute path, however the file was opened (a relative command-line path is
 made absolute against the working directory at that moment). Opening an already listed file moves
-its entry to the front instead of adding another one.
+its entry to the front instead of adding another one. Opening a project adds the project and
+the document it refers to.
 
 **Entry labels** (recent documents and recent images/signatures alike): an entry is labeled with
 its file name. When two or more entries in the same list share a file name, those entries are
@@ -381,8 +391,11 @@ the list is rebuilt.
 | PDF | Single file, all pages | Lossy raster embed, quality 1-100 (default 95) |
 | TIFF | Single file, all pages (multi-frame) | Lossless, always LZW |
 
-All formats render at 300 DPI.
+All formats render at 300 DPI. Exported images and PDF pages carry that resolution (the PDF
+page keeps the physical size of the source page, e.g. A4), not only the pixel dimensions.
 
+When the document has no annotations, Save As explains that there is nothing to save and exports
+nothing.
 ### 5.2 Default file naming
 
 - Single-page document: `{name}-signed.{ext}`.
@@ -402,13 +415,16 @@ All formats render at 300 DPI.
   stem:
   - Single-file → per-page format, multi-page doc: adds the `p#` placeholder.
   - Per-page → single-file format: removes the placeholder.
-- **Validation**: single-file formats accept any filename. Per-page formats require the `#`
+- **Format**: a recognized extension typed by the user decides the export format, even when the
+  file-type filter shows another one; if the extension is missing or unknown, the selected filter
+  decides. Switching the filter in the dialog re-writes the extension and updates the Options…
+  button at once.- **Validation**: single-file formats accept any filename. Per-page formats require the `#`
   placeholder when the document has more than one page; a filename missing it shows an info
   dialog and returns to the Save As dialog (not closed) for correction.
 - **Options… button**: enabled only for lossy formats (JPG, PDF); opens a non-modal "Export
   Quality Options" panel with a 1-100 quality slider (labeled "small file" ↔ "large file",
-  numeric value always visible) and OK/Cancel. Hidden for lossless formats (PNG/TIFF/BMP), which
-  always use their best automatic setting.
+  numeric value always visible) and OK/Cancel. Disabled (greyed out) for lossless formats
+  (PNG/TIFF/BMP), which always use their best automatic setting.
 
 ### 5.4 Overwrite confirmation
 
@@ -416,7 +432,7 @@ Checked before export, per target file:
 
 | Scenario | Dialog |
 |---|---|
-| Single target file exists | "The file '{name}' already exists. Do you want to replace it?" — [Replace] [Cancel] |
+| Single target file exists (a single-file PDF/TIFF, or a single-page document exported to JPG/PNG/BMP) | "The file '{name}' already exists. Do you want to replace it?" — [Replace] [Cancel] |
 | A few (≤10) of several multi-page targets exist | Lists the specific files that will be overwritten — [Replace] [Cancel] |
 | All multi-page targets exist | "All {N} pages of '{pattern}' will be overwritten." — [Replace] [Cancel] |
 | More than 10 targets exist | Lists first 3 + "… (N more files)" — [Replace] [Cancel] |
@@ -435,7 +451,8 @@ the modal error dialog used on failure.
 
 ## 6. Page Navigation
 
-- Toolbar: `◀` / page label / `▶`, visible only when the document has more than one page.
+- Toolbar: `◀` / current-page input field / total pages / `▶`, visible only when the document has
+  more than one page.
 - Keyboard navigation is also available (see [§13](#13-keyboard-shortcuts-reference)).
 - Independent per-page annotation lists (`page_index -> objects[]`); switching pages clears the
   current selection.
@@ -446,8 +463,10 @@ the modal error dialog used on failure.
 
 ### 7.1 Types and default geometry
 
-All sizes are stored in PDF points (1/72 inch) and scaled for 300 DPI rendering via
-`DPI_SCALE = 300/72 ≈ 4.167`.
+All sizes are defined in PDF points (1/72 inch). Internally, annotation coordinates and sizes are
+document coordinates, i.e. pixels of the page rendered at 300 DPI, so a size in points is stored
+multiplied by `DPI_SCALE = 300/72 ≈ 4.167`. Where a distance in this document is given in `px`,
+it is such a 300-DPI document pixel.
 
 | Type | Default size (pt) | Default size (px @300 DPI) |
 |---|---|---|
@@ -483,8 +502,7 @@ reaches the left, bottom, top, and right edges.
   fit the full text (via Qt font metrics) without cropping, zero margin. The text is inside the
   boundary at any character spacing; the spacing after the last character of a line does not
   widen (or narrow) the boundary.
-- Ctrl+Enter inserts a newline in the text edit; Enter/closing the editor commits changes as
-  per the current native editor behavior.
+- Enter inserts a newline in the text edit; Ctrl+Enter (or the OK button) commits the changes.
 - Toolbar font-size changes refit the boundary immediately (no click needed to force a
   visual update).
 - Resizing the boundary derives the largest whole-point font size that fits and pushes that
@@ -498,19 +516,21 @@ reaches the left, bottom, top, and right edges.
 ### 7.3 Image annotation
 
 Signature and Image are unified as a single "Signature / Image" annotation type. Loading is via
-a file dialog ("From file…") or a recent-images submenu (up to 10 entries, LRU). Any image
-format supported by Pillow may be used; it is scaled to fit the bounding box while preserving
+a file dialog ("From file…") or a recent-images submenu (up to 10 entries, LRU). The image can be
+any format of the supported-image list (§3) that the file dialog offers or that is dropped onto
+the canvas; it is scaled to fit the bounding box while preserving
 aspect ratio. Color and line-width controls are hidden for this type. An image dropped onto
 the canvas (§4.3) is added to the recent-images list as well. Same-named entries are told apart
 as described in §4.4.
 
-### 7.4 Shape auto-detection (Rectangle/Square, Ellipse/Circle)
+### 7.4 Shape snapping (Rectangle/Square, Ellipse/Circle)
 
-- If height/width differ by ≤20%, the shape is created as a **square**/**circle**; otherwise a
-  **rectangle**/**ellipse**. Holding any modifier key (Shift, Ctrl, or Alt) during creation
-  disables snapping and forces the non-square/non-circle variant.
-- On resize, the square/circle-vs-rectangle/ellipse classification is re-evaluated (visual only;
-  the underlying annotation type in data is unchanged).
+- While resizing a Rectangle or Ellipse, if width/height is within 0.8–1.2 the shape snaps to a
+  **square**/**circle** (dragging a left/right edge makes the width equal to the height, a
+  top/bottom edge makes the height equal to the width, a corner makes both the average of the
+  two); beyond that range the shape is a free **rectangle**/**ellipse**.
+  Holding any modifier key (Shift, Ctrl, or Alt) disables the snapping.
+- The annotation type in the data is the same whether or not the shape is currently square.
 
 ### 7.5 Line/Arrow angle snapping
 
@@ -526,14 +546,17 @@ hit-testing, and group bounds; endpoint handles remain on the segment endpoints.
 
 ### 7.6 Free corner dragging
 
-Applies to Line, Arrow, Rectangle, Ellipse, Checkmark, Crossmark (not Text or Signature/Image,
-which move/scale as a unit). Dragging any corner/endpoint past the opposite corner swaps which
-corner is which (e.g. dragging the bottom-right corner above the top-left turns it into the new
-top-right corner); for Line/Arrow this can flip the line's effective direction.
+Applies to every annotation type. Dragging any corner/endpoint past the opposite corner swaps
+which corner is which (e.g. dragging the bottom-right corner above the top-left turns it into
+the new top-right corner); for Line/Arrow this can flip the line's effective direction.
+Text, Line, Arrow, Rectangle and Ellipse resize freely; Signature/Image, Checkmark and Crossmark
+keep their aspect ratio while resizing.
 
 ### 7.7 Duplicate & default placement
 
 - **Duplicate** preserves size, color, and hand-drawn style (§7.10), offsetting the copy by 20px (`DUPLICATE_OFFSET`).
+  The copies stay inside the page; several copies keep their relative positions and stacking
+  order.
 - New annotations default to the **center of the current page**: `x = (page_width -
   object_width)/2`, `y = (page_height - object_height)/2`, clamped to page bounds.
 
@@ -541,18 +564,22 @@ top-right corner); for Line/Arrow this can flip the line's effective direction.
 
 The color and line-width toolbar controls are visible only when a compatible annotation is
 selected (§2.3); there is no toolbar control for either when nothing is selected. Changing a
-control updates the selected annotation(s) directly, and as a side effect also becomes the
-default applied to the next newly-added annotation. The Hand-drawn toggle (§7.10) follows the
+control updates every selected annotation that supports it (and is undoable). The change also
+becomes the default applied to the next newly-added annotation, whichever way it was made: the
+toolbar control, the `[` / `]` shortcuts, or resizing a text annotation (font size). The
+Hand-drawn toggle (§7.10) follows the
 same visibility rule; its default additionally looks at the annotations already in the document.
 
 ### 7.9 Rotation
 
 - Every annotation has a `rotation` angle in whole degrees, clockwise from its natural
   orientation, normalized to `0`–`359`; new annotations start at `0`.
-- A selected annotation has a rotation handle centered above its boundary and connected to it by
-  a short stem. Dragging the handle around the annotation's center snaps to 15° increments by
-  default. Holding Shift during the drag temporarily disables snapping for continuous rotation,
-  consistent with the existing Line/Arrow snapping behavior in §7.5.
+- A selected annotation has a rotation handle connected to its boundary by a short stem. For
+  most types it is centered above the boundary; for Line and Arrow, whose boundary is the tight
+  box around the stroke, it sits 24 viewport pixels from the center, perpendicular to the line,
+  and so may lie inside that boundary. Dragging the handle around the annotation's center snaps
+  to 15° increments by default. Holding Shift during the drag temporarily disables snapping for
+  continuous rotation, consistent with the existing Line/Arrow snapping behavior in §7.5.
 - The selection boundary and its resize handles rotate with the annotation. Hit-testing,
   moving, and resizing use the rotated geometry; resizing preserves the current angle.
 - The toolbar Angle spinner is visible for every annotation type, accepts one-degree steps, and
@@ -561,9 +588,12 @@ same visibility rule; its default additionally looks at the annotations already 
   Changing that angle or dragging the shared rotation handle applies the same angular delta to
   every selected annotation and rotates every annotation center around the selection's shared
   center. Relative positions and relative angles are preserved.
-- Line and Arrow endpoint dragging retains the 45° snapping rules in §7.5. Their `rotation`
-  value describes the direction of the resulting endpoints; rotating either type moves both
-  endpoints rigidly around its center.
+- Line and Arrow endpoint dragging retains the 45° snapping rules in §7.5. Dragging an endpoint
+  stores the direction of the line in the annotation's separate line `angle` (an Arrow without
+  one points east, a Line without one runs from bottom-left to top-right), and does not change
+  `rotation`. The Angle spinner always shows `rotation`, the turn of the whole annotation about
+  its center, so it stays at its value after an endpoint drag; rotating either type with the
+  spinner or the rotation handle moves both endpoints rigidly around its center.
 - Rotation changes are undoable and redoable. Duplicate, cut, copy, and paste preserve the
   angle. Export and print render the same orientation shown on the canvas.
 
@@ -597,7 +627,8 @@ Signature / Image have no such property.
   the wobble. Duplicate and copy/paste preserve the seed (the copy looks identical); separately
   created annotations get different seeds and so look different even when their geometry matches.
 - Selection boundary, resize handles, hit-testing, snapping (§7.5), and bounding-box rules (§7.1)
-  always use the ideal straight geometry, never the wobbly path.
+  always use the ideal straight geometry, never the wobbly path; only the choice of the nearest
+  of several overlapping annotations (§8) measures to the drawn pixels.
 - Toggling the property is undoable; a toggle on a multi-selection is a single undo entry.
 - A newly created annotation of a supported type (Add menu/toolbar; not Duplicate or Paste, which
   copy the source's value) gets its initial hand-drawn value from the first rule that applies. The
@@ -610,8 +641,10 @@ Signature / Image have no such property.
 
   The rules choose only the initial value; the user can still change it with the toggle, which
   also updates the last-used value. Text ignores the property.
-- The property and seed are stored in project files, action recording, and the clipboard (§16);
-  data without them loads as hand-drawn off.
+- The property and seed are stored in project files, action recording, and the clipboard (§16),
+  also for annotations that are not hand-drawn, so turning the style on later gives the look the
+  annotation would have had before saving or copying; data without them loads as hand-drawn off
+  with a new random seed.
 
 ---
 
@@ -626,8 +659,10 @@ Signature / Image have no such property.
   selects nothing.
 - A single selected annotation shows a blue boundary aligned with its rotated local axes, resize
   handles, and a rotation handle. A multi-selection shows each selected annotation's blue
-  boundary plus one shared axis-aligned group boundary and rotation handle; resize handles are
-  shown only on the primary selected object.
+  boundary plus one shared axis-aligned group boundary and rotation handle; a multi-selection
+  has no resize handles (none are drawn and none can be grabbed).
+- Moving a multi-selection with the mouse (dragging any selected annotation) moves every
+  selected annotation by the same distance; so do the arrow keys.
 - Resize handles are drawn entirely outside the boundary, just beyond the corner or edge they
   control, so they never cover the annotation and so their whole
   area resizes rather than competing with the move region inside the boundary.
@@ -641,13 +676,13 @@ unit unless noted otherwise. See [§13](#13-keyboard-shortcuts-reference) for ke
 
 | Operation | Behavior |
 |---|---|
-| Move | 12pt per press; Shift+arrow = 1px |
-| Resize | Drag the handles just outside the boundary; non-text/non-signature types preserve aspect ratio unless the type supports free resize (Text, Line, Arrow, Rectangle, Ellipse). Dragging a handle past the opposite (anchor) handle flips the box across that anchor — the dragged handle becomes the opposite corner/edge and resizing continues. |
+| Move | Arrow keys: 12pt (50px) per press; Shift+arrow = 1pt (about 4px). Every type is kept inside the page |
+| Resize | Drag the handles just outside the boundary. Text, Line, Arrow, Rectangle and Ellipse resize freely; Signature/Image, Checkmark and Crossmark keep their aspect ratio. Dragging a handle past the opposite (anchor) handle flips the box across that anchor — the dragged handle becomes the opposite corner/edge and resizing continues. |
 | Rotate | Drag the rotation handle around the object/group center (15° snapping by default; Shift disables snapping), or set a whole-degree angle in the toolbar |
-| Duplicate | Copies preserving size, color, and rotation, offset 20px |
+| Duplicate | Copies preserving size, color, hand-drawn style and rotation, offset 20px; several copies keep their relative positions and stacking order, and the copies stay inside the page |
 | Cut | Copies to clipboard (JSON), then deletes |
 | Copy | Copies selection to clipboard as JSON, capturing coordinates at copy time (later moves of the source do not affect the paste) |
-| Paste | Same page: applies the same 20px offset as Duplicate. Different page: no offset. |
+| Paste | Pastes the most recent copy, whether it was made in this window or in another instance. Same page: applies the same 20px offset as Duplicate. Different page: no offset. Pasted annotations keep their relative positions and stacking order and stay inside the page. |
 | Delete | Removes selection |
 | Select All | Selects all annotations on the current page |
 
@@ -680,7 +715,6 @@ The clipboard uses the same JSON annotation schema as project files and action r
   subtracts 90° from each annotation's intrinsic angle; a page rotation right adds 90°,
   normalized to `0`–`359`.
 - Mouse interaction coordinates are converted back through the inverse transform.
-- The window auto-resizes to keep the correct aspect ratio across portrait/landscape rotation.
 - Export renders each page with its own current rotation (mixed rotations per page are
   supported) across all export formats.
 - Replacing the underlying document (Change Document) preserves every annotation's coordinates,
@@ -703,14 +737,17 @@ The clipboard uses the same JSON annotation schema as project files and action r
   gesture is the unit, not the number of moves: two separate drags are two undo entries, just
   like any other two edits. Nudging a multi-selection records one entry per key press, since
   the group move is a single compound entry that cannot absorb the next one.
-- **Action model**: a partial format (used by action recording / test fixtures, e.g. `{type:
-  "move_annotation", object_id: 0, x: 300, y: 400}`) is promoted to a full format at undo-stack
-  finalization time (adds `from_x`/`from_y` etc.) — both formats use the same action classes and
-  serialization, so no separate conversion step exists.
-- **Undoable actions**: add, delete, move, resize, color change (annotation or default),
-  set text, hand-drawn toggle (§7.10), duplicate, cut/copy/paste (incl. multi-selection), select,
+- **Action model**: every undoable action records the complete state before and after it
+  (e.g. a resize records the position and size, and for a Line/Arrow the direction as well), so
+  undo restores exactly the previous state and redo exactly the resulting state, also when the
+  result was limited by the page boundary.
+- **Undoable actions**: add, delete, move, resize, color change of the selected annotation(s),
+  set text, hand-drawn toggle (§7.10), duplicate, cut/copy/paste (incl. multi-selection),
   rotate annotation or page (current or all), and multi-selection variants of
-  delete/duplicate/color/width/hand-drawn/rotation change as single units.
+  delete/duplicate/color/width/hand-drawn/rotation change as single units. Selecting and
+  navigating are not undoable.
+- Undo and redo never leave a selection that refers to an annotation that is not on the page
+  anymore; the selection is cleared of such annotations.
 - Undoing a page rotation restores each affected page's own previous angle, so rotating one page
   and then all pages does not collapse them to a single shared orientation.
 - Performing a new action while in an undone state clears the redo stack.
@@ -725,9 +762,11 @@ The clipboard uses the same JSON annotation schema as project files and action r
 - Hamburger File menu → Print, opens the platform's native print dialog (printer selection,
   pages, copies, orientation, preview).
 - Each page is rendered with its annotations composited (signatures, text, checkmarks, arrows,
-  etc.) at 300 DPI before printing.
-- Success and failure are both reported to the user; in automated tests, the print dialog
-  interaction is bypassed (test mode).
+  etc.) at 300 DPI before printing. The page size of the print job is the one chosen in the
+  print dialog, the pages and number of copies chosen there are honored, and each rendered page
+  is scaled to fit the paper while keeping its aspect ratio.
+- Success and failure are both reported to the user; automated tests replace the print dialog
+  with a stub that accepts it.
 
 ---
 
@@ -739,8 +778,8 @@ text input field currently has focus (this avoids accidental triggers while typi
 | Hotkey | No-Ctrl alternative | Action |
 |---|---|---|
 | ← / → (nothing selected) | — | Previous/next page |
-| ↑ / ↓ (annotation selected) | — | Move selection up/down 12pt (Shift: 1px) |
-| ← / → (annotation selected) | — | Move selection left/right 12pt (Shift: 1px) |
+| ↑ / ↓ (annotation selected) | — | Move selection up/down 12pt (Shift: 1pt) |
+| ← / → (annotation selected) | — | Move selection left/right 12pt (Shift: 1pt) |
 | Page Up / Page Down | — | Previous/next page |
 | Home / End | — | First/last page |
 | Ctrl+O | O | Open document |
@@ -751,7 +790,7 @@ text input field currently has focus (this avoids accidental triggers while typi
 | Ctrl+V | V | Paste |
 | Ctrl+D | D | Duplicate selection |
 | Ctrl+A | A | Select all on current page |
-| Delete | — | Delete selection |
+| Delete / Backspace | — | Delete selection |
 | Escape | — | Deselect all |
 | Ctrl+Z | Z | Undo |
 | Ctrl+Y / Ctrl+Shift+Z | Y | Redo |
@@ -789,10 +828,9 @@ Neither toast steals focus from the main window.
 - Missing/unreadable document: canvas interaction blocked, clear error message shown.
 - Corrupt image/document: validation error shown, app stays responsive.
 - Save failure: modal dialog with cause + recovery suggestion, Retry/Cancel.
-- Invalid export path: validated before export, error shown with a corrected suggestion.
 - Partial multi-page export failure: export stops, dialog lists failed pages and reason,
-  Retry/Cancel; already-written pages remain on disk. The export is reported as failed, so the
-  document still counts as having unsaved changes.
+  Retry/Cancel; already-written pages remain on disk. Retry writes the failed pages again. The
+  export is reported as failed, so the document still counts as having unsaved changes.
 - Partially unreadable clipboard data on paste: the readable annotations are pasted and a dialog
   reports how many were skipped, rather than the paste appearing to have succeeded in full.
 - Directory-link failure: red toast, "Unable to open directory", logged, does not crash.
@@ -801,7 +839,7 @@ Neither toast steals focus from the main window.
 
 ## 15. Persistence & Settings
 
-Stored as JSON in `config.json` (location depends on portable vs installed mode, §18):
+Stored as JSON in `config.json` (location depends on portable vs installed mode, see below):
 
 | Field | Type | Default | Purpose |
 |---|---|---|---|
@@ -821,6 +859,7 @@ Stored as JSON in `config.json` (location depends on portable vs installed mode,
 | `recent_text_strings` | list[string], ≤10 | `[]` | LRU free-text strings (excludes date/time presets) |
 | `recent_document_paths` | list[string], ≤10 | `[]` | LRU opened documents/projects |
 | `auto_save_project` | bool | `true` | Whether saving auto-writes the `.signer` project file |
+| `overlay_selection_toolbar` | bool | `false` | Whether the selection-properties area floats over the document (§2.1) |
 
 Field names use snake_case (matching the Python settings model), since the file is user-facing
 and may be hand-edited. Any change to a persisted value (including toggling "Auto-save Project
@@ -855,35 +894,42 @@ UTF-8 JSON. Root object contains exactly:
 {
   "version": 1,
   "document_path": "C:/path/to/document.pdf",
-  "annotations": { "0": [ { "type": "add_annotation", "annotation_type": "text", "x": 100, "y": 200, "width": 150, "height": 40, "...": "..." } ] },
+  "annotations": [ { "type": "add_annotation", "annotation_type": "text", "page": 0, "x": 100, "y": 200, "width": 150, "height": 40, "...": "..." } ],
   "rotations": { "0": 90 }
 }
 ```
 
 - No `schema`, timestamps, `current_page`, or `settings` fields — intentionally minimal.
+- `document_path` is stored as an absolute path, whichever way the document was opened, so the
+  project can be opened from any working directory.
+- `annotations` is one flat list; every entry carries the index of its `page`.
 - Each annotation entry reuses the **same action entity shape** used by action recording and
   feature-test JSON fixtures: `type` is `add_annotation` or `open_signature`, with
   `annotation_type`, `x`, `y`, `width`, `height`, optional `page`, and only the type-specific
   fields needed to restore appearance (text/font properties, color, etc.). The optional
   `rotation` field stores the normalized clockwise annotation angle in degrees and defaults to
   `0` when absent, preserving compatibility with existing files. Checkmark, Crossmark, Line,
-  Arrow, Rectangle, and Ellipse entries additionally store `hand_drawn` (boolean) and `hand_drawn_seed` (integer, §7.10)
-  only when `hand_drawn` is true; absent means off. There is no separate project-only annotation
+  Arrow, Rectangle, and Ellipse entries additionally store `hand_drawn` (boolean) and `hand_drawn_seed` (integer, §7.10);
+  absent means off (and a new random seed on load). There is no separate project-only annotation
   schema.
 - `width`/`height` are current rendered dimensions; when a `scale` field is present, base
   (unscaled) dimensions are derived by dividing by it, so scaling applies exactly once on load.
 - Per-page rotations (§10) are stored in the optional `rotations` map (page index → angle),
   omitted keys meaning 0°. Annotation coordinates stay unrotated, so the page orientation is
   never baked into them.
-- Page keys in `annotations` are normalized back to integer page indexes on load.
+- A project that is not in this format (for instance an `annotations` value that is not a list)
+  is rejected with an error message, without changing the document that is currently open.
 
 ### 16.3 Naming & location
 
 - Opening a plain document does **not** create a project file.
 - A successful export establishes the project path: the exported basename with any multi-page
   `-p#` placeholder removed, plus `.signer` — e.g. `document-signed.jpg` →
-  `document-signed.signer` (stored next to the exported file).
+  `document-signed.signer` (stored next to the exported file). This happens whether or not
+  Auto-save Project on Save is enabled.
 - Both auto-save and later explicit saves reuse that same established path.
+- Opening another document or project discards the established path, so a project is never
+  saved under the name or in the folder of an earlier document.
 
 ### 16.4 Lifecycle
 
@@ -892,11 +938,14 @@ UTF-8 JSON. Root object contains exactly:
 - **Save Project** / **Save Project As…**: reuse the established export-based path, or prompt
   for one if no export has occurred yet.
 - Opening a project restores every annotation to its stored page, always displaying **page 1**
-  first (the concept of a "saved current page" does not exist), and adds the project to Recent
-  Documents.
-- If the referenced document is missing or has changed, the app prompts with a **Change
+  first (the concept of a "saved current page" does not exist), and adds the project and its
+  document to Recent Documents. If the project cannot be opened, the document that was open
+  stays unchanged.
+- If the referenced document is missing, the app prompts with a **Change
   Document** action rather than failing silently; changing the document preserves every
-  annotation's coordinates, size, orientation, and relative arrangement (see §10).
+  annotation's coordinates, size, orientation, and relative arrangement (see §10). If the
+  document is a password-protected PDF, the password is asked for exactly as when opening it
+  directly. Changing the document also updates the window title and the recent lists.
 - Saving overwrites the existing `.signer` file in place.
 - On open, the `version` field is validated; unsupported versions are rejected with a clear
   error. A missing `version`/no schema is acceptable for version 1 (schema is not part of the
@@ -961,9 +1010,10 @@ are not separate dialog stages, just further behavior of the same screen.
      around a colored signature.
 - In **Method 1: Luminance background removal**, two sliders control the result, updating the
   preview live:
-  - **Threshold** — luminance cutoff; pixels lighter than this become fully transparent, darker
-    ink stays opaque.
-  - **Softness** — width of the gradient band around the threshold, producing smooth
+  - **Threshold** — luminance at the middle of the transition: pixels at this luminance are half
+    transparent, clearly lighter ones become fully transparent, clearly darker ink stays opaque.
+  - **Softness** — total width of the transition band around the threshold (a softness of 40 at
+    threshold 200 means fully opaque up to luminance 180 and fully transparent from 220), producing smooth
     (anti-aliased) edges instead of a hard cutout.
 - In **Method 2: Keep ink color**, the user tunes the color filter applied to the output of
   Method 1 (or to the original crop when Method 1 is not selected):
@@ -993,7 +1043,9 @@ are not separate dialog stages, just further behavior of the same screen.
   estimated regular-character height and the calculated scaling information; numeric values are
   informational and are not required in the wireframe. When cleared, no automatic signature
   scaling is applied and the full extracted signature keeps its current dimensions.
-- "Reset" restores the controls of each selected method to their default values.
+- "Reset" restores all four sliders (threshold, softness, color tolerance, color softness) to
+  their default values, whichever methods are selected; the ink color and the method checkboxes
+  are kept.
 
 #### Stage 3.1 wireframe
 
@@ -1067,7 +1119,8 @@ control in either scale state.
   pixels for each row within the actual signature bounds. Two independent constants control the
   estimate:
   - `CHARACTER_BAND_TOP_FRACTION` (constant `0.70`, found empirically) limits the search for the densest contiguous
-    character band to the top 70% of the visible signature. This avoids letting long lower strokes
+    character band to the top 70% of the visible signature; only row runs whose density is at
+    least 20% of the peak density within that part count as part of a band. This avoids letting long lower strokes
     dominate the normal-character estimate and can be tuned if the writing style requires it.
   - `CHARACTER_EXPANSION_BASELINE_PERCENT` (constant `60.0`, found empirically) identifies the first cumulative-alpha
     row used as the expansion baseline. That cumulative range defines the regular-character
@@ -1123,9 +1176,11 @@ control in either scale state.
 - If `-signature` is given together with `-document`, the signature annotation is added
   immediately after load at the center of the current page (§7.7), and becomes fully selected
   (movable/deletable via keyboard right away).
+- If `-signature` is given without `-document`, no annotation can be added; the signature file
+  is only added to the recent images list.
 - If `-signature` is omitted, no annotation is auto-added on open.
 - If `-signature` is omitted, the previously-used signature file is remembered but **not**
-  automatically re-added — it's only available for the Signature submenu's recent list.
+  automatically re-added — it's only available for the Add menu's Signature / Image recent list.
 
 Example: `signer -document examples/document.pdf -signature examples/signature.png`
 
@@ -1133,8 +1188,10 @@ Example: `signer -document examples/document.pdf -signature examples/signature.p
 
 ## 19. Platform Support
 
-- Supported OSes: Windows 7+, macOS 10.13+, and a maintained Linux distribution whose glibc is
-  compatible with the release's PySide6/PyInstaller build.
+- Supported OSes: Windows 10 or later, macOS 13 or later (the minimum of the Qt 6.11 / PySide6
+  6.11 builds the app ships with), and a maintained Linux distribution whose glibc is
+  compatible with the release's PySide6/PyInstaller build. The macOS build is made on an
+  Apple-silicon runner, so it targets Apple-silicon Macs.
 - Native desktop actions (e.g. opening the export directory from a notification link) use
   platform-independent Qt APIs and open each platform's native file manager.
 - LibreOffice remains an optional external dependency for Word/ODT input on every platform; it

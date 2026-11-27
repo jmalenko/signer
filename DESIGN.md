@@ -48,7 +48,7 @@ python -m PyInstaller --clean --noconfirm signer.spec
 Produces `dist/signer.exe` (Windows) or `dist/signer` (macOS/Linux). See §6 for target-specific
 details and constraints (PyInstaller does not cross-compile). The GitHub Actions workflow in
 `.github/workflows/build.yml` builds all three platform artifacts on native runners for pushes to
-any branch, pull requests, and manual workflow runs. These runs upload the executables as
+any branch (which also covers the branches of pull requests) and manual workflow runs. These runs upload the executables as
 workflow artifacts; pushes to `main` also publish them to a versioned GitHub release.
 
 **Developer setup:**
@@ -131,20 +131,28 @@ flowchart TD
 - Documents are normalized to a `list[PIL.Image]` (one per page) at 300 DPI, regardless of
   source format.
 - Each page owns an independent list of `CanvasObject` annotations (`page_index -> objects[]`).
-- Every annotation stores its geometry in **PDF points** (`x`, `y`, base width/height, `scale`),
-  plus a normalized clockwise `rotation` angle, converted to 300-DPI pixels for rendering via
-  `DPI_SCALE = 300/72`.
-- Undo/redo, project-file persistence (`.signer`), and action-recording test fixtures all share
-  the same annotation entity shape and serializer (see §4 for why).
+- Every annotation stores its geometry in **document coordinates**, i.e. pixels of the page
+  rendered at 300 DPI (`x`, `y`, base width/height, `scale`), plus a normalized clockwise
+  `rotation` angle. Sizes and distances are *defined* in PDF points and converted with
+  `DPI_SCALE = 300/72` when they are created (a 20pt checkmark is stored as ≈83 px); constants
+  whose name ends in `_PT` are points, and a constant such as `KEYBOARD_MOVE_STEP_PT` must be
+  multiplied by `DPI_SCALE` before it is added to a document coordinate. Text spacing and font
+  size are stored in points and converted when drawing.
+- Undo/redo, project-file persistence (`.signer`), and action-recording test fixtures share the
+  annotation entity shape (see §4 for why); the serializers are separate pieces of code
+  (`to_dict`, `ProjectFile.from_annotations`, the history snapshots), so a new persisted field
+  has to be added to each of them.
 
 ## 4. Key Design Decisions & Rationale
 
 - **LibreOffice headless conversion for Word/ODT**, rather than a native `.docx`/`.odt` parser:
   reuses the existing PDF rendering pipeline (PyMuPDF) unchanged and gets accurate layout
   fidelity for free, at the cost of an optional external dependency.
-- **Coordinates stored in PDF points, rendered at 300 DPI internally**: keeps annotation
-  geometry resolution-independent (matches how PDF/print measurements are normally expressed)
-  while giving crisp rendering; a single `DPI_SCALE` constant converts between the two.
+- **Sizes defined in PDF points, stored in 300-DPI document coordinates**: user-facing sizes
+  (annotation sizes, font size, line width, nudge step) are expressed in points, which is how
+  PDF/print measurements are normally expressed, while the stored geometry uses the pixels of
+  the 300-DPI render so that drawing, hit-testing and export need no conversion; a single
+  `DPI_SCALE` constant converts between the two.
 - **Zoom is a canvas-only transform**: `DocumentCanvas` keeps a zoom multiplier and pan offsets
   separate from the document and annotation coordinates. Zoom steps multiply or divide by
   `ZOOM_STEP` (`1.25`), with `1.0` as the fit-to-window floor. Pointer-anchored zoom adjusts
@@ -411,7 +419,7 @@ component to `0`. Before publishing, the workflow compares the calculated versio
 `vMAJOR.MINOR.PATCH` tags and fails rather than publishing a downgrade. The calculation is
 implemented in `signer/release_version.py` and covered by unit tests.
 
-Pull requests and manual workflow runs build and test the executables but retain them only as
+Branch pushes (including pull-request branches) and manual workflow runs build and test the executables but retain them only as
 workflow artifacts. Code signing and macOS notarization are not configured yet and require
 platform-specific credentials and certificates.
 

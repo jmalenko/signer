@@ -16,6 +16,7 @@ tests/
 ├── feature/                       # End-to-end workflow tests
 ├── fixtures/                      # Recorded action JSON + reference images
 ├── recording/                     # Action recording/playback utilities
+├── utils/                         # Shared test helpers (image comparison, report, export_to_page)
 ├── test-results/                  # Generated test reports (not committed)
 └── conftest.py                    # Pytest configuration, fixtures
 ```
@@ -278,10 +279,12 @@ tests/test-results/
 If output changes are intentional and verified as correct:
 
 1. Verify in HTML report (Expected vs Actual look correct)
-2. Copy actual to expected:
+2. Copy actual to expected (the result folder and the fixture folder carry the fixture name):
    ```bash
-   cp tests/test-results/{test_name}/{name}_actual.png tests/fixtures/{name}_actions-expected/{name}-output.png
+   cp tests/test-results/{fixture}/document1-signed_actual.png tests/fixtures/{fixture}/document1-signed.png
    ```
+   (multi-page fixtures use the same pattern with the per-page file names, e.g.
+   `document-signed-p1_actual.png` → `document-signed-p1.png`).
 3. Re-run tests to confirm they pass:
    ```bash
    pytest tests/feature/ -v

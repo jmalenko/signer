@@ -24,8 +24,8 @@ following the existing `## Version x.y.z - Title` convention.
     6. User saves the document
 3. Parameters to the app: `-document` (file with document) and `-signature` (file with signature).
 4. Menu options: Open document, Open signature, Save document with signature.
-5. When started without specifying the signature file, automatically use the previous signature file.
-6. The default file name of the "document with signature" is: _documentname_ + -signed.jpg
+5. (Superseded: the previously used signature is only offered in the recent signatures list and is never added automatically; see Version 1.2.2 and FUNCTIONAL_SPECIFICATION.md §18.) When started without specifying the signature file, automatically use the previous signature file.
+6. (Superseded by Version 1.2.10: export formats are JPG, PNG, BMP, PDF and TIFF.) The default file name of the "document with signature" is: _documentname_ + -signed.jpg
 7. The document shall fit the application window. No zooming needed.
 8. Default position for the signature is 80% from top, centered horizontally.
 9. Document with signature has 300 DPI.
@@ -247,7 +247,9 @@ Motivation: documents (especially scans) sometimes come in with the wrong orient
 user fix that for viewing/exporting without needing to edit the source file.
 
 1. The application shall support rotating the whole document, or just the current page, 90° left/right (Edit menu).
-2. Rotation shall be temporary (session-only) and not persisted.
+2. Rotation shall be temporary: it belongs to the open document, is reset when another document
+   is opened, and is never baked into the source file. (A project file stores it, so it is
+   restored when that project is opened; see Version 1.2.36.)
 3. Rotated pages shall export with their rotated orientation in all supported formats.
 4. Annotations shall not rotate visually; their position shall be transformed so each annotation's center stays at the same visual location on the page.
 
@@ -269,7 +271,9 @@ See [FUNCTIONAL_SPECIFICATION.md §8](FUNCTIONAL_SPECIFICATION.md#8-selection--m
 Motivation: frequent actions (move, undo, copy/paste, rotate, navigate) should be reachable
 without leaving the keyboard, matching conventions from other desktop apps.
 
-1. When an annotation is selected, arrow keys move it by 12pt (Shift: 1px).
+1. When an annotation is selected, arrow keys move it by 12pt (Shift: 1pt). (Originally written as
+   "Shift: 1px", from the time the page was rendered at 72 DPI where a pixel was a point; the
+   intent is 12pt and 1pt on the page, i.e. 50 and about 4 pixels of the 300-DPI document.)
 2. The application shall support a documented set of hotkeys (with single-key alternatives to the Ctrl-based ones) for document/file operations, annotation operations, undo/redo, and document rotation, active only in the default document view (not while a dialog or text field has focus).
 3. There are intentionally no direct hotkeys for adding a specific annotation type; use the Annotations menu or toolbar button.
 
@@ -447,9 +451,9 @@ of recreating every annotation from scratch each time.
 The application shall support reusable signer project files (`.signer`, JSON) for recurring
 document-signing workflows: a successful export establishes the project's path and, when
 auto-save is enabled, saves the project after each export. Opening a project restores every
-annotation to its stored page. If the referenced document is missing or has changed, the app
+annotation to its stored page. If the referenced document is missing, the app
 offers a Change Document action that preserves every annotation's coordinates, size, and
-orientation. Project persistence reuses the same annotation entity model as action recording and
+orientation. Project persistence reuses the same annotation entity shape as action recording and
 test fixtures, avoiding a second serialization format.
 
 See [FUNCTIONAL_SPECIFICATION.md §16](FUNCTIONAL_SPECIFICATION.md#16-project-files-signer) for the full format, naming, and lifecycle rules.
@@ -483,11 +487,13 @@ of a larger scanned page) into a ready-to-use transparent PNG.
     and Method 2 runs second on Method 1's output. When only one is selected, only that method
     runs. The live preview updates immediately when either method checkbox or one of its controls
     changes.
-6. A selected-by-default toggle shall scale the signature to fit the recommended 10pt–24pt
+6. (Superseded by Version 1.2.38: the signature is scaled against its regular character height and
+   there is no height input.) A selected-by-default toggle shall scale the signature to fit the
+   recommended 10pt–24pt
    range. While selected, the height input is hidden and replaced by a status such as
    "Will be scaled to 24pt from the current 50pt"; the status always reflects the current
    actual signature-boundary height.
-7. When the scale toggle is cleared, an editable height input shall be shown. The user's entered
+7. (Superseded by Version 1.2.38.) When the scale toggle is cleared, an editable height input shall be shown. The user's entered
    height shall remain fixed when other method, crop-processing, or preview controls change and
    shall be used for the saved output. Editing the height automatically clears the scale toggle.
    The 10pt–24pt range remains the recommended target range.
@@ -514,8 +520,8 @@ of a larger scanned page) into a ready-to-use transparent PNG.
 13. Navigating back and forth between steps shall preserve prior settings: returning to step 2
    and continuing again keeps the previously drawn crop selection (for the same page), and
    returning to step 3 keeps all of its controls (method checkboxes, ink color, sliders,
-   height/fit toggle, and manual height value) exactly as previously left, instead of resetting
-   them.
+   scale toggle) exactly as previously left, instead of resetting
+   them. (The height input mentioned in the original wording no longer exists; see Version 1.2.38.)
 
 See [FUNCTIONAL_SPECIFICATION.md §17](FUNCTIONAL_SPECIFICATION.md#17-prepare-signature-tool).
 
@@ -689,8 +695,10 @@ manually choosing a version, creating a tag, or uploading platform builds.
 1. Every push to any branch shall run the existing cross-platform build and unit tests, then
    upload the Windows, macOS, and Linux executables as workflow artifacts. A push to `main` shall
    additionally publish those executables as a GitHub Release.
-2. Requirement headings shall specify only the major and minor release version (for example,
-   `1.3`). The release version shall use the standard `MAJOR.MINOR.PATCH` form; the patch
+2. Requirement headings shall specify the major and minor release version (for example,
+   `1.3`); a heading may carry a third number (for example `1.8.1` for a bugfix entry), which
+   does not change the release version. The release version shall use the standard
+   `MAJOR.MINOR.PATCH` form; the patch
    component is also known as the patch version.
 3. The release major and minor components shall come from the latest version heading in this
    file. The commit that adds that heading shall publish patch version `0`; each subsequent
@@ -700,7 +708,8 @@ manually choosing a version, creating a tag, or uploading platform builds.
 4. Before publishing, the calculated release version shall not be lower than the highest existing
    `vMAJOR.MINOR.PATCH` release tag. If it would be lower, the release job shall fail without
    publishing a release.
-5. Pull requests and manual workflow runs shall continue to build and upload workflow artifacts
+5. Pull requests (through the push of their branch) and manual workflow runs shall continue to
+   build and upload workflow artifacts
    without publishing a GitHub Release. A release shall be published automatically only for
    pushes to `main`; manually pushing a version tag shall not publish a release.
 
@@ -753,7 +762,7 @@ annotations read as informal, hand-marked notes.
    shall start and end at the same points as the straight version. An ellipse outline has no
    start or end: it shall be one continuous wobbly closed curve.
 3. The hand-drawn look shall be stable. It shall not change between repaints, zoom levels,
-   moves, selection changes, undo/redo, or save and reload. Resizing or rotating the
+   moves, rotation, selection changes, undo/redo, or save and reload. Resizing the
    annotation may change it. Each annotation shall store its own seed for the randomness.
    Two annotations with identical geometry may look different, and the same annotation shall
    look the same on screen, in print, and in export.
