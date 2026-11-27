@@ -813,3 +813,31 @@ missing from the recent signatures, so the user had to browse for the same file 
    shall be added, by its absolute path, to the history of recent signatures, exactly as if it had
    been loaded with "From file…".
 2. Dropped documents (big images, PDFs) and drops that fail shall not change the history.
+
+## Version 1.8 - Tell same-named recent files apart
+
+Motivation: The recent documents and recent signatures show only the file name, so two files with
+the same name in different folders could not be distinguished.
+
+1. When two or more entries of a recent list have the same file name, each of them shall also show
+   where it is: the full path of its folder.
+   Entries with a unique file name shall keep showing the file name only.
+2. This shall apply the same way to recent documents and recent signatures, in every menu that
+   lists them (toolbar Open dropdown, hamburger File menu, Signature / Image menu).
+
+## Version 1.8.1 - Bugfix: Recent files are stored with absolute paths
+
+Bug: A document or signature opened with a relative path (e.g. `-signature examples/sig.png` on
+the command line) appeared in the recent lists as that relative path, next to the absolute entry
+of the same file.
+
+Steps to reproduce: Start the app from a folder with `-signature examples/signature.png`, then
+open the same file through "From file…", and open the Signature / Image menu.
+
+Expected: One entry for the file, with its absolute path. Actual: two entries, one of them
+relative, which means nothing from another working directory.
+
+1. Recent documents and recent signatures shall always be stored with absolute paths, however the
+   file was opened (dialog, recent list, drag-and-drop, command line).
+2. Opening a file that is already listed, by a relative or an absolute path, shall move that one
+   entry to the front instead of adding a second one.

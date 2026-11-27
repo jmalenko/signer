@@ -83,5 +83,17 @@ Prioritize signer/ (production code) findings over tests/ findings in the final 
 Skip purely stylistic issues (naming, formatting, unused imports) — only logical
 correctness/robustness issues in this category.
 
+--
+
+--
+
+Fix bug - github workflow is failing. 
+Log is in /Users/JF80132/Library/CloudStorage/OneDrive-KBCGroup/ACT/K/logs_124137466009.zip
+The log is from an older commit, but I think it is still there.
+
 ---
+
+
+Command to run it locally
+
 

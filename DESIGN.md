@@ -323,6 +323,18 @@ flowchart TD
   style. It is created after the Angle group on purpose: items overflow from the end, and putting
   it earlier pushed Angle into the overflow popup at the minimum window width. It has no
   hamburger-menu entry, matching color and width.
+- **Recent file lists hold absolute paths**: `MainWindow._update_recent_path_list()` (used by
+  `_update_recent_documents()`/`_update_recent_signatures()`, so every open path incl. the
+  `-document`/`-signature` startup load goes through it) makes the path absolute and drops
+  entries that resolve to the same file, then applies the usual LRU update. Relative entries
+  already in an existing `config.json` are not rewritten (their base directory is unknown); they
+  are replaced when that file is opened again, or pruned when it can't be found.
+- **Recent-file labels are computed per list**: `MainWindow._recent_path_labeler(paths)` returns
+  the `label_fn` for `_rebuild_menu_items()`/`_rebuild_tracked_menu_section()` for the recent
+  documents and recent signatures lists. A label can't be derived from one path alone (whether a
+  folder is needed depends on the other entries), hence the per-list closure built on every menu
+  rebuild. The folder is the full parent path, not an abbreviated suffix: partial paths proved
+  meaningless to the user, and menus simply grow wider.
 
 ## 5. Testing Architecture
 

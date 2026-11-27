@@ -185,7 +185,8 @@ document. See [§17](#17-prepare-signature-tool) for "Prepare Signature…".
 
 Recent items (documents, texts, images/signatures) appear at the **top level** of their
 respective menu, after the static items, separated by a horizontal rule. Each recent list holds
-up to 10 entries, ordered most-recently-used first. See [§13](#13-keyboard-shortcuts-reference)
+up to 10 entries, ordered most-recently-used first. Recent documents and images are labeled with
+their file name; see [§4.4](#44-recent-documents) for how same-named files are told apart. See [§13](#13-keyboard-shortcuts-reference)
 for the keyboard shortcut assigned to each action.
 
 ### 2.3 Context-sensitivity rules
@@ -309,6 +310,16 @@ file: Access denied."*; a drop while a dialog is open is ignored.
 
 Up to 10 recently opened documents/projects, most-recent-first, persisted across sessions (see
 §15). Available via the toolbar Open dropdown and the hamburger File menu's top-level recent list.
+
+Entries are stored by absolute path, however the file was opened (a relative command-line path is
+made absolute against the working directory at that moment). Opening an already listed file moves
+its entry to the front instead of adding another one.
+
+**Entry labels** (recent documents and recent images/signatures alike): an entry is labeled with
+its file name. When two or more entries in the same list share a file name, those entries are
+labeled `name — folder`, where `folder` is the full path of the file's parent folder, shown
+untruncated. Entries with a unique name keep the plain file name. Labels are recomputed whenever
+the list is rebuilt.
 
 ### 4.5 Window & canvas sizing
 
@@ -488,7 +499,8 @@ Signature and Image are unified as a single "Signature / Image" annotation type.
 a file dialog ("From file…") or a recent-images submenu (up to 10 entries, LRU). Any image
 format supported by Pillow may be used; it is scaled to fit the bounding box while preserving
 aspect ratio. Color and line-width controls are hidden for this type. An image dropped onto
-the canvas (§4.3) is added to the recent-images list as well.
+the canvas (§4.3) is added to the recent-images list as well. Same-named entries are told apart
+as described in §4.4.
 
 ### 7.4 Shape auto-detection (Rectangle/Square, Ellipse/Circle)
 

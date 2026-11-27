@@ -9,6 +9,7 @@ import sys
 
 logger = logging.getLogger(__name__)
 
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -1380,9 +1381,26 @@ class MainWindow(QMainWindow):
             self._sig_ann_menu.addSeparator()
             self._rebuild_menu_items(
                 self._sig_ann_menu, [], paths,
-                label_fn=lambda p: Path(p).name,
+                label_fn=self._recent_path_labeler(paths),
                 callback=self._load_signature_file,
             )
+
+    @staticmethod
+    def _recent_path_labeler(paths: list[str]):
+        """Return a `path -> menu label` function for a list of recent file paths.
+
+        A file name unique within `paths` is shown alone; files sharing a file name
+        get their full folder path appended ("name — /full/folder").
+        """
+        name_counts = Counter(Path(p).name for p in paths)
+
+        def label(p: str) -> str:
+            path = Path(p)
+            if name_counts[path.name] < 2:
+                return path.name
+            return f"{path.name} — {path.parent}"
+
+        return label
 
     @staticmethod
     def _truncate_for_menu(text: str, max_len: int = 50) -> str:
@@ -1422,7 +1440,7 @@ class MainWindow(QMainWindow):
         if paths:
             self._rebuild_menu_items(
                 self._recent_docs_menu, [], paths,
-                label_fn=lambda p: Path(p).name,
+                label_fn=self._recent_path_labeler(paths),
                 callback=self.open_document,
             )
         else:
@@ -1434,7 +1452,7 @@ class MainWindow(QMainWindow):
         self._file_recent_docs_actions = self._rebuild_tracked_menu_section(
             file_menu, self._file_recent_docs_actions,
             self._settings.recent_document_paths,
-            label_fn=lambda p: Path(p).name,
+            label_fn=self._recent_path_labeler(self._settings.recent_document_paths),
             callback=self.open_document,
         )
 
@@ -2193,7 +2211,7 @@ class MainWindow(QMainWindow):
             self._update_title()
             self._update_document_workflow_state()
 
-            self._update_recent_signatures(str(Path(file_path).absolute()))
+            self._update_recent_signatures(file_path)
             self._save_settings_safe()
             self._rebuild_sig_ann_menu()
         except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
@@ -2262,7 +2280,7 @@ class MainWindow(QMainWindow):
         return True
 
     def _update_recent_signatures(self, path: str) -> None:
-        self._settings.recent_signature_paths = self._update_lru_list(
+        self._settings.recent_signature_paths = self._update_recent_path_list(
             self._settings.recent_signature_paths, path
         )
 
@@ -2274,6 +2292,17 @@ class MainWindow(QMainWindow):
             self._settings.recent_signature_paths = paths
             self._save_settings_safe()
             self._rebuild_sig_ann_menu()
+
+    @staticmethod
+    def _update_recent_path_list(paths: list[str], path: str) -> list[str]:
+        """LRU-update a recent file list, storing `path` as an absolute path.
+
+        A relative path (e.g. from the command line) means nothing once the working
+        directory changes. Entries already listed for the same file are replaced.
+        """
+        absolute = str(Path(path).absolute())
+        kept = [p for p in paths if str(Path(p).absolute()) != absolute]
+        return MainWindow._update_lru_list(kept, absolute)
 
     @staticmethod
     def _update_lru_list(items: list, item, max_size: int = MAX_RECENT_ITEMS) -> list:
@@ -2297,7 +2326,7 @@ class MainWindow(QMainWindow):
 
     def _update_recent_documents(self, path: str) -> None:
         """Add a document path to recent documents (LRU, max 10)."""
-        self._settings.recent_document_paths = self._update_lru_list(
+        self._settings.recent_document_paths = self._update_recent_path_list(
             self._settings.recent_document_paths, path
         )
 
