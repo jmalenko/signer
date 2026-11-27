@@ -943,6 +943,9 @@ first scan (and its selection).
 6. Opening an encrypted PDF shall ask for its password, like opening a document in the main
    window: up to three prompts, a password typed at any of them is accepted when correct, and
    cancelling the prompt opens nothing.
+7. Clarification of Version 1.2.38: the regular-character height that is scaled to 12pt is the
+   height of the 60% expansion band (the row range grown from the expansion baseline until it holds
+   60% of the signature's ink); the densest-band search is only a fallback.
 
 ## Bugfix: Editing annotations follows the specification
 

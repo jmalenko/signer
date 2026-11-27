@@ -290,6 +290,26 @@ If output changes are intentional and verified as correct:
    pytest tests/feature/ -v
    ```
 
+## Writing Tests That Can Fail
+
+Several defects stayed hidden because the tests could not detect them. When writing tests:
+
+- **Check what the user gets, through the path the user uses.** To assert on exported pixels use
+  `export_to_page()` (`tests/utils/test_helpers.py`), which runs the real export; never
+  `VectorAnnotation.render_to_pil()`, which is clipped to the bounding box and exists for
+  hit-testing only. To test mouse or keyboard behavior send real events
+  (`canvas.mousePressEvent(QMouseEvent(...))`, `QTest.keyClick`) instead of calling the internal
+  method that the event would call. Show the window (`window.show()`) before testing shortcuts.
+- **Assert the effect, not that the code ran.** `width > 0`, `is not None`, `hasattr` and copying a
+  value into a local variable and asserting it cannot fail. Compare with a known value, or with the
+  state before (more ink, other position, other colour).
+- **A mocked dialog still has to be asserted on.** Patch `QMessageBox`/`QFileDialog` so that a test
+  never waits for a click (an unpatched dialog hangs the run), but also check the buttons, texts and
+  defaults the specification names (see `test_overwrite_dialog_text.py`,
+  `test_save_failure_retry.py`; `FakeSaveDialog` stands in for the Save As dialog).
+- **Reconcile with the specification**, not with the current code: when a test and the specification
+  disagree, one of them is wrong; say which in the commit.
+
 ## Recording New Feature Tests
 
 Feature tests replay a recorded JSON action sequence and compare the rendered output to a

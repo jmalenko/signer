@@ -1,85 +1,102 @@
-"""Feature tests for context-sensitive UI behavior."""
+"""Feature tests for context-sensitive UI behavior (spec §2.3)."""
+
+import pytest
 
 from signer.objects import AnnotationType, VectorAnnotation
 
+# Which toolbar controls each type shows (spec §2.3): color, width, font group, hand-drawn.
+CONTROLS_PER_TYPE = {
+    AnnotationType.CHECKMARK: dict(color=True, width=True, font=False, hand_drawn=True),
+    AnnotationType.CROSSMARK: dict(color=True, width=True, font=False, hand_drawn=True),
+    AnnotationType.LINE: dict(color=True, width=True, font=False, hand_drawn=True),
+    AnnotationType.ARROW: dict(color=True, width=True, font=False, hand_drawn=True),
+    AnnotationType.RECTANGLE: dict(color=True, width=True, font=False, hand_drawn=True),
+    AnnotationType.ELLIPSE: dict(color=True, width=True, font=False, hand_drawn=True),
+    AnnotationType.TEXT: dict(color=True, width=False, font=True, hand_drawn=False),
+}
+
+
+@pytest.fixture
+def window(main_window, sample_pdf):
+    assert main_window.open_document(str(sample_pdf))
+    return main_window
+
 
 class TestControlVisibilityPerType:
-    """Test that controls appear/disappear based on annotation type."""
-    
-    def test_line_shows_color_and_width(self, qtbot):
-        """Test Line annotation displays color and width controls."""
-        line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        
-        # Should support both color and width
-        assert hasattr(line, 'color')
-        assert hasattr(line, '_line_width_pt')
-    
-    def test_rectangle_shows_color_and_width(self, qtbot):
-        """Test Rectangle annotation displays color and width controls."""
-        rect = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, 0)
-        
-        assert hasattr(rect, 'color')
-        assert hasattr(rect, '_line_width_pt')
-    
-    def test_ellipse_shows_color_and_width(self, qtbot):
-        """Test Ellipse annotation displays color and width controls."""
-        ellipse = VectorAnnotation(AnnotationType.ELLIPSE, 100, 100, 0)
-        
-        assert hasattr(ellipse, 'color')
-        assert hasattr(ellipse, '_line_width_pt')
-    
-    def test_arrow_shows_color_and_width(self, qtbot):
-        """Test Arrow annotation displays color and width controls."""
-        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
-        
-        assert hasattr(arrow, 'color')
-        assert hasattr(arrow, '_line_width_pt')
-    
-    def test_text_shows_color_font_size_family(self, qtbot):
-        """Test Text annotation displays color, font size, and font family."""
-        text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        
-        assert hasattr(text, 'color')
-        assert hasattr(text, '_font_size_pt')
-        assert hasattr(text, '_font_family')
-        # Should NOT have width
-        # (width is for vector strokes, not text)
-    
-    def test_checkmark_shows_color_and_width(self, qtbot):
-        """Test Checkmark annotation displays color and width."""
-        checkmark = VectorAnnotation(AnnotationType.CHECKMARK, 100, 100, 0)
-        
-        assert hasattr(checkmark, 'color')
-        assert hasattr(checkmark, '_line_width_pt')
-    
-    def test_crossmark_shows_color_and_width(self, qtbot):
-        """Test Crossmark annotation displays color and width."""
-        crossmark = VectorAnnotation(AnnotationType.CROSSMARK, 100, 100, 0)
-        
-        assert hasattr(crossmark, 'color')
-        assert hasattr(crossmark, '_line_width_pt')
+    """The selection-properties controls shown for each annotation type."""
+
+    @pytest.mark.parametrize("ann_type", list(CONTROLS_PER_TYPE))
+    def test_controls_shown_for_the_selected_type(self, window, ann_type):
+        window.canvas.add_object(VectorAnnotation(ann_type, 100, 100, text="Test"))
+        window._update_annotation_action_state()
+        shown = window._context_conceptually_visible
+        expected = CONTROLS_PER_TYPE[ann_type]
+
+        assert (window._color_btn_action in shown or window._color_btn_action.isVisibleTo(window)) is expected["color"]
+        assert (window._width_group in shown) is expected["width"]
+        assert (window._font_size_group in shown) is expected["font"]
+        assert (window._font_family_group in shown) is expected["font"]
+        assert (window._character_spacing_group in shown) is expected["font"]
+        assert (window._hand_drawn_btn in shown) is expected["hand_drawn"]
+        assert window._angle_group in shown  # every type can be rotated
 
 
-class TestControlDisabledStates:
-    """Test that controls are disabled when no annotation selected."""
-    
-    def test_no_selection_controls_disabled(self):
-        """Test controls are conceptually disabled when nothing selected."""
-        # No annotation
-        selected = None
-        
-        # Controls should be conceptually disabled
-        assert selected is None
-    
-    def test_selection_controls_enabled(self):
-        """Test controls are enabled when annotation selected."""
-        line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        
-        # Selection exists
-        selected = line
-        
-        assert selected is not None
-        assert hasattr(selected, 'color')
+class TestControlsShowTheSelectedAnnotation:
+    """Selecting an annotation puts its values into the controls, without editing it."""
+
+    def test_width_spinner_shows_the_selected_line_width(self, window):
+        line = VectorAnnotation(AnnotationType.LINE, 100, 100, line_width_pt=2.5)
+        window.canvas.add_object(line)
+        depth = len(window.canvas.history.undo_stack)
+
+        window._update_annotation_action_state()
+
+        assert window._width_spinner.value() == pytest.approx(2.5)
+        assert len(window.canvas.history.undo_stack) == depth, "showing a value is not an edit"
+        assert line._line_width_pt == 2.5
+
+    def test_text_controls_show_the_selected_text(self, window):
+        text = VectorAnnotation(
+            AnnotationType.TEXT, 100, 100, text="Test", font_size_pt=32, character_spacing_pt=2.0
+        )
+        window.canvas.add_object(text)
+
+        window._update_annotation_action_state()
+
+        assert window._font_size_spinner.value() == 32
+        assert window._character_spacing_spinner.value() == pytest.approx(2.0)
+
+    def test_switching_the_selection_switches_the_controls(self, window):
+        line = VectorAnnotation(AnnotationType.LINE, 100, 100)
+        text = VectorAnnotation(AnnotationType.TEXT, 500, 500, text="Test")
+        window.canvas.add_object(line)
+        window.canvas.add_object(text)
+
+        window.canvas.select_annotation(line)
+        window._update_annotation_action_state()
+        assert window._width_group in window._context_conceptually_visible
+        assert window._font_size_group not in window._context_conceptually_visible
+
+        window.canvas.select_annotation(text)
+        window._update_annotation_action_state()
+        assert window._font_size_group in window._context_conceptually_visible
+        assert window._width_group not in window._context_conceptually_visible
+
+
+class TestPropertyBounds:
+    """The spinners limit what can be entered."""
+
+    def test_width_spinner_range(self, window):
+        assert window._width_spinner.minimum() == 0.5
+        assert window._width_spinner.maximum() == 16.0
+
+    def test_font_size_spinner_range(self, window):
+        assert window._font_size_spinner.minimum() == 6
+        assert window._font_size_spinner.maximum() == 72
+
+    def test_a_value_beyond_the_range_is_clamped(self, window):
+        window._width_spinner.setValue(99)
+        assert window._width_spinner.value() == 16.0
 
 
 class TestDocumentDependentWorkflowButtons:
@@ -169,167 +186,3 @@ class TestDocumentDependentWorkflowButtons:
         assert not main_window._font_size_label.isVisible()
         assert not main_window._font_family_combo.isVisible()
         assert not main_window._font_label.isVisible()
-
-
-class TestStateTransitions:
-    """Test UI state transitions when changing selections."""
-    
-    def test_select_line_then_rectangle(self):
-        """Test transitioning from Line to Rectangle selection."""
-        line = VectorAnnotation(AnnotationType.LINE, 50, 50, 0)
-        rect = VectorAnnotation(AnnotationType.RECTANGLE, 150, 150, 0)
-        
-        # Select line - should show width
-        selected = line
-        assert hasattr(selected, '_line_width_pt')
-        
-        # Select rectangle - should still show width
-        selected = rect
-        assert hasattr(selected, '_line_width_pt')
-    
-    def test_select_text_then_line(self):
-        """Test transitioning from Text to Line selection."""
-        text = VectorAnnotation(AnnotationType.TEXT, 50, 50, 0, text="Test")
-        line = VectorAnnotation(AnnotationType.LINE, 150, 150, 0)
-        
-        # Select text - should show font controls
-        selected = text
-        assert hasattr(selected, '_font_size_pt')
-        assert hasattr(selected, '_font_family')
-        
-        # Select line - should show width, not font
-        selected = line
-        assert hasattr(selected, '_line_width_pt')
-        # Font size should not be used for line
-        text_data = text.to_dict()
-        line_data = line.to_dict()
-        assert 'font_size_pt' in text_data
-        assert 'font_size_pt' not in line_data
-    
-    def test_select_arrow_then_text(self):
-        """Test transitioning from Arrow to Text selection."""
-        arrow = VectorAnnotation(AnnotationType.ARROW, 50, 50, 0)
-        text = VectorAnnotation(AnnotationType.TEXT, 150, 150, 0, text="Label")
-        
-        # Select arrow
-        selected = arrow
-        assert hasattr(selected, '_line_width_pt')
-        
-        # Select text
-        selected = text
-        assert hasattr(selected, '_font_size_pt')
-        assert hasattr(selected, '_font_family')
-
-
-class TestControlUpdatesOnPropertyChange:
-    """Test controls update when annotation property changes."""
-    
-    def test_width_spinner_reflects_line_width(self):
-        """Test width spinner value matches line width property."""
-        line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        
-        # Set width
-        line._line_width_pt = 2.5
-        
-        # Spinner should display this value
-        spinner_value = line._line_width_pt
-        assert spinner_value == 2.5
-    
-    def test_font_size_spinner_reflects_text_font_size(self):
-        """Test font size spinner value matches text font size property."""
-        text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        
-        # Set font size
-        text._font_size_pt = 32
-        
-        # Spinner should display this value
-        spinner_value = text._font_size_pt
-        assert spinner_value == 32
-    
-    def test_font_family_combo_reflects_text_font_family(self):
-        """Test font family combo value matches text font family property."""
-        text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        
-        # Set font family
-        text._font_family = "Courier New"
-        
-        # Combo should display this value
-        combo_value = text._font_family
-        assert combo_value == "Courier New"
-    
-    def test_color_control_reflects_annotation_color(self):
-        """Test color control reflects annotation color."""
-        line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        
-        # Set color
-        line.color.setNamedColor("#ff0000")
-        
-        # Color control should display red
-        color_value = line.color.name()
-        assert color_value == "#ff0000"
-
-
-class TestPropertyBounds:
-    """Test that controls enforce property bounds."""
-    
-    def test_width_spinner_minimum(self):
-        """Test width spinner enforces minimum (0.5pt)."""
-        line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        
-        # Try to set below minimum
-        line._line_width_pt = 0.5
-        assert line._line_width_pt == 0.5
-    
-    def test_width_spinner_maximum(self):
-        """Test width spinner enforces maximum (10pt)."""
-        line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        
-        # Try to set at maximum
-        line._line_width_pt = 10.0
-        assert line._line_width_pt == 10.0
-    
-    def test_font_size_spinner_minimum(self):
-        """Test font size spinner enforces minimum (6pt)."""
-        text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        
-        # Set to minimum (6pt ≈ 8px)
-        text._font_size_pt = 8
-        assert text._font_size_pt == 8
-    
-    def test_font_size_spinner_maximum(self):
-        """Test font size spinner enforces maximum (72pt)."""
-        text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        
-        # Set to maximum (72pt ≈ 96px)
-        text._font_size_pt = 96
-        assert text._font_size_pt == 96
-
-
-class TestSignalBlockingDuringUpdates:
-    """Test that signals are blocked to prevent feedback loops."""
-    
-    def test_no_double_update_on_spinner_change(self):
-        """Test changing spinner doesn't cause infinite loop."""
-        line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
-        
-        # Simulate user changing spinner
-        original_width = line._line_width_pt
-        
-        # Change width
-        line._line_width_pt = 2.5
-        
-        # Should only update once
-        assert line._line_width_pt == 2.5
-    
-    def test_no_double_update_on_property_change(self):
-        """Test changing property doesn't cause infinite loop."""
-        text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Test")
-        
-        # Simulate direct property change
-        original_size = text._font_size_pt
-        
-        # Change font size
-        text._font_size_pt = 32
-        
-        # Should only update once
-        assert text._font_size_pt == 32

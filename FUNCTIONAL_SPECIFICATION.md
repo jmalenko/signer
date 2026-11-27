@@ -1129,6 +1129,11 @@ control in either scale state.
 - Starting from the expansion baseline, the expansion algorithm adds one row at a time from the
   top or bottom, choosing the candidate that adds more alpha-weighted pixels, until each requested
   expansion target is covered. Each later range contains the previous range.
+- The estimated regular-character height is the height of the **60% expansion band**: the row
+  range grown this way until it contains 60% of all alpha-weighted pixels of the actual signature
+  (the sixth of the expansion targets 10%, 20%, … 90%). The densest-band search above only serves
+  as the fallback when no expansion bands can be computed, so `CHARACTER_BAND_TOP_FRACTION` does
+  not change the scaling of a normal signature.
 - When scaling is selected, calculate the scaling factor before applying any resize:
   `scaling_factor = target_character_height / estimated_character_height`, with
   `target_character_height = 12pt`. Apply that factor to the complete extracted signature,
