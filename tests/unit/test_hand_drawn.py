@@ -197,32 +197,33 @@ def export_alpha(annotation: VectorAnnotation, page=(700, 700)):
     return base.split()[3]
 
 
-def alpha_bbox(annotation: VectorAnnotation):
-    return annotation.render_to_pil().split()[3].getbbox()
+def export_bytes(annotation: VectorAnnotation) -> bytes:
+    return export_alpha(annotation).tobytes()
 
 
 class TestRendering:
     @pytest.mark.parametrize("ann_type", STROKE_TYPES)
     def test_hand_drawn_looks_different_from_straight(self, ann_type):
-        straight = VectorAnnotation(ann_type, 0, 0).render_to_pil()
-        sketched = VectorAnnotation(ann_type, 0, 0, hand_drawn=True, hand_drawn_seed=17).render_to_pil()
-        assert sketched.tobytes() != straight.tobytes()
+        straight = VectorAnnotation(ann_type, 100, 100)
+        sketched = VectorAnnotation(ann_type, 100, 100, hand_drawn=True, hand_drawn_seed=17)
+        assert export_bytes(sketched) != export_bytes(straight)
 
     @pytest.mark.parametrize("ann_type", STROKE_TYPES)
     def test_rendering_is_stable_and_depends_on_seed(self, ann_type):
         def render(seed):
-            return VectorAnnotation(ann_type, 0, 0, hand_drawn=True, hand_drawn_seed=seed).render_to_pil().tobytes()
+            return export_bytes(VectorAnnotation(ann_type, 100, 100, hand_drawn=True, hand_drawn_seed=seed))
 
         assert render(17) == render(17)
         assert render(17) != render(18)
 
     @pytest.mark.parametrize("line_width_pt", [0.5, 1.5, 6.0, 16.0])
     def test_rectangle_corners_stay_where_the_straight_one_has_them(self, line_width_pt):
-        straight = VectorAnnotation(AnnotationType.RECTANGLE, 0, 0, line_width_pt=line_width_pt)
+        straight = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, line_width_pt=line_width_pt)
         sketched = VectorAnnotation(
-            AnnotationType.RECTANGLE, 0, 0, hand_drawn=True, hand_drawn_seed=5, line_width_pt=line_width_pt,
+            AnnotationType.RECTANGLE, 100, 100, hand_drawn=True, hand_drawn_seed=5, line_width_pt=line_width_pt,
         )
-        width, height = straight.render_to_pil().size
+        width, height = round(straight.scaled_width), round(straight.scaled_height)
+        straight_ink, sketched_ink = export_alpha(straight), export_alpha(sketched)
         half_pen = max(1.5, line_width_pt * UNIT) / 2.0
         corners = [
             (half_pen, half_pen), (width - half_pen, half_pen),
@@ -230,27 +231,26 @@ class TestRendering:
         ]
         for x, y in corners:
             # Both draw their stroke through the same corner points: the corner pixel is inked.
-            assert straight.render_to_pil().getpixel((round(x), round(y)))[3] > 0
-            assert sketched.render_to_pil().getpixel((round(x), round(y)))[3] > 0
+            assert straight_ink.getpixel((100 + round(x), 100 + round(y))) > 0
+            assert sketched_ink.getpixel((100 + round(x), 100 + round(y))) > 0
 
     @pytest.mark.parametrize("ann_type", [AnnotationType.RECTANGLE, AnnotationType.ELLIPSE])
     @pytest.mark.parametrize("line_width_pt", [0.5, 1.5, 6.0, 16.0])
     def test_export_draws_the_whole_wobble(self, ann_type, line_width_pt):
-        """Export draws directly onto the page, so wobble that bulges past the box is kept: it
-        contains everything the box-sized render shows, and stays within a small distance of it."""
+        """Export draws directly onto the page, so wobble that bulges past the box is kept, and it
+        stays within a small distance of the box."""
+        bulges_past_box = False
         for seed in range(25):
             annotation = VectorAnnotation(
                 ann_type, 100, 100, hand_drawn=True, hand_drawn_seed=seed, line_width_pt=line_width_pt,
             )
-            box = annotation.render_to_pil().split()[3]
-            exported = export_alpha(annotation)
-            ink = exported.getbbox()
-            box_ink = box.getbbox()
+            left, top, right, bottom = export_alpha(annotation).getbbox()
+            width, height = annotation.scaled_width, annotation.scaled_height
             slack = 2.0 * (0.06 * 333 + line_width_pt * UNIT)
-            assert ink[0] <= 100 + box_ink[0] and ink[1] <= 100 + box_ink[1]
-            assert ink[2] >= 100 + box_ink[2] and ink[3] >= 100 + box_ink[3]
-            assert ink[0] >= 100 - slack and ink[2] <= 100 + box.width + slack
-            assert ink[1] >= 100 - slack and ink[3] <= 100 + box.height + slack
+            assert left >= 100 - slack and right <= 100 + width + slack
+            assert top >= 100 - slack and bottom <= 100 + height + slack
+            bulges_past_box |= left < 100 or top < 100 or right > 100 + width or bottom > 100 + height
+        assert bulges_past_box
 
     def test_rotated_export_stays_centered_on_the_box(self):
         annotation = VectorAnnotation(AnnotationType.ELLIPSE, 100, 100, hand_drawn=True, hand_drawn_seed=3)

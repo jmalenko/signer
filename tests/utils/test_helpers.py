@@ -5,7 +5,10 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+from PIL import Image
 from PySide6.QtGui import QColor
+
+from signer.compositor import _composite_objects
 
 
 def create_mock_canvas_object(x: float = 100, y: float = 100, width: float = 200, height: float = 200):
@@ -18,6 +21,13 @@ def create_mock_canvas_object(x: float = 100, y: float = 100, width: float = 200
     mock.page = 0
     mock.color = QColor("#cc0000")
     return mock
+
+
+def export_to_page(annotation, size: tuple[int, int] = (700, 700)) -> Image.Image:
+    """Export the annotation onto a transparent page, as the export and print do."""
+    page = Image.new("RGBA", size, (255, 255, 255, 0))
+    _composite_objects(page, [annotation])
+    return page
 
 
 def simulate_mouse_drag(canvas, obj, start_x: float, start_y: float, end_x: float, end_y: float):

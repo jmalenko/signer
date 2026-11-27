@@ -13,6 +13,7 @@ from signer.objects import (
     SignatureObject,
     VectorAnnotation,
 )
+from tests.utils.test_helpers import export_to_page
 
 
 class TestBoundingBox:
@@ -159,7 +160,7 @@ class TestBoundingBox:
     def test_vector_annotation_hit_test_ignores_transparent_pixels(self):
         """Transparent pixels should not count as a hit for selection."""
         ann = VectorAnnotation(AnnotationType.CROSSMARK, 0, 0, 0)
-        img = ann.render_to_pil()
+        img = export_to_page(ann).crop((0, 0, round(ann.scaled_width), round(ann.scaled_height)))
 
         transparent = None
         opaque = None

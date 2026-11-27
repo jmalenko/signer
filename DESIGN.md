@@ -305,7 +305,9 @@ flowchart TD
   page. A run of consecutive vector annotations shares one layer; the layer is flushed before a
   signature/image, which is resampled and pasted with Pillow, so z-order is kept. An unrotated
   annotation is drawn at its rounded box position, so its pixels do not depend on the fractional
-  part of its position. `render_to_pil()` is the box-sized render used for hit-testing only.
+  part of its position. `render_to_pil()` is the box-sized render used for hit-testing only; it
+  clips at the box and hides any overflow, so tests that check exported pixels use
+  `_composite_objects()` (`export_to_page()` in `tests/utils/test_helpers.py`) instead.
   Print uses the same `_composite_objects()`. The vector path is selected with
   `isinstance(obj, VectorAnnotation)`, not a `hasattr` duck-type, so test doubles do not take it.
 - **Hand-drawn style does not affect geometry**: bounding boxes, `contains_viewport_point()`,

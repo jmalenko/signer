@@ -1,146 +1,113 @@
 """Feature tests for export functionality with new annotation types."""
 
-import pytest
-from PIL import Image
-
 from signer.objects import AnnotationType, VectorAnnotation
+from tests.utils.test_helpers import export_to_page
+
+
+def ink_bbox(annotation: VectorAnnotation):
+    """Bounding box of everything the annotation paints when exported onto a page."""
+    return export_to_page(annotation).getchannel("A").getbbox()
+
+
+def ink_amount(annotation: VectorAnnotation) -> int:
+    return sum(export_to_page(annotation).getchannel("A").getdata())
 
 
 class TestLineExport:
-    """Test exporting Line annotation to various formats."""
-    
-    def test_line_to_pil_image(self):
-        """Test converting Line to PIL image."""
+    """Test exporting Line annotation."""
+
+    def test_line_is_exported(self):
         line = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
         line._line_width_pt = 2.0
-        
-        # Render to PIL
-        img = line.render_to_pil()
-        
-        assert isinstance(img, Image.Image)
-        assert img.width > 0
-        assert img.height > 0
-    
-    def test_line_renders_with_correct_width(self):
-        """Test Line renders with specified width."""
+
+        assert ink_bbox(line) is not None
+
+    def test_line_exports_with_correct_width(self):
         line_thin = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
         line_thin._line_width_pt = 0.5
-        
+
         line_thick = VectorAnnotation(AnnotationType.LINE, 100, 100, 0)
         line_thick._line_width_pt = 5.0
-        
-        img_thin = line_thin.render_to_pil()
-        img_thick = line_thick.render_to_pil()
-        
-        # Both should render
-        assert img_thin.width > 0
-        assert img_thick.width > 0
+
+        assert ink_amount(line_thick) > ink_amount(line_thin) > 0
 
 
 class TestArrowExport:
-    """Test exporting Arrow annotation to various formats."""
-    
-    def test_arrow_to_pil(self):
-        """Test converting arrow to PIL image."""
+    """Test exporting Arrow annotation."""
+
+    def test_arrow_is_exported(self):
         arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
-        
-        img = arrow.render_to_pil()
-        
-        assert isinstance(img, Image.Image)
-        assert img.width > 0
-        assert img.height > 0
-    
-    def test_arrow_with_width_to_pil(self):
-        """Test converting arrow with different width to PIL image."""
-        arrow = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
-        arrow._line_width_pt = 3.0
-        img = arrow.render_to_pil()
-        
-        assert isinstance(img, Image.Image)
-        assert img.width > 0
+
+        assert ink_bbox(arrow) is not None
+
+    def test_arrow_with_width_is_exported_thicker(self):
+        thin = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
+        thick = VectorAnnotation(AnnotationType.ARROW, 100, 100, 0)
+        thick._line_width_pt = 3.0
+
+        assert ink_amount(thick) > ink_amount(thin) > 0
 
 
 class TestRectangleExport:
     """Test exporting Rectangle annotation."""
-    
-    def test_rectangle_to_pil(self):
-        """Test converting Rectangle to PIL image."""
+
+    def test_rectangle_is_exported(self):
         rect = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, 0)
         rect._line_width_pt = 2.0
         rect.color.setNamedColor("#ff0000")
-        
-        img = rect.render_to_pil()
-        
-        assert isinstance(img, Image.Image)
-        assert img.width > 0
-        assert img.height > 0
-    
+
+        assert ink_bbox(rect) is not None
+
     def test_rectangle_color_preserved(self):
         """Test Rectangle color is preserved in export."""
         rect = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100, 0)
         rect.color.setNamedColor("#0000ff")
-        
-        img = rect.render_to_pil()
-        
-        # Image should have content
-        assert img.getbands()  # Should have color channels
+
+        page = export_to_page(rect)
+        opaque = [pixel for pixel in page.getdata() if pixel[3] == 255]
+
+        assert opaque
+        assert all(pixel[:3] == (0, 0, 255) for pixel in opaque)
 
 
 class TestEllipseExport:
     """Test exporting Ellipse annotation."""
-    
-    def test_ellipse_to_pil(self):
-        """Test converting Ellipse to PIL image."""
+
+    def test_ellipse_is_exported(self):
         ellipse = VectorAnnotation(AnnotationType.ELLIPSE, 100, 100, 0)
         ellipse._line_width_pt = 1.5
-        
-        img = ellipse.render_to_pil()
-        
-        assert isinstance(img, Image.Image)
-        assert img.width > 0
-        assert img.height > 0
-    
-    def test_circle_to_pil(self):
-        """Test converting circle (square ellipse) to PIL image."""
+
+        assert ink_bbox(ellipse) is not None
+
+    def test_circle_is_exported_as_a_circle(self):
+        """Test a square ellipse is exported with equal width and height."""
         circle = VectorAnnotation(AnnotationType.ELLIPSE, 100, 100, 0)
-        circle.set_scaled_size(200, 200)  # Perfect circle
-        
-        img = circle.render_to_pil()
-        
-        # Circle should render (width == height)
-        assert img.width > 0
-        assert img.height > 0
+        circle.set_scaled_size(200, 200)
+
+        left, top, right, bottom = ink_bbox(circle)
+
+        assert abs((right - left) - (bottom - top)) <= 1
 
 
 class TestTextExport:
     """Test exporting Text annotation."""
-    
-    def test_text_to_pil(self):
-        """Test converting Text to PIL image."""
+
+    def test_text_is_exported(self, qapp):
         text = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Hello")
         text._font_size_pt = 24
         text._font_family = "Arial"
-        
-        img = text.render_to_pil()
-        
-        assert isinstance(img, Image.Image)
-        assert img.width > 0
-        assert img.height > 0
-    
-    def test_text_with_different_font_sizes(self):
+
+        assert ink_bbox(text) is not None
+
+    def test_text_with_different_font_sizes(self, qapp):
         """Test Text export with different font sizes."""
         text_small = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Small")
         text_small._font_size_pt = 8
-        
+
         text_large = VectorAnnotation(AnnotationType.TEXT, 100, 100, 0, text="Large")
         text_large._font_size_pt = 64
-        
-        img_small = text_small.render_to_pil()
-        img_large = text_large.render_to_pil()
-        
-        # Both should render
-        assert img_small.width > 0
-        assert img_large.width > 0
+
+        assert ink_amount(text_large) > ink_amount(text_small) > 0
 
 
 class TestMultiAnnotationExport:

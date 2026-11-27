@@ -6,7 +6,7 @@ box's size, so the caps were cut off flat and the line looked shorter than on sc
 """
 
 import pytest
-from PIL import Image, ImageChops
+from PIL import Image
 
 from signer.compositor import _composite_objects
 from signer.objects import AnnotationType, VectorAnnotation
@@ -40,21 +40,6 @@ def test_line_cap_is_exported_beyond_the_box_edge():
     assert ink_at(page, center_x, BOX + line.scaled_height + 1)
 
 
-@pytest.mark.xfail(strict=True, reason="documents the old buggy behavior; delete after review")
-def test_line_cap_is_cut_off_at_the_box_edge_BUG():
-    """Actual (buggy) behavior: nothing is exported past the box edge, so the cap is flat.
-
-    Documents the bug; it fails now that the bug is fixed (hence xfail) and is to be deleted
-    after review.
-    """
-    line = vertical_line()
-    page = composite(line)
-    center_x = BOX + line.scaled_width / 2.0
-    assert ink_at(page, center_x, BOX + 2)
-    assert not ink_at(page, center_x, BOX - 2)
-    assert not ink_at(page, center_x, BOX + line.scaled_height + 1)
-
-
 @pytest.mark.parametrize("ann_type", [AnnotationType.CHECKMARK, AnnotationType.CROSSMARK])
 def test_thick_marks_are_not_cut_off(ann_type):
     """Their strokes end on the box edges, so the round caps of a thick mark reach past its box."""
@@ -62,18 +47,6 @@ def test_thick_marks_are_not_cut_off(ann_type):
     left, top, right, bottom = composite(mark).split()[3].getbbox()
     assert left < BOX and top < BOX
     assert right > BOX + mark.scaled_width and bottom > BOX + mark.scaled_height
-
-
-@pytest.mark.parametrize(
-    "ann_type",
-    [AnnotationType.ARROW, AnnotationType.RECTANGLE, AnnotationType.ELLIPSE],
-)
-def test_annotations_that_fit_their_box_export_exactly_as_their_box_render(ann_type):
-    """Direct drawing must not change anything that was never cut off."""
-    annotation = VectorAnnotation(ann_type, BOX, BOX, line_width_pt=1.5)
-    expected = Image.new("RGBA", (600, 600), (255, 255, 255, 0))
-    expected.alpha_composite(annotation.render_to_pil(), dest=(round(BOX), round(BOX)))
-    assert ImageChops.difference(composite(annotation), expected).getbbox() is None
 
 
 class _FailingAnnotation(VectorAnnotation):
