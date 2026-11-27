@@ -37,7 +37,6 @@ from .constants import (
 )
 from .hand_drawn import (
     add_wobbly_polyline,
-    deviation_amplitude_pt,
     wobbly_ellipse_path,
     wobbly_rectangle_path,
 )
@@ -127,6 +126,20 @@ ARROW_HEAD_ANGLE_DEG = 35  # Arrowhead barb angle from the reversed shaft direct
 ARROW_HEAD_SPREAD_FACTOR = ARROW_HEAD_LENGTH_FACTOR * math.sin(
     math.radians(ARROW_HEAD_ANGLE_DEG)
 )
+
+
+def qimage_to_pil(qimage: QImage) -> Image.Image:
+    """Convert a QImage to an RGBA PIL image (straight, not premultiplied, alpha)."""
+    qimage = qimage.convertToFormat(QImage.Format_RGBA8888)
+    w, h = qimage.width(), qimage.height()
+    ptr = qimage.bits()
+    bpl = qimage.bytesPerLine()
+    raw_bytes = ptr.tobytes() if hasattr(ptr, "tobytes") else bytes(ptr)
+    # Strip row padding if any
+    if bpl != w * 4:
+        rows = [raw_bytes[r * bpl: r * bpl + w * 4] for r in range(h)]
+        raw_bytes = b"".join(rows)
+    return Image.frombytes("RGBA", (w, h), raw_bytes)
 
 
 class CanvasObject:
@@ -1034,16 +1047,6 @@ class VectorAnnotation(CanvasObject):
         painter.setBrush(Qt.NoBrush)
         painter.drawPath(self._wobbly_strokes_path(strokes, vw))
 
-    def _hand_drawn_export_padding_px(self, width_px: int, height_px: int) -> int:
-        """Pixels of room needed around the bounding box so the wobble, which may bulge past
-        it, is not clipped when rendering for export."""
-        if not self._draws_hand_drawn:
-            return 0
-        unit = DPI_SCALE
-        deviation_pt = deviation_amplitude_pt(max(width_px, height_px) / unit, self._line_width_pt)
-        pen_px = max(1.5, self._line_width_pt * DPI_SCALE)
-        return math.ceil(deviation_pt * unit + pen_px)
-
     def _draw_checkmark(self, painter: QPainter, vx: float, vy: float, vw: float, vh: float, doc_scale: float) -> None:
         m = min(vw, vh) * SYMBOL_MARGIN_FACTOR
         painter.setPen(self._pen(doc_scale))
@@ -1175,45 +1178,39 @@ class VectorAnnotation(CanvasObject):
     # ------------------------------------------------------------------ PIL render
 
     def render_to_pil(self) -> Image.Image:
-        return self._render_to_pil(0)
-
-    def render_for_compositing(self) -> tuple[Image.Image, float, float]:
-        """Like the base class, but a hand-drawn annotation is rendered with room around its
-        bounding box so wobble that bulges past the box is not cut off."""
+        """Render the annotation's box on its own (used for hit-testing against the box)."""
         w = max(1, round(self._base_width * self.scale))
         h = max(1, round(self._base_height * self.scale))
-        padding = self._hand_drawn_export_padding_px(w, h)
-        if padding == 0:
-            return super().render_for_compositing()
-        unrotated = self._render_to_pil(padding)
-        angle = self.rotation % 360.0
-        image = unrotated
-        if abs(angle) >= 1e-9:
-            image = unrotated.rotate(-angle, expand=True, resample=Image.Resampling.BICUBIC)
-        center_x = self.x + self.scaled_width / 2.0
-        center_y = self.y + self.scaled_height / 2.0
-        return image, center_x - image.width / 2.0, center_y - image.height / 2.0
-
-    def _render_to_pil(self, padding: int) -> Image.Image:
-        """Render the annotation's box with `padding` transparent pixels added on every side."""
-        box_w = max(1, round(self._base_width * self.scale))
-        box_h = max(1, round(self._base_height * self.scale))
-        w, h = box_w + 2 * padding, box_h + 2 * padding
         qimage = QImage(w, h, QImage.Format_ARGB32_Premultiplied)
         qimage.fill(Qt.transparent)
         painter = QPainter(qimage)
         painter.setRenderHint(QPainter.Antialiasing)
-        self._draw_symbol(painter, float(padding), float(padding), float(box_w), float(box_h), doc_scale=1.0)
+        self._draw_symbol(painter, 0.0, 0.0, float(w), float(h), doc_scale=1.0)
         painter.end()
-        qimage = qimage.convertToFormat(QImage.Format_RGBA8888)
-        ptr = qimage.bits()
-        bpl = qimage.bytesPerLine()
-        raw_bytes = ptr.tobytes() if hasattr(ptr, "tobytes") else bytes(ptr)
-        # Strip row padding if any
-        if bpl != w * 4:
-            rows = [raw_bytes[r * bpl: r * bpl + w * 4] for r in range(h)]
-            raw_bytes = b"".join(rows)
-        return Image.frombytes("RGBA", (w, h), raw_bytes)
+        return qimage_to_pil(qimage)
+
+    def draw_for_export(self, painter: QPainter) -> None:
+        """Draw the annotation directly onto a page-sized surface at 300 DPI (export and print).
+
+        This is the code path of the canvas (`draw_in_viewport`), so nothing is clipped at the
+        annotation's bounding box and the export looks like the screen: a stroke may reach past
+        the box (round caps, hand-drawn wobble) and is drawn completely.
+        """
+        vw = float(max(1, round(self._base_width * self.scale)))
+        vh = float(max(1, round(self._base_height * self.scale)))
+        angle = self.rotation % 360.0
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        if abs(angle) < 1e-9:
+            vx, vy = float(round(self.x)), float(round(self.y))
+        else:
+            center = QPointF(self.x + self.scaled_width / 2.0, self.y + self.scaled_height / 2.0)
+            vx, vy = center.x() - vw / 2.0, center.y() - vh / 2.0
+            painter.translate(center)
+            painter.rotate(angle)
+            painter.translate(-center)
+        self._draw_symbol(painter, vx, vy, vw, vh, doc_scale=1.0)
+        painter.restore()
 
     # ------------------------------------------------------------------ duplicate
 

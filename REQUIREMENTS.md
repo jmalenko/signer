@@ -784,3 +784,12 @@ annotations read as informal, hand-marked notes.
 
 See [FUNCTIONAL_SPECIFICATION.md §7.10](FUNCTIONAL_SPECIFICATION.md#710-hand-drawn-style) for the
 behavior.
+
+## Version 1.6.1 - Bugfix: Complete stroke ends in export
+
+Bug: The round ends of a line are cut off flat in the exported image, so an exported
+line looked shorter than the same line on screen.
+
+1. Export and print shall show every stroke completely, including the round caps at the ends of
+   a line, arrow, checkmark, or crossmark, at any line width. An annotation that was not cut off
+   before shall export exactly as before, and no annotation shall move.

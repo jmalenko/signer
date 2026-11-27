@@ -6,8 +6,10 @@ from enum import Enum
 from pathlib import Path
 
 from PIL import Image
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QImage, QPainter
 
-from .objects import CanvasObject
+from .objects import CanvasObject, VectorAnnotation, qimage_to_pil
 
 logger = logging.getLogger(__name__)
 
@@ -449,35 +451,65 @@ def _composite_objects(
     base: Image.Image,
     objects: list[CanvasObject],
 ) -> None:
-    """Composite all objects over the base RGBA image using alpha_composite.
+    """Composite all objects over the base RGBA image, in z-order.
 
-    Each object's render is clamped to the image bounds before compositing.
+    Vector annotations are drawn directly onto a page-sized transparent layer (see
+    `VectorAnnotation.draw_for_export`), so none of their strokes is cut off at the annotation's
+    bounding box; the layer is composited over the page. Images (signatures) are resampled and
+    alpha-composited, clamped to the image bounds. A run of consecutive vector annotations shares
+    one layer; the layer is flushed before an image so the z-order is kept.
+
     A render failure raises RuntimeError instead of being silently skipped, so the
     caller's existing "Save failed" error dialogs surface it instead of producing a
     signed document that's silently missing an annotation.
     """
     pw, ph = base.size
-    for obj in objects:
-        try:
-            if hasattr(obj, "render_for_compositing"):
-                overlay, overlay_x, overlay_y = obj.render_for_compositing()
-            else:
-                overlay = obj.render_to_pil().convert("RGBA")
-                overlay_x, overlay_y = obj.x, obj.y
-        except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
-            raise RuntimeError(f"Could not render annotation for export: {exc}") from exc
-        x = round(overlay_x)
-        y = round(overlay_y)
-        right = x + overlay.width
-        bottom = y + overlay.height
-        clip_left = max(0, x)
-        clip_top = max(0, y)
-        clip_right = min(pw, right)
-        clip_bottom = min(ph, bottom)
-        if clip_left >= clip_right or clip_top >= clip_bottom:
-            continue
-        crop = overlay.crop((clip_left - x, clip_top - y, clip_right - x, clip_bottom - y))
-        base.alpha_composite(crop, dest=(clip_left, clip_top))
+    layer: QImage | None = None
+    painter: QPainter | None = None
+
+    def flush_layer() -> None:
+        nonlocal layer, painter
+        if layer is None or painter is None:
+            return
+        painter.end()
+        base.alpha_composite(qimage_to_pil(layer))
+        layer = painter = None
+
+    try:
+        for obj in objects:
+            try:
+                if isinstance(obj, VectorAnnotation):
+                    if layer is None:
+                        layer = QImage(pw, ph, QImage.Format_ARGB32_Premultiplied)
+                        layer.fill(Qt.transparent)
+                        painter = QPainter(layer)
+                    obj.draw_for_export(painter)
+                    continue
+                flush_layer()
+                if hasattr(obj, "render_for_compositing"):
+                    overlay, overlay_x, overlay_y = obj.render_for_compositing()
+                else:
+                    overlay = obj.render_to_pil().convert("RGBA")
+                    overlay_x, overlay_y = obj.x, obj.y
+            except (AttributeError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                raise RuntimeError(f"Could not render annotation for export: {exc}") from exc
+            x = round(overlay_x)
+            y = round(overlay_y)
+            right = x + overlay.width
+            bottom = y + overlay.height
+            clip_left = max(0, x)
+            clip_top = max(0, y)
+            clip_right = min(pw, right)
+            clip_bottom = min(ph, bottom)
+            if clip_left >= clip_right or clip_top >= clip_bottom:
+                continue
+            crop = overlay.crop((clip_left - x, clip_top - y, clip_right - x, clip_bottom - y))
+            base.alpha_composite(crop, dest=(clip_left, clip_top))
+        flush_layer()
+    finally:
+        # Whatever went wrong, a QPainter must not be destroyed while it is still painting.
+        if painter is not None and painter.isActive():
+            painter.end()
 
 
 def composite_objects_to_jpg(

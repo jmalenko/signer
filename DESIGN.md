@@ -253,12 +253,9 @@ flowchart TD
   curve is C1-continuous where the knot list begins and ends, leaving no gap, overlap, or end
   cap. Hand-drawn shapes use round joins and caps. The shapes are not inset: a hand-drawn
   Rectangle has its corners exactly where the straight one has them, so toggling the style does
-  not move them. The price is that wobble (and the round caps of a line at the box edge) can
-  bulge past the bounding box, and `render_to_pil()` clips at the box. Export therefore uses
-  `VectorAnnotation.render_for_compositing()`, which renders a hand-drawn annotation into an image
-  padded on every side by `_hand_drawn_export_padding_px()` (the largest possible deviation plus
-  one pen width) and places it offset by that padding, so nothing is cut off. Non-hand-drawn
-  annotations and `render_to_pil()` (used for hit-testing against the box) are unchanged.
+  not move them. The wobble (and the round caps of a line at the box edge) may bulge past the
+  bounding box, which is fine because export draws directly onto the page (see "Export draws
+  vector annotations directly onto the page" below).
 - **Wobbliness is a handful of constants at the top of `hand_drawn.py`**: there is no single
   "wobble factor" and no user setting; the look comes from these values, which can be tuned by
   looking at the reference image of `tests/feature/test_hand_drawn_annotations.py`. All
@@ -284,6 +281,22 @@ flowchart TD
   calmer, scale `AMPLITUDE_PER_LENGTH`, `AMPLITUDE_PER_LINE_WIDTH` and both `MAX_AMPLITUDE_*` caps
   together; changing any constant changes every seed's shape, so the reference image must be
   regenerated.
+- **Export draws vector annotations directly onto the page**: a vector annotation can paint
+  past its bounding box: the round caps of a straight Line (its endpoints lie on the box edges
+  and a cap sticks out half a pen width), thick Checkmarks and Crossmarks (their 12% margin is
+  smaller than half of a thick pen), glyphs at the edge of a Text box, and the hand-drawn wobble.
+  Rendering each annotation into an image of a fixed size and pasting it would cut those parts
+  off, and sizing the image generously needs a per-type formula for how far each type reaches. So
+  there is no intermediate image: `_composite_objects()` draws every `VectorAnnotation` with
+  `VectorAnnotation.draw_for_export()` onto a page-sized transparent `QImage` layer, using the
+  same `QPainter` drawing code and the same rotation (`painter.rotate` about the box centre) as
+  the canvas, so export equals the screen by construction, and composites the layer over the
+  page. A run of consecutive vector annotations shares one layer; the layer is flushed before a
+  signature/image, which is resampled and pasted with Pillow, so z-order is kept. An unrotated
+  annotation is drawn at its rounded box position, so its pixels do not depend on the fractional
+  part of its position. `render_to_pil()` is the box-sized render used for hit-testing only.
+  Print uses the same `_composite_objects()`. The vector path is selected with
+  `isinstance(obj, VectorAnnotation)`, not a `hasattr` duck-type, so test doubles do not take it.
 - **Hand-drawn style does not affect geometry**: bounding boxes, `contains_viewport_point()`,
   handles, endpoint snapping, and `ARROW_HEAD_SPREAD_FACTOR` padding keep using the ideal
   straight geometry, so selection feels identical whether the style is on or off and no new

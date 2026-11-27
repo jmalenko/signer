@@ -3,9 +3,11 @@
 import math
 
 import pytest
+from PIL import Image
 from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QPainterPath
 
+from signer.compositor import _composite_objects
 from signer.hand_drawn import (
     add_wobbly_polyline,
     ellipse_deviation_pt,
@@ -188,6 +190,13 @@ class TestAnnotationModel:
         assert restored_off.hand_drawn is False
 
 
+def export_alpha(annotation: VectorAnnotation, page=(700, 700)):
+    """Alpha channel of a transparent page that the annotation was exported onto."""
+    base = Image.new("RGBA", page, (255, 255, 255, 0))
+    _composite_objects(base, [annotation])
+    return base.split()[3]
+
+
 def alpha_bbox(annotation: VectorAnnotation):
     return annotation.render_to_pil().split()[3].getbbox()
 
@@ -226,42 +235,34 @@ class TestRendering:
 
     @pytest.mark.parametrize("ann_type", [AnnotationType.RECTANGLE, AnnotationType.ELLIPSE])
     @pytest.mark.parametrize("line_width_pt", [0.5, 1.5, 6.0, 16.0])
-    def test_export_render_keeps_the_whole_wobble(self, ann_type, line_width_pt):
-        """The box-sized render may cut off wobble that bulges past the box; the export render
-        has room around the box, so nothing is cut and the edge pixels stay transparent."""
+    def test_export_draws_the_whole_wobble(self, ann_type, line_width_pt):
+        """Export draws directly onto the page, so wobble that bulges past the box is kept: it
+        contains everything the box-sized render shows, and stays within a small distance of it."""
         for seed in range(25):
             annotation = VectorAnnotation(
                 ann_type, 100, 100, hand_drawn=True, hand_drawn_seed=seed, line_width_pt=line_width_pt,
             )
-            image, x, y = annotation.render_for_compositing()
-            box_w, box_h = annotation.render_to_pil().size
-            assert image.width > box_w and image.height > box_h
-            assert x < 100 and y < 100
-            alpha = image.split()[3]
-            assert alpha.getbbox() is not None
-            left, top, right, bottom = alpha.getbbox()
-            assert left > 0 and top > 0 and right < image.width and bottom < image.height
+            box = annotation.render_to_pil().split()[3]
+            exported = export_alpha(annotation)
+            ink = exported.getbbox()
+            box_ink = box.getbbox()
+            slack = 2.0 * (0.06 * 333 + line_width_pt * UNIT)
+            assert ink[0] <= 100 + box_ink[0] and ink[1] <= 100 + box_ink[1]
+            assert ink[2] >= 100 + box_ink[2] and ink[3] >= 100 + box_ink[3]
+            assert ink[0] >= 100 - slack and ink[2] <= 100 + box.width + slack
+            assert ink[1] >= 100 - slack and ink[3] <= 100 + box.height + slack
 
-    def test_export_render_is_unchanged_when_not_hand_drawn(self):
-        annotation = VectorAnnotation(AnnotationType.RECTANGLE, 100, 100)
-        image, x, y = annotation.render_for_compositing()
-        assert image.size == annotation.render_to_pil().size
-        assert (x, y) == (100, 100)
-
-    def test_rotated_export_render_stays_centered_on_the_box(self):
+    def test_rotated_export_stays_centered_on_the_box(self):
         annotation = VectorAnnotation(AnnotationType.ELLIPSE, 100, 100, hand_drawn=True, hand_drawn_seed=3)
         annotation.rotation = 30
-        image, x, y = annotation.render_for_compositing()
-        center_x = 100 + annotation.scaled_width / 2.0
-        center_y = 100 + annotation.scaled_height / 2.0
-        assert x + image.width / 2.0 == pytest.approx(center_x)
-        assert y + image.height / 2.0 == pytest.approx(center_y)
+        left, top, right, bottom = export_alpha(annotation).getbbox()
+        assert (left + right) / 2.0 == pytest.approx(100 + annotation.scaled_width / 2.0, abs=6)
+        assert (top + bottom) / 2.0 == pytest.approx(100 + annotation.scaled_height / 2.0, abs=6)
 
     def test_thin_rectangle_does_not_collapse(self):
         annotation = VectorAnnotation(AnnotationType.RECTANGLE, 0, 0, hand_drawn=True, hand_drawn_seed=2)
         annotation.set_scaled_size(600, 24)
-        image, _, _ = annotation.render_for_compositing()
-        assert image.split()[3].getbbox() is not None
+        assert export_alpha(annotation, page=(800, 200)).getbbox() is not None
 
     def test_selection_geometry_ignores_the_style(self):
         straight = VectorAnnotation(AnnotationType.ARROW, 0, 0)
