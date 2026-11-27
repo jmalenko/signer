@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
-from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QPoint, QPointF, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -157,6 +157,22 @@ class _ToolbarLayoutView:
         return self._items[index]
 
 
+def pages_to_print(
+    total: int, print_range, from_page: int, to_page: int, copies: int, current_page: int
+) -> list[int]:
+    """Page indexes to send to the printer, in order, as chosen in the print dialog
+    (`from_page`/`to_page` are the dialog's 1-based numbers)."""
+    if print_range == QPrinter.PageRange:
+        first = max(1, from_page)
+        last = min(total, to_page) if to_page else total
+        pages = list(range(first - 1, last))
+    elif print_range == QPrinter.CurrentPage:
+        pages = [current_page]
+    else:
+        pages = list(range(total))
+    return pages * max(1, copies)
+
+
 class _SaveDialogWithFilterDetection(QFileDialog):
     """Custom file dialog that detects filter changes in real-time."""
     
@@ -164,8 +180,8 @@ class _SaveDialogWithFilterDetection(QFileDialog):
         super().__init__(parent, caption, directory, filter)
         self.setFileMode(QFileDialog.AnyFile)
         self.setAcceptMode(QFileDialog.AcceptSave)
-        # Connect to filter change signal
-        self.filterSelected.connect(self._on_filter_changed)
+        # The file-type selection is connected in exec(): the dialog's own filterSelected
+        # signal is not emitted when the user picks a type in the non-native dialog.
         # Listen for file selections (includes text edits and confirmations)
         self.filesSelected.connect(self._on_files_selected)
         
@@ -183,6 +199,7 @@ class _SaveDialogWithFilterDetection(QFileDialog):
         """Override exec to connect line edit AFTER dialog is created but before showing."""
         # Now that the dialog widgets are created, connect to the line edit
         self._connect_line_edit()
+        self._connect_filter_combo()
         # Add the Options button
         self._add_options_button()
         # Update Options button state based on initial format
@@ -198,10 +215,18 @@ class _SaveDialogWithFilterDetection(QFileDialog):
         if line_edits:
             # The first line edit is typically the filename field
             filename_edit = line_edits[0]
-            filename_edit.textChanged.connect(self._on_filename_text_changed)
+            # textEdited: only what the user types, not the changes the dialog makes itself
+            filename_edit.textEdited.connect(self._on_filename_text_changed)
             self._filename_edit = filename_edit
         else:
             self._filename_edit = None
+
+    def _connect_filter_combo(self):
+        """React when the user picks a file type (connected after the dialog's own handler,
+        which has already put the new extension into the filename field by then)."""
+        combo = self.findChild(QComboBox, "fileTypeCombo")
+        if combo is not None:
+            combo.activated.connect(lambda _index: self._on_filter_changed(self.selectedNameFilter()))
     
     def _add_options_button(self):
         """Add the Options button to the file dialog's button area."""
@@ -287,34 +312,22 @@ class _SaveDialogWithFilterDetection(QFileDialog):
                 self.document_path, self.total_pages, detected_format
             )
             
-            # Decide what filename to use
-            # Check if current filename differs from what we last suggested
-            if (current_filename and 
-                current_filename != self.last_suggested_filename and 
-                current_filename != "" and
-                self.last_suggested_filename is not None):
-                # User manually edited the filename - extract and preserve their stem
-                current_path = Path(current_filename)
-                current_stem = current_path.stem
-                
-                # If this is the first manual edit, capture the user's stem
-                if self.user_custom_stem is None:
-                    self.user_custom_stem = current_stem
-                else:
-                    # On subsequent format changes, use the captured custom stem
-                    current_stem = self.user_custom_stem
-            else:
-                # User didn't edit (or first time), use system stem
-                current_stem = None
+            # Decide what filename to use: what the user typed (its stem is remembered for later
+            # format changes), else what we suggested last time, else the system suggestion.
+            if (current_filename and
+                    current_filename != self.last_suggested_filename and
+                    self.last_suggested_filename is not None):
+                self.user_custom_stem = re.sub(r"-p#$", "", Path(current_filename).stem, flags=re.IGNORECASE)
+            current_stem = self.user_custom_stem
             
             # Build new filename based on whether we have a custom stem
             if current_stem:
                 # Use user's custom stem with new format rules
-                if detected_format.is_single_file_format():
-                    # Single-file format (PDF, TIFF) - no placeholder
+                if detected_format.is_single_file_format() or self.total_pages <= 1:
+                    # Single file (PDF, TIFF, or one page) - no placeholder
                     new_filename = f"{current_stem}{detected_format.extension()}"
                 else:
-                    # Multi-file format (JPG, PNG, BMP) - add placeholder
+                    # One file per page (JPG, PNG, BMP) - add placeholder
                     new_filename = f"{current_stem}-p#{detected_format.extension()}"
             else:
                 # No custom stem, use system suggestion
@@ -881,7 +894,7 @@ class MainWindow(QMainWindow):
         # View menu
         view_menu = hamburger_menu.addMenu("View")
         self._menu_zoom_in_action = view_menu.addAction("Zoom In\tCtrl+=", self._zoom_in)
-        self._menu_zoom_in_action.setShortcuts(["Ctrl+=", "="])
+        self._menu_zoom_in_action.setShortcuts(["Ctrl+=", "Ctrl++", "="])
         self._menu_zoom_out_action = view_menu.addAction("Zoom Out\tCtrl+-", self._zoom_out)
         self._menu_zoom_out_action.setShortcuts(["Ctrl+-", "-"])
         self._menu_fit_to_window_action = view_menu.addAction("Fit to Window\tCtrl+0", self._fit_to_window)
@@ -1079,13 +1092,12 @@ class MainWindow(QMainWindow):
             self._update_page_navigation_label()
 
     def _update_page_nav_separator_visibility(self) -> None:
-        """Show the separator after Save As only if page nav or Duplicate/Delete are visible."""
+        """Show the separator after Save As only if the page navigation is visible."""
         separator = getattr(self, "_toolbar_page_nav_separator_action", None)
         if separator is None:
             return
         show_navigation = self.canvas.has_document and self.canvas.page_count > 1
-        has_selection = self.canvas.selected is not None
-        separator.setVisible(show_navigation or has_selection)
+        separator.setVisible(show_navigation)
 
     def _refresh_toolbar_layout(self) -> None:
         """Force the toolbar to repaint after widget visibility changes."""
@@ -1106,19 +1118,6 @@ class MainWindow(QMainWindow):
         if main_toolbar is None:
             return
         minimum_width = main_toolbar.sizeHint().width()
-        zoom_actions = (
-            self._toolbar_zoom_separator_action,
-            self._toolbar_zoom_out_action,
-            self._toolbar_fit_to_window_action,
-            self._toolbar_zoom_in_action,
-        )
-        zoom_width = sum(
-            widget.sizeHint().width()
-            for action in zoom_actions
-            if action is not None
-            and (widget := main_toolbar.widgetForAction(action)) is not None
-        )
-        minimum_width = min(minimum_width, max(0, minimum_width - zoom_width))
         self.setMinimumWidth(minimum_width)
 
     def _make_control_group(self, *widgets: QWidget) -> QWidget:
@@ -2113,7 +2112,7 @@ class MainWindow(QMainWindow):
             password = dialog.password()
             prompts += 1
 
-    def _on_file_drop(self, file_path: str) -> None:
+    def _on_file_drop(self, file_path: str, drop_point: QPointF | None = None) -> None:
         """Handle file drop from drag-and-drop.
         
         Determines if the dropped file is a small image (creates annotation)
@@ -2129,7 +2128,7 @@ class MainWindow(QMainWindow):
         # Determine file type by extension
         ext = file_path_obj.suffix.lower()
         image_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.tif', '.webp', '.ico'}
-        document_extensions = {'.pdf'} | image_extensions
+        document_extensions = {'.pdf', '.docx', '.doc', '.odt', '.signer'} | image_extensions
         
         if ext not in document_extensions:
             QMessageBox.critical(
@@ -2148,7 +2147,7 @@ class MainWindow(QMainWindow):
                 )
                 return
             if self._is_small_image(file_path):
-                self._handle_small_image_drop(file_path)
+                self._handle_small_image_drop(file_path, drop_point)
                 return
 
         # Big image or PDF: open as a document
@@ -2176,7 +2175,7 @@ class MainWindow(QMainWindow):
         size = self._image_size_or_none(file_path)
         return size is not None and max(size) <= self.A6_MAX_DIMENSION_PX
     
-    def _handle_small_image_drop(self, file_path: str) -> None:
+    def _handle_small_image_drop(self, file_path: str, drop_point: QPointF | None = None) -> None:
         """Handle dropping a small image - create Signature/Image annotation at drop position."""
         if not self.canvas.has_document:
             QMessageBox.critical(
@@ -2192,13 +2191,11 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(
                 self,
                 "Image Load Error",
-                f"Cannot load image: Unsupported format or corrupted file.\n\nSupported formats: PNG, JPG, JPEG, BMP.\n\nError: {exc}"
+                f"Cannot open file: Unsupported format or corrupted file.\n\nError: {exc}"
             )
             return
         
-        # Create Signature/Image annotation at center of current page (default position)
-        # This uses the existing signature creation logic
-        self._create_dropped_image_annotation(file_path)
+        self._create_dropped_image_annotation(file_path, drop_point)
     
     def _handle_document_drop(self, file_path: str) -> None:
         """Handle dropping a big image or PDF - open as document."""
@@ -2206,8 +2203,9 @@ class MainWindow(QMainWindow):
         # _check_unsaved_changes() dialog (single unified dialog)
         self.open_document(file_path)
     
-    def _create_dropped_image_annotation(self, file_path: str) -> None:
-        """Create a Signature/Image annotation from the dropped image file at default position."""
+    def _create_dropped_image_annotation(self, file_path: str, drop_point: QPointF | None = None) -> None:
+        """Create a Signature/Image annotation from the dropped image file, centered on the drop
+        position (kept on the page), or at the default position when there is none."""
         try:
             # Load and convert image to RGBA
             with Image.open(file_path) as img:
@@ -2217,9 +2215,14 @@ class MainWindow(QMainWindow):
             sig_obj = SignatureObject(loaded, str(file_path), 0, 0, self.canvas.current_page)
             sig_obj.color = QColor(self._current_color)
             
-            # Get the default position for the object (centered on page)
-            x, y = self.canvas.default_position_for(sig_obj)
+            if drop_point is None:
+                x, y = self.canvas.default_position_for(sig_obj)
+            else:
+                x = drop_point.x() - sig_obj.scaled_width / 2.0
+                y = drop_point.y() - sig_obj.scaled_height / 2.0
             sig_obj.x, sig_obj.y = x, y
+            if drop_point is not None and self.canvas.current_page_image:
+                sig_obj.clamp_to_page(*self.canvas.current_page_image.size)
             
             # Add to current page
             self.canvas.add_object(sig_obj)
@@ -2479,20 +2482,21 @@ class MainWindow(QMainWindow):
             last_user_chosen_path = output
             
             # DETECT FORMAT FROM USER'S ACTIONS
-            # First, try to detect from the file extension they typed
-            export_format = ExportFormat.from_extension(output.suffix)
-            
-            # Then, check what filter they selected in the dropdown
-            # If they explicitly selected a different format filter, that takes precedence
-            filter_based_format = ExportFormat.from_filter_string(selected_filter)
-            
-            # If file extension and filter don't match, user likely selected a different format in dropdown
-            # The filter selection is explicit user action, so trust that
-            if filter_based_format != export_format and selected_filter and "supported" not in selected_filter.lower():
-                # User selected a specific format filter
-                export_format = filter_based_format
-                # Update the filename extension to match what they selected
-                output = ensure_export_extension(output, export_format.extension())
+            # A recognized extension typed by the user decides the format (spec §5.3); when the
+            # user left the suggested name alone, or typed no recognized extension, the
+            # selected file type decides.
+            typed_format = (
+                ExportFormat.from_extension(output.suffix)
+                if ExportFormat.is_known_extension(output.suffix) else None
+            )
+            filter_format = (
+                ExportFormat.from_filter_string(selected_filter)
+                if selected_filter and "supported" not in selected_filter.lower() else None
+            )
+            if typed_format is not None and original_output_name != suggested_filename:
+                export_format = typed_format
+            else:
+                export_format = filter_format or typed_format or ExportFormat.from_extension(output.suffix)
             
             # Ensure correct extension
             output = ensure_export_extension(output, export_format.extension())
@@ -2560,17 +2564,11 @@ class MainWindow(QMainWindow):
                 
                 if not is_valid:
                     if not self._in_test_mode:
-                        result = QMessageBox.warning(
-                            self, "Invalid filename",
-                            error_msg + "\n\nDo you want to choose a different filename?",
-                            QMessageBox.Ok | QMessageBox.Cancel
-                        )
-                        if result == QMessageBox.Ok:
-                            last_export_format = export_format
-                            last_export_folder = str(directory)
-                            continue
-                        else:
-                            return False
+                        # Back to the Save As dialog (which has its own Cancel) to correct it.
+                        QMessageBox.information(self, "Invalid filename", error_msg)
+                        last_export_format = export_format
+                        last_export_folder = str(directory)
+                        continue
                     else:
                         return False
                 else:
@@ -2608,67 +2606,72 @@ class MainWindow(QMainWindow):
                 # Export all pages as PDF
                 page_images = [self.canvas.get_page_image_with_rotation(idx) for idx in range(total)]
                 page_objects_list = [self.canvas.page_objects_with_rotation_at(idx) for idx in range(total)]
-                try:
-                    composite_pages_to_pdf(page_images, page_objects_list, output, pdf_quality)
-                    saved = len(page_images)
-                    exported_files = [output]
-                except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
-                    self._show_save_error_dialog(exc, directory)
-                    return False
+                while True:
+                    try:
+                        composite_pages_to_pdf(page_images, page_objects_list, output, pdf_quality)
+                        saved = len(page_images)
+                        exported_files = [output]
+                        break
+                    except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                        if not self._offer_retry(self._save_error_text(exc, directory)):
+                            return False
             
             elif export_format == ExportFormat.TIFF:
                 # Export all pages as TIFF
                 page_images = [self.canvas.get_page_image_with_rotation(idx) for idx in range(total)]
                 page_objects_list = [self.canvas.page_objects_with_rotation_at(idx) for idx in range(total)]
-                try:
-                    composite_pages_to_tiff(page_images, page_objects_list, output)
-                    saved = len(page_images)
-                    exported_files = [output]
-                except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
-                    self._show_save_error_dialog(exc, directory)
-                    return False
+                while True:
+                    try:
+                        composite_pages_to_tiff(page_images, page_objects_list, output)
+                        saved = len(page_images)
+                        exported_files = [output]
+                        break
+                    except (PermissionError, OSError, RuntimeError, TypeError, ValueError) as exc:
+                        if not self._offer_retry(self._save_error_text(exc, directory)):
+                            return False
             
             else:
-                # For JPG, PNG, BMP: export per-page or single page
-                failed_pages = []
-                for idx in range(total):
-                    page_image = self.canvas.get_page_image_with_rotation(idx)
-                    objects = self.canvas.page_objects_with_rotation_at(idx)
-                    
-                    # Replace placeholder with actual page number if needed
-                    actual_filename = replace_placeholder_with_page_number(filename_stem, idx, total)
-                    out_path = directory / f"{actual_filename}{export_format.extension()}"
-                    
-                    try:
-                        composite_objects_to_format(page_image, objects, out_path, export_format, jpg_quality)
-                        exported_files.append(out_path)
-                        saved += 1
-                    except PermissionError:
-                        failed_pages.append((idx, "Permission denied"))
-                    except OSError as exc:
-                        if "No space left" in str(exc):
-                            if not self._in_test_mode:
-                                QMessageBox.critical(
-                                    self, "Save failed",
-                                    "Insufficient disk space. Free up space and try again."
+                # For JPG, PNG, BMP: export per-page or single page. A retry writes only the
+                # pages that have not been written yet.
+                pending = list(range(total))
+                while pending:
+                    failed_pages = []
+                    for position, idx in enumerate(pending):
+                        page_image = self.canvas.get_page_image_with_rotation(idx)
+                        objects = self.canvas.page_objects_with_rotation_at(idx)
+
+                        # Replace placeholder with actual page number if needed
+                        actual_filename = replace_placeholder_with_page_number(filename_stem, idx, total)
+                        out_path = directory / f"{actual_filename}{export_format.extension()}"
+
+                        try:
+                            composite_objects_to_format(page_image, objects, out_path, export_format, jpg_quality)
+                            exported_files.append(out_path)
+                            saved += 1
+                        except PermissionError:
+                            failed_pages.append((idx, "Permission denied"))
+                        except OSError as exc:
+                            if "No space left" in str(exc):
+                                # The disk is full: stop here, the remaining pages cannot be written either.
+                                failed_pages.extend(
+                                    (rest, "Insufficient disk space. Free up space and try again.")
+                                    for rest in pending[position:]
                                 )
-                            return False
-                        else:
+                                break
                             failed_pages.append((idx, str(exc)))
-                    except (RuntimeError, TypeError, ValueError) as exc:
-                        failed_pages.append((idx, str(exc)))
-                
-                # A partial export is a failed save: the document on disk is
-                # incomplete, so don't report success or mark the work as saved.
-                if failed_pages:
-                    if not self._in_test_mode:
+                        except (RuntimeError, TypeError, ValueError) as exc:
+                            failed_pages.append((idx, str(exc)))
+
+                    # A partial export is a failed save: the document on disk is
+                    # incomplete, so don't report success or mark the work as saved.
+                    if failed_pages:
                         failed_list = "\n".join([f"Page {p+1}: {e}" for p, e in failed_pages])
-                        QMessageBox.critical(
-                            self, "Save failed",
+                        if not self._offer_retry(
                             f"Failed to save some pages:\n{failed_list}\n\n"
                             "Check write permissions and disk space, then try again."
-                        )
-                    return False
+                        ):
+                            return False
+                    pending = [p for p, _ in failed_pages]
             
             if saved == 0:
                 if not self._in_test_mode:
@@ -2740,22 +2743,31 @@ class MainWindow(QMainWindow):
             return False
 
         if cleanup_old_files:
+            not_deleted = []
             for old_file in older_files:
                 try:
                     old_file.unlink()
                 except OSError as e:
-                    # Log but don't fail - user still wants to export
+                    # Don't fail - the user still wants to export - but say so below
                     logger.warning("Could not delete %s: %s", old_file, e)
+                    not_deleted.append(old_file.name)
+            if not_deleted:
+                QMessageBox.warning(
+                    self, "Older page files not deleted",
+                    "These older page files could not be deleted:\n\n"
+                    + "\n".join(f"• {name}" for name in not_deleted)
+                    + "\n\nThe export continues.",
+                )
         return True
 
     def _show_overwrite_confirm_dialog(self, title: str, message: str) -> bool:
         """Simple Yes/No overwrite confirmation. Returns True if the user chose to proceed."""
-        choice = QMessageBox.question(
-            self, title, message,
-            QMessageBox.StandardButtons(QMessageBox.Yes | QMessageBox.No),
-            QMessageBox.No,
-        )
-        return choice == QMessageBox.Yes
+        box = QMessageBox(QMessageBox.Question, title, message, QMessageBox.NoButton, self)
+        replace_button = box.addButton("Replace", QMessageBox.AcceptRole)
+        cancel_button = box.addButton("Cancel", QMessageBox.RejectRole)
+        box.setDefaultButton(cancel_button)
+        box.exec()
+        return box.clickedButton() is replace_button
 
     def _show_overwrite_cleanup_dialog(self, title: str, message: str) -> tuple[bool, bool]:
         """Overwrite confirmation with a 'delete older page files' checkbox.
@@ -2830,7 +2842,13 @@ class MainWindow(QMainWindow):
                 return
             
             try:
-                for page_idx in range(total):
+                # Copies are made here when the printing system cannot make them itself.
+                copies = 1 if printer.supportsMultipleCopies() else printer.copyCount()
+                sequence = pages_to_print(
+                    total, printer.printRange(), printer.fromPage(), printer.toPage(),
+                    copies, self.canvas.current_page,
+                )
+                for position, page_idx in enumerate(sequence):
                     page_image = self.canvas.get_page_image_with_rotation(page_idx)
                     objects = self.canvas.page_objects_with_rotation_at(page_idx)
                     composite_image = page_image.convert("RGBA")
@@ -2849,8 +2867,9 @@ class MainWindow(QMainWindow):
                     
                     # Scale to fit page while maintaining aspect ratio
                     page_rect = printer.pageRect(QPrinter.DevicePixel)
-                    scaled_pixmap = pixmap.scaledToWidth(
-                        int(page_rect.width()), Qt.SmoothTransformation
+                    scaled_pixmap = pixmap.scaled(
+                        int(page_rect.width()), int(page_rect.height()),
+                        Qt.KeepAspectRatio, Qt.SmoothTransformation,
                     )
                     
                     # Draw on page
@@ -2859,7 +2878,7 @@ class MainWindow(QMainWindow):
                     painter.drawPixmap(x, y, scaled_pixmap)
                     
                     # New page for next document (except last page)
-                    if page_idx < total - 1:
+                    if position < len(sequence) - 1:
                         printer.newPage()
             finally:
                 painter.end()
@@ -2875,20 +2894,28 @@ class MainWindow(QMainWindow):
 
     # ---------------------------------------------------------------- helpers
 
-    def _show_save_error_dialog(self, exc: Exception, directory: Path) -> None:
-        """Show the appropriate 'Save failed' dialog for an export/save exception (no-op in test mode)."""
-        if self._in_test_mode:
-            return
+    @staticmethod
+    def _save_error_text(exc: Exception, directory: Path) -> str:
+        """Cause and recovery suggestion for an export/save exception."""
         if isinstance(exc, PermissionError):
-            QMessageBox.critical(
-                self, "Save failed",
+            return (
                 f"Permission denied. Check write permissions for:\n{directory}\n\n"
                 "Try saving to a different location."
             )
-        elif isinstance(exc, OSError) and "No space left" in str(exc):
-            QMessageBox.critical(self, "Save failed", "Insufficient disk space. Free up space and try again.")
-        else:
-            QMessageBox.critical(self, "Save failed", f"Could not save output:\n{exc}")
+        if isinstance(exc, OSError) and "No space left" in str(exc):
+            return "Insufficient disk space. Free up space and try again."
+        return f"Could not save output:\n{exc}"
+
+    def _offer_retry(self, message: str) -> bool:
+        """Tell the user that the save failed; True if they chose Retry (no dialog in test mode)."""
+        if self._in_test_mode:
+            return False
+        choice = QMessageBox.critical(
+            self, "Save failed", message,
+            QMessageBox.StandardButtons(QMessageBox.Retry | QMessageBox.Cancel),
+            QMessageBox.Retry,
+        )
+        return choice == QMessageBox.Retry
 
     def _save_settings_safe(self) -> None:
         try:

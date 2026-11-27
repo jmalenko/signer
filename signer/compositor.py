@@ -371,8 +371,9 @@ def build_overwrite_dialog_info(
         # No overwrite needed
         return "", "", False
     
-    # Scenario A: Single file
-    if export_format.is_single_file_format() and existing_files and len(existing_files) == 1:
+    # Scenario A: a single target file (PDF/TIFF, or a one-page document in a per-page format)
+    single_target = export_format.is_single_file_format() or total_pages == 1
+    if single_target and existing_files and len(existing_files) == 1:
         title = "File Already Exists"
         filename = existing_files[0].name
         message = f"The file '{filename}' already exists.\n\nDo you want to replace it?"
@@ -418,7 +419,7 @@ def build_overwrite_dialog_info(
         if len(existing_names) == total_pages:
             title = "All Files Will Be Overwritten"
             message = (
-                f"All {total_pages} pages of '{output_path.stem}.{export_format.extension()}' "
+                f"All {total_pages} pages of '{output_path.stem}{export_format.extension()}' "
                 f"will be overwritten.\n\nDo you want to replace them?"
             )
             return title, message, False

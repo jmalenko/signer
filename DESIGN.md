@@ -224,6 +224,17 @@ flowchart TD
   `CanvasObject.geometry_state()` before and after (`from_geometry`/`to_geometry`) and undo/redo
   restore it exactly. Drag actions are recorded after the page-boundary clamping, so they hold the
   state that is shown. Recorded fixtures without geometry still replay through the size-only path.
+- **Group moves, rotations and copies are computed on the whole group**: dragging a
+  multi-selection records one composite undo step on release; a group rotated in steps keeps the
+  pivot of its first step (`_group_rotation_pivot`) so the result does not depend on the steps;
+  duplicates and pastes are shifted into the page as a group and keep the stacking order
+  (`selected_in_stacking_order()`). `DocumentCanvas.propertyChanged` reports line width, font size
+  and spacing changes made with the keyboard or the mouse so they become the defaults.
+- **Save As follows the file-type combo box, not `filterSelected`**: in the non-native dialog
+  `filterSelected` is not emitted when the user picks a type, so `_SaveDialogWithFilterDetection`
+  listens to the `fileTypeCombo` `activated` signal (after Qt's own handler has rewritten the
+  extension) and to `textEdited` (only what the user typed). Printing, retries after a failed
+  save and similar flows are covered by unit tests that stand in for the dialogs.
 - **Non-native Save As dialog**: Qt's native file dialogs don't expose their filename `QLineEdit`
   for real-time monitoring. Using a Qt-rendered dialog (`DontUseNativeDialog`) trades the native
   OS look for the ability to auto-correct the filename (page placeholder, extension) as the user

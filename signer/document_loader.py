@@ -79,16 +79,20 @@ class ImageLoader(DocumentLoader):
         pages: list[Image.Image] = []
         
         with Image.open(file_path) as img:
-            # Iterate the decoder before converting each frame so animated GIFs and
-            # multi-page TIFFs retain all pages.
-            try:
-                while True:
-                    frame = img.copy()
-                    pages.append(frame.convert('RGB'))
-                    img.seek(len(pages))
-            except EOFError:
-                # No more frames
-                pass
+            if img.format != "TIFF":
+                # Animated GIF/WEBP/PNG and multi-picture JPEG are one page: the first frame.
+                pages.append(img.convert('RGB'))
+            else:
+                # Iterate the decoder before converting each frame so a multi-page TIFF
+                # retains all pages.
+                try:
+                    while True:
+                        frame = img.copy()
+                        pages.append(frame.convert('RGB'))
+                        img.seek(len(pages))
+                except EOFError:
+                    # No more frames
+                    pass
         
         if not pages:
             raise ValueError(f"Could not load any images from {file_path}")
@@ -120,7 +124,9 @@ class LibreOfficeLoader(DocumentLoader):
         if not lo_exe:
             raise ValueError(
                 "LibreOffice is required to open Word and ODT documents. "
-                "Please install LibreOffice or configure the path in settings."
+                "Please either install LibreOffice, configure the LibreOffice path in the "
+                "settings file (config.json, field libreoffice_path), or use a PDF or image "
+                "file instead."
             )
         
         # Create temporary directory for conversion

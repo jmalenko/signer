@@ -374,8 +374,8 @@ class TestUnsupportedFiles:
     def test_unsupported_format_error(self, main_window_no_doc, temp_dir):
         """Test dropping unsupported file format shows error."""
         # Create an unsupported file type
-        unsupported = temp_dir / "test.docx"
-        unsupported.write_text("Not a real DOCX")
+        unsupported = temp_dir / "test.txt"
+        unsupported.write_text("Not a document")
         
         with patch('signer.main_window.QMessageBox.critical') as mock_error:
             main_window_no_doc._on_file_drop(str(unsupported))

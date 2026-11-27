@@ -80,7 +80,7 @@ class DocumentCanvas(QWidget):
     zoomChanged = Signal(float)
     propertyChanged = Signal(str, object)  # ("line_width" | "font_size" | "character_spacing", value) changed by keyboard or mouse
     editRequested = Signal(object)  # CanvasObject — double-click
-    fileDrop = Signal(str)          # emitted when file is dropped (file path)
+    fileDrop = Signal(str, object)  # a file was dropped: (path, drop position in document coordinates or None)
     pasteIncomplete = Signal(int, int)  # (skipped_count, total_count) — some items couldn't be pasted
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -150,6 +150,8 @@ class DocumentCanvas(QWidget):
         self._doc_offset_x: float = 0.0
         self._doc_offset_y: float = 0.0
         self._panning: bool = False
+        self._pan_button = Qt.MiddleButton  # the button that started the current pan
+        self._space_held: bool = False  # Space + left drag pans
         self._pan_start_view = QPointF()
         self._pan_start_x: float = 0.0
         self._pan_start_y: float = 0.0
@@ -1471,8 +1473,9 @@ class DocumentCanvas(QWidget):
         return bool(event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier | Qt.AltModifier))
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.MiddleButton and self._pages:
+        if self._pages and (event.button() == Qt.MiddleButton or (event.button() == Qt.LeftButton and self._space_held)):
             self._panning = True
+            self._pan_button = event.button()
             self._pan_start_view = event.position()
             self._pan_start_x = self._pan_x
             self._pan_start_y = self._pan_y
@@ -1836,7 +1839,7 @@ class DocumentCanvas(QWidget):
             self._pan_y = self._pan_start_y + delta.y()
             self._recompute_fit()
             self._clamp_pan()
-            self._invalidate_display()
+            self._invalidate_view()
             return
 
         if self._dragging and self._selected is not None:
@@ -2119,9 +2122,9 @@ class DocumentCanvas(QWidget):
         self.setCursor(Qt.ArrowCursor)
 
     def mouseReleaseEvent(self, event) -> None:
-        if event.button() == Qt.MiddleButton and self._panning:
+        if self._panning and event.button() == self._pan_button:
             self._panning = False
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(Qt.OpenHandCursor if self._space_held else Qt.ArrowCursor)
             event.accept()
             return
         if event.button() == Qt.LeftButton:
@@ -2222,10 +2225,27 @@ class DocumentCanvas(QWidget):
 
     # ---------------------------------------------------------------- keyboard
 
+    def keyReleaseEvent(self, event) -> None:
+        if event.key() == Qt.Key_Space and not event.isAutoRepeat():
+            self._space_held = False
+            if not self._panning:
+                self.setCursor(Qt.ArrowCursor)
+            return
+        super().keyReleaseEvent(event)
+
+    def focusOutEvent(self, event) -> None:
+        self._space_held = False  # the release would go to another widget
+        super().focusOutEvent(event)
+
     def keyPressEvent(self, event) -> None:
         key = event.key()
         modifiers = event.modifiers()
         selected = self.get_selected_annotations()
+
+        if key == Qt.Key_Space and self._pages:
+            self._space_held = True
+            self.setCursor(Qt.OpenHandCursor)
+            return
 
         if self._handle_navigation_and_selection_keys(key, modifiers, selected):
             return
@@ -2472,7 +2492,8 @@ class DocumentCanvas(QWidget):
                 file_path = urls[0].toLocalFile()
                 if file_path:
                     # Emit signal to parent window to handle the file
-                    self.fileDrop.emit(file_path)
+                    drop_point = self._view_to_doc(event.position()) if self._pages else None
+                    self.fileDrop.emit(file_path, drop_point)
                     event.acceptProposedAction()
                     return
         event.ignore()

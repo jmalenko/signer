@@ -866,7 +866,7 @@ the box; the more negative the spacing, the larger the overflow.
 2. The spacing that follows the last character of a line is not part of the text, so it shall not
    make the box wider (positive spacing) or narrower (negative spacing).
 
-## Version 1.8.3 - Bugfix: Export files, unsaved changes, undo/redo and opening follow the specification
+## Bugfix: Export files, unsaved changes, undo/redo and opening follow the specification
 
 Bug: A review against the functional specification found several places where the app did not do
 what it promises:
@@ -914,7 +914,7 @@ state in between. Actual: as described.
 11. A click on the toolbar Open button shall open the file picker; its arrow offers the recent
     documents. Opening a document shall return the keyboard focus to the canvas.
 
-## Version 1.8.4 - Bugfix: Prepare Signature tool follows the specification
+## Bugfix: Prepare Signature tool follows the specification
 
 Bug: The Prepare Signature tool deviated from the functional specification (§17) in several
 places. Most visibly, opening a second scan showed the first scan's image in the crop stage.
@@ -944,7 +944,7 @@ first scan (and its selection).
    window: up to three prompts, a password typed at any of them is accepted when correct, and
    cancelling the prompt opens nothing.
 
-## Version 1.8.5 - Bugfix: Editing annotations follows the specification
+## Bugfix: Editing annotations follows the specification
 
 Bug: Several editing actions did not do what the specification promises, mostly with more than one
 annotation selected.
@@ -971,3 +971,40 @@ Expected: the behavior of the specification (§7.2, §7.7, §7.8, §8, §9). Act
    and keep them on the page, also for a single annotation; paste shall use the most recent copy,
    also when it was made in another window.
 7. Rotating a group in several small steps shall end where one big step does.
+
+## Version 1.8.6 - Bugfix: Opening, saving, printing and navigating follow the specification
+
+Bug: A review against the functional specification found several places in the file and window
+workflows where the app did something else than specified: a dropped image was not placed at the
+drop position and dropped Word/ODT/project files were rejected; an animated GIF opened as several
+pages; changing the file type in Save As did not change the filename; a typed extension was
+overridden by the file type; a failed export could not be retried; the success message took the
+keyboard focus; the print dialog's page range and copies were ignored; Space+drag did not pan.
+
+Steps to reproduce (examples): drop a small PNG on the page: it lands in the middle of the page.
+Choose "PDF" as the file type in Save As: the filename keeps `-p#`. Print pages 2-3: all pages are
+printed.
+
+Expected: the behavior of the specification (§3, §4.3, §4.6, §5, §12, §14). Actual: as described.
+
+1. A dropped small image shall be centered on the drop position (kept on the page); a dropped
+   Word, ODT or `.signer` file shall be opened like Open does.
+2. Of an animated GIF, WEBP or PNG, or a multi-picture JPEG, only the first frame shall be used; a
+   TIFF keeps all its pages.
+3. Picking a file type in Save As shall at once give the filename the extension and placeholder of
+   that format (keeping the stem the user typed) and update the Options… button. A recognized
+   extension typed by the user shall decide the format. A filename that is invalid for a
+   multi-page export shall return to the Save As dialog.
+4. The overwrite confirmation of a single target file (also a one-page JPG/PNG/BMP) shall name the
+   file and offer Replace and Cancel (Cancel is the default). A failure to delete the older page
+   files shall be reported.
+5. A failed export shall offer Retry and Cancel; a retry shall write only the pages that failed;
+   a full disk shall stop the export.
+6. A toast shall never take the keyboard focus; a directory link that fails shall be logged.
+7. Print shall honor the pages and copies chosen in the print dialog and fit each page to the paper.
+8. Space + dragging with the left mouse button shall pan a zoomed page, without marking the
+   document as changed; Ctrl++ shall zoom in.
+9. The minimum width of the window shall include the zoom controls and the hamburger menu; selecting
+   an annotation shall not add a separator to the main toolbar row of a single-page document.
+10. The message for a missing LibreOffice and the help of the command line shall describe what the
+    app does.

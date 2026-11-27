@@ -421,8 +421,8 @@ nothing.
   button at once.- **Validation**: single-file formats accept any filename. Per-page formats require the `#`
   placeholder when the document has more than one page; a filename missing it shows an info
   dialog and returns to the Save As dialog (not closed) for correction.
-- **Options… button**: enabled only for lossy formats (JPG, PDF); opens a non-modal "Export
-  Quality Options" panel with a 1-100 quality slider (labeled "small file" ↔ "large file",
+- **Options… button**: enabled only for lossy formats (JPG, PDF); opens an "Export
+  Quality Options" panel (modal, over the Save As dialog) with a 1-100 quality slider (labeled "small file" ↔ "large file",
   numeric value always visible) and OK/Cancel. Disabled (greyed out) for lossless formats
   (PNG/TIFF/BMP), which always use their best automatic setting.
 

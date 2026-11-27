@@ -50,7 +50,7 @@ class ExportQualityOptionsPanel(QDialog):
     def _setup_ui(self) -> None:
         """Set up the UI components."""
         self.setWindowTitle("Export Quality Options")
-        self.setModal(False)
+        self.setModal(True)
         self.setMinimumWidth(450)
         
         layout = QVBoxLayout(self)

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 from PIL import Image
 from PySide6.QtGui import QColor
 
-from signer.compositor import _composite_objects
+from signer.compositor import ExportFormat, _composite_objects
 
 
 def create_mock_canvas_object(x: float = 100, y: float = 100, width: float = 200, height: float = 200):
@@ -316,3 +316,34 @@ def disable_recording():
 def is_recording_enabled() -> bool:
     """Check if recording is enabled."""
     return _global_recorder.is_enabled()
+
+
+class FakeSaveDialog:
+    """Stands in for the real Save As dialog and 'types' the given filenames in turn."""
+
+    shown = 0
+
+    def __init__(self, names):
+        self._names = names
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    def setOption(self, *args):
+        pass
+
+    def selectNameFilter(self, *args):
+        pass
+
+    def exec(self):
+        FakeSaveDialog.shown += 1
+        return 1
+
+    def selectedFiles(self):
+        return [self._names[min(FakeSaveDialog.shown, len(self._names)) - 1]]
+
+    def selectedNameFilter(self):
+        return ExportFormat.JPG.file_filter()
+
+    def close(self):
+        pass

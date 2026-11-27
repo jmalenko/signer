@@ -208,17 +208,28 @@ class TestImageDocumentLoading:
         assert page.width >= 100
         assert page.height >= 100
 
-    def test_load_multiframe_gif_preserves_all_frames(self, tmp_path):
-        """GIF frames must remain separate document pages after RGB conversion."""
-        gif_path = tmp_path / "animated.gif"
+    @pytest.mark.parametrize("extension", ["gif", "webp", "png"])
+    def test_an_animated_image_uses_only_its_first_frame(self, tmp_path, extension):
+        """Spec §3: only a TIFF is multi-page; an animation is one page, its first frame."""
+        path = tmp_path / f"animated.{extension}"
         first = Image.new("RGB", (12, 12), "red")
         second = Image.new("RGB", (12, 12), "blue")
-        first.save(gif_path, save_all=True, append_images=[second], duration=100, loop=0)
+        first.save(path, save_all=True, append_images=[second], duration=100, loop=0, lossless=True)
 
-        pages = render_all_pages(gif_path)
+        pages = render_all_pages(path)
+
+        assert len(pages) == 1
+        assert pages[0].getpixel((0, 0))[0] > 200  # red, not blue
+
+    def test_a_tiff_keeps_all_its_frames_as_pages(self, tmp_path):
+        path = tmp_path / "two.tiff"
+        Image.new("RGB", (12, 12), "red").save(
+            path, save_all=True, append_images=[Image.new("RGB", (12, 12), "blue")]
+        )
+
+        pages = render_all_pages(path)
 
         assert len(pages) == 2
-        assert pages[0].getpixel((0, 0)) == (255, 0, 0)
         assert pages[1].getpixel((0, 0)) == (0, 0, 255)
 
 

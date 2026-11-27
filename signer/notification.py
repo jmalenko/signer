@@ -1,5 +1,6 @@
 """Notification toast widget for displaying success and error messages."""
 
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
@@ -10,6 +11,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QWidget,
 )
+
+logger = logging.getLogger(__name__)
 
 # Color themes for the two notification kinds: (background, border, text, hover).
 _ERROR_THEME = ("#ffcdd2", "#c62828", "#b71c1c", "#ef9a9a")
@@ -76,7 +79,11 @@ class NotificationToast(QWidget):
                 dismisses when the user clicks the close button
         """
         super().__init__(parent)
-        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(
+            Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
+        )
+        # A toast must never take the keyboard focus from the main window.
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
         # Remove translucent background for full visibility
         self._directory = directory
         self._exported_files = exported_files or []
@@ -140,6 +147,7 @@ class NotificationToast(QWidget):
         try:
             path = Path(url)
             if not path.exists():
+                logger.warning("Cannot open directory, it does not exist: %s", path)
                 NotificationToast(
                     self.parent(), "Unable to open directory", is_error=True
                 )
@@ -148,6 +156,7 @@ class NotificationToast(QWidget):
             if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(path))):
                 raise OSError(f"Desktop environment could not open {path}")
         except (OSError, RuntimeError, ValueError):
+            logger.warning("Cannot open directory %s", url, exc_info=True)
             NotificationToast(
                 self.parent(), "Unable to open directory", is_error=True
             )
