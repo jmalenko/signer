@@ -865,3 +865,81 @@ the box; the more negative the spacing, the larger the overflow.
    positive, zero, or negative, on the canvas as well as in the export.
 2. The spacing that follows the last character of a line is not part of the text, so it shall not
    make the box wider (positive spacing) or narrower (negative spacing).
+
+## Version 1.8.3 - Bugfix: Export files, unsaved changes, undo/redo and opening follow the specification
+
+Bug: A review against the functional specification found several places where the app did not do
+what it promises:
+
+- Looking at a document (zoom, Fit, page navigation, selecting) counted as an unsaved change, so
+  closing it asked to save. Changing a colour, a real edit, was not undoable.
+- Undoing a resize or an endpoint drag restored only the size, not the position, the font size or
+  the direction of a line/arrow; redoing a move that the page boundary had limited, or a delete
+  after undoing the add, did not reproduce the shown state; the selection kept referring to
+  annotations that undo had removed.
+- TIFF files were not compressed, and no exported file carried the 300 DPI resolution, so a PDF
+  page was four times the size of the paper.
+- The third password prompt was never tried; projects and Change Document could not open an
+  encrypted PDF; a project that could not be opened left a half-loaded document behind.
+
+Steps to reproduce (examples): open a document, zoom in, then close it: a prompt asks to save.
+Drag the top-left handle of a rectangle, press Ctrl+Z: the rectangle is back to its size but not to
+its place. Export a two-page document as TIFF and check the file size.
+
+Expected: only changes to the annotations count as unsaved changes; undo and redo restore the full
+state; exports follow the specification; opening a document or project never leaves the app in a
+state in between. Actual: as described.
+
+1. Zooming, fitting, navigating pages and selecting shall not mark the document as changed;
+   changes to annotations, undo/redo and page rotation shall.
+2. Resizing shall be undone and redone completely (position, size, font size of a text, direction
+   of a line/arrow); a move limited by the page boundary shall be redone to the limited position;
+   redoing a delete after undoing its add shall delete again; after undo/redo the selection shall
+   not contain annotations that are not on the page.
+3. Adding an annotation or deleting the selection shall also reset a multi-selection.
+4. The color control shall change every selected annotation that has a color (not images), as one
+   undoable step that marks the document as changed.
+5. TIFF exports shall be LZW compressed, and every export shall carry the 300 DPI resolution (a
+   PDF page keeps the physical page size).
+6. The seed of the hand-drawn look shall also be stored for annotations that are not hand-drawn.
+7. A password typed at any of the three prompts shall be tried; projects and Change Document shall
+   ask for the password of an encrypted PDF like Open does.
+8. A project that cannot be opened (also one in a wrong format) shall leave the open document,
+   its annotations and its project path as they were. A project without `version` shall open.
+9. An export shall establish the project path also when Auto-save Project is off; opening another
+   document or project shall forget the previous export; the document shall be stored by its
+   absolute path.
+10. Save Project, Save Project As… and Change Document… shall be enabled only while a document is
+    open; Change Document shall update the window title and the recent documents.
+11. A click on the toolbar Open button shall open the file picker; its arrow offers the recent
+    documents. Opening a document shall return the keyboard focus to the canvas.
+
+## Version 1.8.4 - Bugfix: Prepare Signature tool follows the specification
+
+Bug: The Prepare Signature tool deviated from the functional specification (§17) in several
+places. Most visibly, opening a second scan showed the first scan's image in the crop stage.
+
+Steps to reproduce: Open Tools → Prepare Signature…, open a single-page scan, then go back to
+Stage 1 and open a different scan.
+
+Expected: The crop stage shows the second scan, without a selection. Actual: It still shows the
+first scan (and its selection).
+
+1. Loading a new file shall always reset the crop image and selection. Going back and continuing
+   again with the same file and page shall keep the selection.
+2. The scale checkbox shall be labelled exactly "Scale signature to fit 12pt". While it is
+   selected, the tool shall show the estimated regular-character height and the calculated scaling
+   factor (e.g. "Regular character height: 16.3pt, scaling factor 0.74"); while it is cleared, no
+   scaling is applied and no such information is shown.
+3. Closing the tool by any route (X button, Cancel, Escape) after a scan was opened and not saved,
+   or saved and then changed again (crop, method, slider, ink color, or scale option), shall ask
+   "You have not saved the prepared signature. Close anyway?" (Yes/No, default No). After a
+   successful save without later changes, or before any file was opened, it closes without a
+   prompt.
+4. Dragging an edge or corner of the crop selection past the opposite edge shall keep the opposite
+   edge anchored, like resizing an annotation.
+5. "Reset" shall restore all four sliders to their defaults and keep the ink color and the method
+   checkboxes.
+6. Opening an encrypted PDF shall ask for its password, like opening a document in the main
+   window: up to three prompts, a password typed at any of them is accepted when correct, and
+   cancelling the prompt opens nothing.

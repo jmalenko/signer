@@ -481,6 +481,7 @@ class MainWindow(QMainWindow):
         self._adjust_window_to_document(a4_size.width(), a4_size.height())
 
         self.canvas.objectChanged.connect(self._on_object_changed)
+        self.canvas.viewChanged.connect(self._on_view_changed)
         self.canvas.pageChanged.connect(self._on_page_changed)
         self.canvas.zoomChanged.connect(self._update_zoom_action_state)
         self.canvas.editRequested.connect(self._on_edit_requested)
@@ -609,11 +610,15 @@ class MainWindow(QMainWindow):
 
         # Open with recent documents dropdown
         open_doc_btn = QToolButton(self)
-        open_doc_btn.setText("📂 Open")
         open_doc_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        open_doc_btn.setPopupMode(QToolButton.InstantPopup)
+        # Split button: a click opens the file picker, the arrow offers the recent documents.
+        open_doc_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        open_doc_action = QAction("📂 Open", open_doc_btn)
+        open_doc_action.triggered.connect(lambda: self.open_document())
+        open_doc_btn.setDefaultAction(open_doc_action)
         open_doc_menu = QMenu(open_doc_btn)
         open_doc_btn.setMenu(open_doc_menu)
+        self._toolbar_open_button = open_doc_btn
         
         open_doc_menu.addAction("Open…", lambda: self.open_document())
         self._recent_docs_menu = open_doc_menu.addMenu("Recent Documents")
@@ -999,6 +1004,9 @@ class MainWindow(QMainWindow):
         fit_enabled = has_doc and not self.canvas.is_fit_to_window
         action_conditions = [
             (self._menu_print_action, has_doc),
+            (self._menu_save_project_action, has_doc),
+            (self._menu_save_project_as_action, has_doc),
+            (self._menu_change_document_action, has_doc),
             (self._menu_undo_action, self.canvas.can_undo()),
             (self._menu_redo_action, self.canvas.can_redo()),
             (self._toolbar_undo_action, self.canvas.can_undo()),
@@ -1488,11 +1496,14 @@ class MainWindow(QMainWindow):
             self._rebuild_recent_texts_top_level(self._hamburger_text_submenu)
 
     def _on_object_changed(self) -> None:
+        self._on_view_changed()
+        self._has_unsaved_changes = True
+
+    def _on_view_changed(self) -> None:
         self._update_document_workflow_state()
         self._update_annotation_action_state()
         self._update_menu_state()
         self._update_color_btn()
-        self._has_unsaved_changes = True
 
     @staticmethod
     def _set_value_silently(widget, value, setter: str = "setValue") -> None:
@@ -1660,13 +1671,9 @@ class MainWindow(QMainWindow):
         color = QColorDialog.getColor(initial, self, "Annotation color")
         if color.isValid():
             if selected is not None:
-                selected.color = color
-                self._current_color = color
-                self._settings.recent_color = color.name()
-                self.canvas.update()
-            else:
-                self._current_color = color
-                self._settings.recent_color = color.name()
+                self.canvas.set_color_selected(color)
+            self._current_color = color
+            self._settings.recent_color = color.name()
             self._update_color_btn()
             self._save_settings_safe()
 
@@ -1933,6 +1940,8 @@ class MainWindow(QMainWindow):
         # already-opened project. A new document gets its project identity from
         # the eventual export path.
         self._has_unsaved_changes = True
+        self._update_title()
+        self._rebuild_recent_menus()
         return True
 
     def open_project(self, path: str | Path, check_unsaved_changes: bool = True) -> bool:
@@ -1946,8 +1955,10 @@ class MainWindow(QMainWindow):
         try:
             project = ProjectFile.read(path)
             ProjectFile.validate(project)
-        except (OSError, json.JSONDecodeError, ValueError) as exc:
-            QMessageBox.critical(self, "Open project failed", str(exc))
+            objects = ProjectFile.load_annotations(project, Path(path).parent)
+        except (OSError, json.JSONDecodeError, KeyError, AttributeError, TypeError, ValueError) as exc:
+            # Nothing has been changed yet: the open document stays as it is.
+            QMessageBox.critical(self, "Open project failed", f"Invalid project file:\n{exc}")
             return False
         document_path = Path(project.get("document_path", ""))
         if not document_path.is_absolute():
@@ -1973,14 +1984,10 @@ class MainWindow(QMainWindow):
             document_path = Path(chosen)
         if not self._load_document_pages(document_path):
             return False
-        try:
-            objects = ProjectFile.load_annotations(project, Path(path).parent)
-        except (KeyError, TypeError, ValueError) as exc:
-            QMessageBox.critical(self, "Open project failed", f"Invalid annotation data:\n{exc}")
-            return False
         rotations = project.get("rotations", {})
         self.canvas.restore_objects(objects, rotations, 0)
         self.project_path = str(path)
+        self._last_export_path = None
         self._update_recent_documents(str(path))
         self._save_settings_safe()
         self._rebuild_recent_menus()
@@ -1992,10 +1999,8 @@ class MainWindow(QMainWindow):
     def _load_document_pages(self, path: Path) -> bool:
         if not path.exists():
             return False
-        try:
-            pages = render_all_pages(path, password="", libreoffice_path=self._settings.libreoffice_path)
-        except (OSError, RuntimeError, ValueError) as exc:
-            QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
+        pages = self._render_pages_asking_for_password(path)
+        if pages is None:
             return False
         self.canvas.set_pages(pages)
         self.canvas.clear_history()
@@ -2041,7 +2046,7 @@ class MainWindow(QMainWindow):
 
         if not chosen:
             return False
-        p = Path(chosen)
+        p = Path(chosen).absolute()
 
         if p.name.lower().endswith(".signer"):
             return self.open_project(p, check_unsaved_changes=False)
@@ -2051,40 +2056,15 @@ class MainWindow(QMainWindow):
             self._remove_recent_document(str(p))
             return False
 
-        password = ""
-        max_attempts = 3
-        for attempt in range(max_attempts):
-            try:
-                pages = render_all_pages(
-                    p,
-                    password=password,
-                    libreoffice_path=self._settings.libreoffice_path,
-                )
-            except ValueError as exc:
-                error_msg = str(exc)
-                # PDF is encrypted and password is wrong or missing
-                if "encrypted" in error_msg.lower():
-                    dialog = _PasswordDialog(self, p.name)
-                    if dialog.exec() != QDialog.Accepted:
-                        return False
-                    password = dialog.password()
-                    continue
-                else:
-                    QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{error_msg}")
-                    return False
-            except (OSError, RuntimeError) as exc:
-                QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
-                return False
-            break  # Success
-        else:
-            # Max attempts exceeded
-            QMessageBox.critical(self, "Open document failed", "Incorrect password or maximum attempts exceeded.")
+        pages = self._render_pages_asking_for_password(p)
+        if pages is None:
             return False
 
         self.canvas.set_pages(pages)
         self.canvas.clear_history()  # Clear undo/redo history when opening a new document
         self.document_path = str(p)
         self.project_path = None
+        self._last_export_path = None
         self._has_unsaved_changes = False
         self._update_recent_documents(str(p))
         self._save_settings_safe()
@@ -2095,7 +2075,37 @@ class MainWindow(QMainWindow):
         self._update_document_workflow_state()
         self._update_annotation_action_state()
         self._update_color_btn()
+        self._focus_canvas_after_open()
         return True
+
+    # A document is tried without a password first; an encrypted PDF then gets this many prompts.
+    PASSWORD_PROMPTS = 3
+
+    def _render_pages_asking_for_password(self, path: Path) -> list[Image.Image] | None:
+        """Render the document; for an encrypted PDF ask for the password (up to PASSWORD_PROMPTS
+        times). Returns None after telling the user why when the document cannot be opened."""
+        password = ""
+        prompts = 0
+        while True:
+            try:
+                return render_all_pages(
+                    path, password=password, libreoffice_path=self._settings.libreoffice_path,
+                )
+            except ValueError as exc:
+                if "encrypted" not in str(exc).lower():
+                    QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
+                    return None
+            except (OSError, RuntimeError) as exc:
+                QMessageBox.critical(self, "Open document failed", f"Could not open document:\n{exc}")
+                return None
+            if prompts == self.PASSWORD_PROMPTS:
+                QMessageBox.critical(self, "Open document failed", "Incorrect password or maximum attempts exceeded.")
+                return None
+            dialog = _PasswordDialog(self, path.name)
+            if dialog.exec() != QDialog.Accepted:
+                return None
+            password = dialog.password()
+            prompts += 1
 
     def _on_file_drop(self, file_path: str) -> None:
         """Handle file drop from drag-and-drop.
@@ -2667,8 +2677,11 @@ class MainWindow(QMainWindow):
             self._last_export_path = str(output)
             self._has_unsaved_changes = False
 
+            project_path = self._project_path_for_export(self._last_export_path or output)
             if self._settings.auto_save_project:
-                self.save_project(self._project_path_for_export(self._last_export_path or output), silent=True, mark_clean=False)
+                self.save_project(project_path, silent=True, mark_clean=False)
+            else:
+                self.project_path = str(project_path)
             
             # Show auto-dismissing notification with clickable directory link
             if not self._in_test_mode:

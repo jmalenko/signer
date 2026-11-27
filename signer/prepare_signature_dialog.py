@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 from PIL import Image
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -52,6 +52,7 @@ from .signature_background import (
     calculate_character_scaling_factor,
     estimate_regular_character_band,
     expansion_bands_for_character,
+    height_px_to_pt,
     histogram_mass_percentile_positions,
     remove_background,
     remove_background_by_color,
@@ -65,6 +66,7 @@ OPEN_FILTER = (
 
 _HANDLE_SIZE = 10
 _HANDLE_HIT_MARGIN = 6
+_MAX_PASSWORD_ATTEMPTS = 3
 
 
 def pil_to_qpixmap(image: Image.Image) -> QPixmap:
@@ -146,6 +148,8 @@ class _DraggablePreviewLabel(QLabel):
 
 class _CropWidget(QWidget):
     """Displays a scan at a given zoom level and lets the user drag out/adjust a crop rect."""
+
+    selection_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -324,7 +328,11 @@ class _CropWidget(QWidget):
         if self._creating and self._create_anchor is not None:
             self._rect = QRectF(self._create_anchor, image_pos).normalized()
             return
-        rect = QRectF(self._rect)
+        if self._rect_at_drag_start is None:
+            self._rect_at_drag_start = QRectF(self._rect)
+        # Start from the rectangle as it was at the press, so the edges that are not being
+        # dragged stay anchored even after the dragged edge has passed the opposite one.
+        rect = QRectF(self._rect_at_drag_start)
         if "l" in self._drag_mode:
             rect.setLeft(image_pos.x())
         if "r" in self._drag_mode:
@@ -336,12 +344,15 @@ class _CropWidget(QWidget):
         self._rect = rect.normalized()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        rect_before = self._rect_at_drag_start
         self._drag_mode = None
         self._drag_anchor = None
         self._rect_at_drag_start = None
         self._creating = False
         if self._rect is not None:
             self._rect = self._rect.normalized()
+        if self._rect != rect_before:
+            self.selection_changed.emit()
 
 
 class _CropScrollArea(QScrollArea):
@@ -374,6 +385,7 @@ class PrepareSignatureDialog(QDialog):
         self._updating_height = False
         self._ink_color: tuple[int, int, int] = DEFAULT_INK_COLOR
         self._dirty = False
+        self._saved_state: tuple | None = None
         self._preview_pan = QPointF(0, 0)
         self._last_full_size: tuple[int, int] | None = None
         self._last_preview_image: Image.Image | None = None
@@ -450,15 +462,49 @@ class PrepareSignatureDialog(QDialog):
             return
         self._load_source_path(Path(path))
 
+    def _ask_password(self, file_name: str) -> str | None:
+        """Prompt for a PDF password; None if the user cancels. Overridable in tests."""
+        from .main_window import _PasswordDialog  # deferred: main_window imports this module
+
+        dialog = _PasswordDialog(self, file_name)
+        if dialog.exec() != QDialog.Accepted:
+            return None
+        return dialog.password()
+
+    def _render_pages_asking_for_password(self, source_path: Path) -> list[Image.Image] | None:
+        """Render the file; None if it could not be opened (the user has been told, if needed)."""
+        password = ""
+        for prompts in range(_MAX_PASSWORD_ATTEMPTS + 1):
+            try:
+                return render_all_pages(source_path, password=password)
+            except ValueError as exc:
+                if "encrypted" not in str(exc).lower():
+                    self._show_open_error(source_path, exc)
+                    return None
+                if prompts == _MAX_PASSWORD_ATTEMPTS:
+                    break
+                typed = self._ask_password(source_path.name)
+                if typed is None:
+                    return None
+                password = typed
+            except Exception as exc:  # noqa: BLE001
+                self._show_open_error(source_path, exc)
+                return None
+        QMessageBox.critical(
+            self, "Cannot open file", "Incorrect password or maximum attempts exceeded."
+        )
+        return None
+
+    def _show_open_error(self, source_path: Path, exc: Exception) -> None:
+        QMessageBox.critical(
+            self,
+            "Cannot open file",
+            f"Unable to open '{source_path}':\n{exc}",
+        )
+
     def _load_source_path(self, source_path: Path) -> None:
-        try:
-            pages = render_all_pages(source_path)
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(
-                self,
-                "Cannot open file",
-                f"Unable to open '{source_path}':\n{exc}",
-            )
+        pages = self._render_pages_asking_for_password(source_path)
+        if pages is None:
             return
         if not pages:
             QMessageBox.critical(
@@ -469,7 +515,10 @@ class PrepareSignatureDialog(QDialog):
             return
         self._pages = pages
         self._page_index = 0
+        # A new file must never show the previous file's image/selection in Stage 2.
+        self._crop_loaded_page_index = None
         self._source_path = source_path
+        self._saved_state = None
         self._opened_file_label.setText(f"Opened: {self._source_path.name}")
         self._set_page_nav_visible(len(pages) > 1)
         self._update_page_label()
@@ -527,6 +576,7 @@ class PrepareSignatureDialog(QDialog):
         layout.addWidget(scroll, stretch=1)
         zoom_out_btn.clicked.connect(self._crop_widget.zoom_out)
         zoom_in_btn.clicked.connect(self._crop_widget.zoom_in)
+        self._crop_widget.selection_changed.connect(self._mark_dirty_if_changed_since_save)
 
         button_row = QHBoxLayout()
         back_btn = QPushButton("Back")
@@ -660,7 +710,7 @@ class PrepareSignatureDialog(QDialog):
 
         size_row = QHBoxLayout()
         self._fit_range_checkbox = QCheckBox(
-            "Scale signature to fit recommended height"
+            "Scale signature to fit 12pt"
         )
         self._fit_range_checkbox.setChecked(True)
         self._fit_range_checkbox.toggled.connect(self._on_fit_range_toggled)
@@ -776,7 +826,28 @@ class PrepareSignatureDialog(QDialog):
             )
         return processed
 
+    def _state_snapshot(self) -> tuple:
+        rect = self._crop_widget.crop_rect()
+        return (
+            self._source_path,
+            self._page_index,
+            None if rect is None else (rect.left(), rect.top(), rect.right(), rect.bottom()),
+            self._luminance_method_checkbox.isChecked(),
+            self._color_method_checkbox.isChecked(),
+            self._threshold_slider.value(),
+            self._softness_slider.value(),
+            self._color_tolerance_slider.value(),
+            self._color_softness_slider.value(),
+            self._ink_color,
+            self._fit_to_range,
+        )
+
+    def _mark_dirty_if_changed_since_save(self) -> None:
+        if self._saved_state is not None and self._state_snapshot() != self._saved_state:
+            self._dirty = True
+
     def _update_preview(self, *_args) -> None:
+        self._mark_dirty_if_changed_since_save()
         full = self._compute_processed_image()
         if full is None:
             return
@@ -847,7 +918,14 @@ class PrepareSignatureDialog(QDialog):
 
         self._final_image = final
 
-        self._scale_status_label.setText("")
+        if self._fit_to_range and scaling_band is not None:
+            self._scale_status_label.setText(
+                f"Regular character height: "
+                f"{height_px_to_pt(scaling_band[1] - scaling_band[0]):.1f}pt, "
+                f"scaling factor {scaling_factor:.2f}"
+            )
+        else:
+            self._scale_status_label.setText("")
 
         boundary_bbox = full.split()[3].getbbox() if self._show_boundary_checkbox.isChecked() else None
         if full.size != self._last_full_size:
@@ -1074,19 +1152,30 @@ class PrepareSignatureDialog(QDialog):
             QMessageBox.critical(self, "Save failed", f"Unable to save '{path}':\n{exc}")
             return
         self._dirty = False
+        self._saved_state = self._state_snapshot()
 
     # ---------------------------------------------------------------- Close
 
+    def _confirm_close(self) -> bool:
+        self._mark_dirty_if_changed_since_save()
+        if not self._dirty:
+            return True
+        reply = QMessageBox.question(
+            self,
+            "Discard signature?",
+            "You have not saved the prepared signature. Close anyway?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return reply == QMessageBox.Yes
+
+    def reject(self) -> None:
+        # Escape and any Cancel path end up here; the X button goes through closeEvent.
+        if self._confirm_close():
+            super().reject()
+
     def closeEvent(self, event) -> None:
-        if self._dirty:
-            reply = QMessageBox.question(
-                self,
-                "Discard signature?",
-                "You have not saved the prepared signature. Close anyway?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if reply != QMessageBox.Yes:
-                event.ignore()
-                return
+        if not self._confirm_close():
+            event.ignore()
+            return
         event.accept()

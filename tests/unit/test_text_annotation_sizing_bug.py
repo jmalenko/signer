@@ -37,13 +37,6 @@ def test_text_box_contains_the_exported_text_at_any_character_spacing(qapp, text
     assert bbox[2] <= 100 + annotation.scaled_width + 1
 
 
-# ---- documents the bug (to be deleted after review)
-
-def test_BUG_text_box_is_narrower_than_the_text_at_negative_character_spacing(qapp):
-    annotation, bbox = exported_text_ink("WWW", -3.0)
-    assert bbox[2] > 100 + annotation.scaled_width + 5
-
-
 def test_toolbar_property_labels_do_not_show_units(main_window):
     assert main_window._width_label.text() == "Width:"
     assert main_window._font_size_label.text() == "Font Size:"

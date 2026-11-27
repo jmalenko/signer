@@ -20,6 +20,9 @@ MULTIPAGE_PLACEHOLDER = "#"
 DEFAULT_JPG_QUALITY = 95
 DEFAULT_PDF_QUALITY = 95
 
+# Resolution all pages are rendered and exported at; written into every exported file.
+EXPORT_DPI = 300
+
 
 class ExportFormat(Enum):
     """Supported export formats."""
@@ -522,7 +525,9 @@ def composite_objects_to_jpg(
     """
     base = page_image.convert("RGBA")
     _composite_objects(base, objects)
-    base.convert("RGB").save(str(output_path), format="JPEG", quality=jpg_quality, optimize=True)
+    base.convert("RGB").save(
+        str(output_path), format="JPEG", quality=jpg_quality, optimize=True, dpi=(EXPORT_DPI, EXPORT_DPI)
+    )
 
 
 def composite_objects_to_png(
@@ -535,7 +540,9 @@ def composite_objects_to_png(
     _composite_objects(base, objects)
 
     # Use compress_level=9 for maximum lossless compression
-    base.save(str(output_path), format="PNG", optimize=True, compress_level=9)
+    base.save(
+        str(output_path), format="PNG", optimize=True, compress_level=9, dpi=(EXPORT_DPI, EXPORT_DPI)
+    )
 
 
 def composite_objects_to_bmp(
@@ -547,7 +554,7 @@ def composite_objects_to_bmp(
     base = page_image.convert("RGBA")
     _composite_objects(base, objects)
 
-    base.convert("RGB").save(str(output_path), format="BMP")
+    base.convert("RGB").save(str(output_path), format="BMP", dpi=(EXPORT_DPI, EXPORT_DPI))
 
 
 def composite_pages_to_pdf(
@@ -578,6 +585,7 @@ def composite_pages_to_pdf(
             save_all=True,
             append_images=composited_images[1:] if len(composited_images) > 1 else [],
             quality=pdf_quality,
+            resolution=EXPORT_DPI,
         )
 
 
@@ -598,7 +606,8 @@ def composite_pages_to_tiff(
         composited_images[0].save(
             str(output_path),
             format="TIFF",
-            compression="lzw",
+            compression="tiff_lzw",
+            dpi=(EXPORT_DPI, EXPORT_DPI),
             save_all=True,
             append_images=composited_images[1:] if len(composited_images) > 1 else []
         )

@@ -214,6 +214,16 @@ flowchart TD
   ends after the spacing that follows the last character, and with a negative spacing it is too
   narrow or even empty, so that spacing is taken off and, for a negative spacing, the glyph
   outline is taken into account too.
+- **Two canvas signals separate "the document changed" from "the view changed"**:
+  `DocumentCanvas.objectChanged` means the annotations (or page rotation) changed and marks the
+  document as having unsaved changes; `viewChanged` (zoom, fit, page change, selection) refreshes
+  the toolbar/menu state only. A new code path that edits annotations must emit `objectChanged`
+  (undo/redo actions do), one that only changes what is shown must not.
+- **Resize actions record the complete geometry**: a resize can move the annotation, change a
+  text's font size and turn a line/arrow, so `ResizeAnnotationAction` stores
+  `CanvasObject.geometry_state()` before and after (`from_geometry`/`to_geometry`) and undo/redo
+  restore it exactly. Drag actions are recorded after the page-boundary clamping, so they hold the
+  state that is shown. Recorded fixtures without geometry still replay through the size-only path.
 - **Non-native Save As dialog**: Qt's native file dialogs don't expose their filename `QLineEdit`
   for real-time monitoring. Using a Qt-rendered dialog (`DontUseNativeDialog`) trades the native
   OS look for the ability to auto-correct the filename (page placeholder, extension) as the user

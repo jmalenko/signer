@@ -1,12 +1,14 @@
 """Unit tests for the Prepare Signature tool dialog."""
 
 import itertools
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from PIL import Image
-from PySide6.QtCore import QPointF, QRectF
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from signer.prepare_signature_dialog import PrepareSignatureDialog
 from signer.signature_background import (
@@ -23,6 +25,14 @@ def qapp():
     if app is None:
         app = QApplication([])
     return app
+
+
+@pytest.fixture(autouse=True)
+def no_modal_message_boxes(monkeypatch):
+    """A message box that is not mocked by a test must never block the run."""
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
+    monkeypatch.setattr(QMessageBox, "critical", lambda *a, **k: QMessageBox.Ok)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: QMessageBox.Ok)
 
 
 def _make_scan_with_dark_square() -> Image.Image:
@@ -319,7 +329,7 @@ def test_scaled_mode_shows_status_and_hides_height_input(qapp):
     dialog._go_to_tuning()
 
     assert dialog._scale_status_label.isVisible() is False
-    assert dialog._scale_status_label.text() == ""
+    assert dialog._scale_status_label.text().startswith("Regular character height:")
 
 
 def test_preview_canvas_fits_selection_to_viewport(qapp):
@@ -544,3 +554,356 @@ def test_preview_pan_resets_when_crop_size_changes(qapp):
 
     assert dialog._preview_pan == QPointF(0, 0)
 
+
+
+# --- Prepare Signature follows the specification (Version 1.8.4) ---------------------------
+
+ENCRYPTED_PDF = Path(__file__).resolve().parents[2] / "examples" / "document-encrypted.pdf"
+
+
+def _solid_scan(color) -> Image.Image:
+    return Image.new("RGB", (200, 200), color)
+
+
+def _load_scan(dialog, image, name="scan.png"):
+    with patch("signer.prepare_signature_dialog.render_all_pages", return_value=[image]):
+        dialog._load_source_path(Path(name))
+
+
+def _open_tuning(dialog):
+    _load_scan(dialog, _make_scan_with_dark_square())
+    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._go_to_tuning()
+
+
+def _save_to(dialog, tmp_path):
+    save_path = str(tmp_path / "signature.png")
+    with patch("signer.prepare_signature_dialog.QFileDialog.getSaveFileName", return_value=(save_path, "")):
+        dialog._save()
+
+
+def test_second_scan_replaces_crop_image_and_selection(qapp):
+    dialog = PrepareSignatureDialog()
+    first = _solid_scan((10, 20, 30))
+    second = _solid_scan((200, 100, 50))
+    _load_scan(dialog, first, "first.png")
+    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+
+    _load_scan(dialog, second, "second.png")
+
+    assert dialog._stack.currentIndex() == 1
+    assert dialog._crop_widget._image is second
+    assert dialog._crop_widget.crop_rect() is None
+
+
+def test_reloading_same_file_page_after_back_keeps_selection(qapp):
+    dialog = PrepareSignatureDialog()
+    _load_scan(dialog, _solid_scan((10, 20, 30)))
+    dialog._crop_widget._rect = QRectF(70, 70, 60, 40)
+    dialog._stack.setCurrentIndex(0)
+
+    dialog._go_to_crop()
+
+    assert dialog._crop_widget.crop_rect() == QRectF(70, 70, 60, 40)
+
+
+def test_scale_checkbox_label_is_exactly_fit_12pt(qapp):
+    dialog = PrepareSignatureDialog()
+    assert dialog._fit_range_checkbox.text() == "Scale signature to fit 12pt"
+
+
+def test_scale_status_shows_height_and_factor_and_clears_when_unchecked(qapp):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    dialog._color_method_checkbox.setChecked(False)
+
+    text = dialog._scale_status_label.text()
+    assert text.startswith("Regular character height: ")
+    assert "pt, scaling factor " in text
+    band = dialog._last_guide_band
+    height_pt = height_px_to_pt(band[1] - band[0])
+    assert f"{height_pt:.1f}pt" in text
+    assert f"scaling factor {12.0 / height_pt:.2f}" in text
+
+    dialog._fit_range_checkbox.setChecked(False)
+    assert dialog._scale_status_label.text() == ""
+    dialog._fit_range_checkbox.setChecked(True)
+    assert dialog._scale_status_label.text() == text
+
+
+def test_escape_without_opened_scan_closes_without_prompt(qapp):
+    dialog = PrepareSignatureDialog()
+    dialog.show()
+    with patch.object(QMessageBox, "question") as question:
+        QTest.keyClick(dialog, Qt.Key_Escape)
+    question.assert_not_called()
+    assert not dialog.isVisible()
+
+
+def test_escape_after_opening_scan_asks_and_no_keeps_dialog_open(qapp):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    dialog.show()
+    with patch.object(QMessageBox, "question", return_value=QMessageBox.No) as question:
+        QTest.keyClick(dialog, Qt.Key_Escape)
+    question.assert_called_once()
+    args = question.call_args.args
+    assert args[2] == "You have not saved the prepared signature. Close anyway?"
+    assert args[4] == QMessageBox.No
+    assert dialog.isVisible()
+    dialog.hide()
+
+
+def test_escape_after_opening_scan_yes_closes_dialog(qapp):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    dialog.show()
+    with patch.object(QMessageBox, "question", return_value=QMessageBox.Yes):
+        QTest.keyClick(dialog, Qt.Key_Escape)
+    assert not dialog.isVisible()
+    assert dialog.result() == QDialog.Rejected
+
+
+def test_reject_asks_for_confirmation_when_unsaved(qapp):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    with patch.object(QMessageBox, "question", return_value=QMessageBox.No) as question:
+        dialog.reject()
+    question.assert_called_once()
+
+
+def test_close_after_save_without_changes_does_not_prompt(qapp, tmp_path):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    _save_to(dialog, tmp_path)
+    dialog.show()
+    with patch.object(QMessageBox, "question") as question:
+        dialog.reject()
+    question.assert_not_called()
+    assert not dialog.isVisible()
+
+
+def test_close_via_x_after_save_without_changes_does_not_prompt(qapp, tmp_path):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    _save_to(dialog, tmp_path)
+    with patch.object(QMessageBox, "question") as question:
+        dialog.close()
+    question.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda d: d._threshold_slider.setValue(d._threshold_slider.value() - 20),
+        lambda d: d._softness_slider.setValue(d._softness_slider.value() + 10),
+        lambda d: d._color_tolerance_slider.setValue(d._color_tolerance_slider.value() + 10),
+        lambda d: d._color_softness_slider.setValue(d._color_softness_slider.value() + 10),
+        lambda d: d._luminance_method_checkbox.setChecked(False),
+        lambda d: d._color_method_checkbox.setChecked(False),
+        lambda d: d._set_ink_color((200, 0, 0)),
+        lambda d: d._fit_range_checkbox.setChecked(False),
+    ],
+    ids=["threshold", "softness", "tolerance", "color-softness", "method1", "method2", "ink", "scale"],
+)
+def test_change_after_save_rearms_unsaved_prompt(qapp, tmp_path, change):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    _save_to(dialog, tmp_path)
+    assert dialog._dirty is False
+
+    change(dialog)
+
+    assert dialog._dirty is True
+    with patch.object(QMessageBox, "question", return_value=QMessageBox.No) as question:
+        dialog.close()
+    question.assert_called_once()
+
+
+def test_crop_change_after_save_rearms_unsaved_prompt(qapp, tmp_path):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    _save_to(dialog, tmp_path)
+    dialog._stack.setCurrentIndex(1)
+    dialog._crop_widget._rect = QRectF(60, 60, 80, 60)
+    dialog._go_to_tuning()
+
+    assert dialog._dirty is True
+
+
+def test_reentering_stage3_after_save_without_changes_stays_clean(qapp, tmp_path):
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    _save_to(dialog, tmp_path)
+    dialog._stack.setCurrentIndex(1)
+    dialog._go_to_tuning()
+
+    assert dialog._dirty is False
+
+
+def _drag_widget(rect: QRectF, mode: str):
+    from signer.prepare_signature_dialog import _CropWidget
+
+    widget = _CropWidget()
+    widget.set_image(Image.new("RGB", (400, 400), "white"))
+    widget._rect = QRectF(rect)
+    widget._rect_at_drag_start = QRectF(rect)
+    widget._drag_mode = mode
+    return widget
+
+
+def test_dragging_left_edge_past_right_edge_keeps_right_edge_anchored(qapp):
+    widget = _drag_widget(QRectF(100, 100, 100, 50), "ml")
+    for x in (150, 199, 210, 250):
+        widget.update_selection(QPointF(x, 120))
+    rect = widget.crop_rect()
+    assert (rect.left(), rect.right()) == (200, 250)
+    assert (rect.top(), rect.bottom()) == (100, 150)
+
+
+def test_dragging_edge_back_over_start_flips_again_without_creeping(qapp):
+    widget = _drag_widget(QRectF(100, 100, 100, 50), "ml")
+    widget.update_selection(QPointF(250, 120))
+    widget.update_selection(QPointF(120, 120))
+    rect = widget.crop_rect()
+    assert (rect.left(), rect.right()) == (120, 200)
+
+
+@pytest.mark.parametrize(
+    "mode,steps,expected",
+    [
+        ("mr", [(60, 120), (40, 120)], (40, 100, 100, 150)),
+        ("tm", [(150, 160), (150, 200)], (100, 150, 200, 200)),
+        ("bm", [(150, 90), (150, 20)], (100, 20, 200, 100)),
+        ("br", [(90, 90), (30, 20)], (30, 20, 100, 100)),
+        ("tl", [(250, 200), (300, 300)], (200, 150, 300, 300)),
+    ],
+)
+def test_dragging_edge_or_corner_past_opposite_keeps_opposite_anchored(qapp, mode, steps, expected):
+    widget = _drag_widget(QRectF(100, 100, 100, 50), mode)
+    for x, y in steps:
+        widget.update_selection(QPointF(x, y))
+    rect = widget.crop_rect()
+    assert (rect.left(), rect.top(), rect.right(), rect.bottom()) == expected
+
+
+def test_dragging_edge_with_mouse_events_keeps_opposite_edge_anchored(qapp):
+    from PySide6.QtCore import QPoint
+
+    widget = _drag_widget(QRectF(100, 100, 100, 50), "ml")
+    widget._rect_at_drag_start = None
+    widget._drag_mode = None
+    QTest.mousePress(widget, Qt.LeftButton, Qt.NoModifier, QPoint(100, 125))
+    for x in (150, 250, 300):
+        QTest.mouseMove(widget, QPoint(x, 125))
+    QTest.mouseRelease(widget, Qt.LeftButton, Qt.NoModifier, QPoint(300, 125))
+    rect = widget.crop_rect()
+    assert (rect.left(), rect.right()) == (200, 300)
+
+
+def test_reset_restores_sliders_and_keeps_ink_color_and_method_checkboxes(qapp):
+    from signer.signature_background import (
+        DEFAULT_COLOR_SOFTNESS,
+        DEFAULT_COLOR_TOLERANCE,
+        DEFAULT_SOFTNESS,
+        DEFAULT_THRESHOLD,
+    )
+
+    dialog = PrepareSignatureDialog()
+    _open_tuning(dialog)
+    dialog._set_ink_color((200, 10, 10))
+    dialog._luminance_method_checkbox.setChecked(False)
+    dialog._color_method_checkbox.setChecked(True)
+    dialog._fit_range_checkbox.setChecked(False)
+    dialog._threshold_slider.setValue(33)
+    dialog._softness_slider.setValue(77)
+    dialog._color_tolerance_slider.setValue(11)
+    dialog._color_softness_slider.setValue(99)
+
+    dialog._reset_sliders()
+
+    assert dialog._threshold_slider.value() == int(DEFAULT_THRESHOLD)
+    assert dialog._softness_slider.value() == int(DEFAULT_SOFTNESS)
+    assert dialog._color_tolerance_slider.value() == int(DEFAULT_COLOR_TOLERANCE)
+    assert dialog._color_softness_slider.value() == int(DEFAULT_COLOR_SOFTNESS)
+    assert dialog._ink_color == (200, 10, 10)
+    assert dialog._luminance_method_checkbox.isChecked() is False
+    assert dialog._color_method_checkbox.isChecked() is True
+    assert dialog._fit_range_checkbox.isChecked() is False
+
+
+class _ScriptedPasswordDialog:
+    """Stands in for the modal password dialog: replays typed passwords, then cancels."""
+
+    typed: list[str] = []
+    shown = 0
+
+    def __init__(self, parent, pdf_filename):
+        self.filename = pdf_filename
+
+    def exec(self):
+        type(self).shown += 1
+        return QDialog.Accepted if type(self).typed else QDialog.Rejected
+
+    def password(self):
+        return type(self).typed.pop(0)
+
+
+@pytest.fixture
+def scripted_passwords(monkeypatch):
+    import signer.main_window as main_window
+
+    _ScriptedPasswordDialog.typed = []
+    _ScriptedPasswordDialog.shown = 0
+    monkeypatch.setattr(main_window, "_PasswordDialog", _ScriptedPasswordDialog)
+    return _ScriptedPasswordDialog
+
+
+def test_encrypted_pdf_opens_with_password_typed_at_first_prompt(qapp, scripted_passwords):
+    scripted_passwords.typed = ["key123"]
+    dialog = PrepareSignatureDialog()
+    dialog._load_source_path(ENCRYPTED_PDF)
+
+    assert dialog._pages
+    assert dialog._source_path == ENCRYPTED_PDF
+    assert scripted_passwords.shown == 1
+
+
+def test_encrypted_pdf_opens_with_correct_password_at_third_prompt(qapp, scripted_passwords):
+    scripted_passwords.typed = ["wrong1", "wrong2", "key123"]
+    dialog = PrepareSignatureDialog()
+    with patch.object(QMessageBox, "critical") as critical:
+        dialog._load_source_path(ENCRYPTED_PDF)
+
+    assert dialog._pages
+    assert scripted_passwords.shown == 3
+    critical.assert_not_called()
+
+
+def test_encrypted_pdf_gives_up_after_three_wrong_passwords(qapp, scripted_passwords):
+    scripted_passwords.typed = ["a", "b", "c", "key123"]
+    dialog = PrepareSignatureDialog()
+    with patch.object(QMessageBox, "critical") as critical:
+        dialog._load_source_path(ENCRYPTED_PDF)
+
+    assert dialog._pages == []
+    assert dialog._source_path is None
+    assert scripted_passwords.shown == 3
+    critical.assert_called_once()
+    assert critical.call_args.args[2] == "Incorrect password or maximum attempts exceeded."
+
+
+def test_encrypted_pdf_cancelled_password_prompt_opens_nothing_silently(qapp, scripted_passwords):
+    dialog = PrepareSignatureDialog()
+    with patch.object(QMessageBox, "critical") as critical:
+        dialog._load_source_path(ENCRYPTED_PDF)
+
+    assert dialog._pages == []
+    assert dialog._stack.currentIndex() == 0
+    critical.assert_not_called()
+
+
+def test_unencrypted_file_never_asks_for_password(qapp, scripted_passwords):
+    dialog = PrepareSignatureDialog()
+    _load_scan(dialog, _solid_scan((1, 2, 3)))
+    assert scripted_passwords.shown == 0

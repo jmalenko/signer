@@ -74,7 +74,8 @@ def _normalize_page_rotation(angle: int) -> int:
 
 
 class DocumentCanvas(QWidget):
-    objectChanged = Signal()        # emitted on move/scale/add/remove
+    objectChanged = Signal()        # emitted when the annotations change (move/scale/add/remove, rotate pages)
+    viewChanged = Signal()          # emitted when only what is shown changes (zoom, page, selection)
     pageChanged = Signal(int, int)  # (current_page_0indexed, total_pages)
     zoomChanged = Signal(float)
     editRequested = Signal(object)  # CanvasObject — double-click
@@ -112,6 +113,7 @@ class DocumentCanvas(QWidget):
         self._drag_start_y: float = 0.0
         self._drag_start_w: float = 0.0  # Initial size when resize starts
         self._drag_start_h: float = 0.0
+        self._drag_start_geometry: dict = {}  # Complete geometry when a resize starts
         self._action_recorded_this_drag: bool = False  # Track if action was recorded yet
         self._drag_endpoint_handles: bool = False
         self._character_spacing_dragging: bool = False
@@ -241,7 +243,7 @@ class DocumentCanvas(QWidget):
         self._page_pixmaps = [QPixmap.fromImage(ImageQt(p)) for p in self._pages]
         self._recompute_fit()
         self.pageChanged.emit(0, len(self._pages))
-        self._invalidate_display()
+        self._invalidate_view()
 
     def restore_objects(
         self,
@@ -282,7 +284,7 @@ class DocumentCanvas(QWidget):
         self._pan_y = 0.0
         self._recompute_fit()
         self.pageChanged.emit(self._current_page, len(self._pages))
-        self._invalidate_display()
+        self._invalidate_view()
 
     def _get_rotated_page_image(self, page_index: int) -> Image.Image:
         """Get the PIL image for a page, applying rotation if set."""
@@ -359,7 +361,9 @@ class DocumentCanvas(QWidget):
         Returns:
             True if an action was undone, False if undo stack is empty
         """
-        return self.history.undo(self)
+        undone = self.history.undo(self)
+        self._drop_selection_of_missing_objects()
+        return undone
 
     def redo(self) -> bool:
         """Redo the last undone action.
@@ -367,7 +371,20 @@ class DocumentCanvas(QWidget):
         Returns:
             True if an action was redone, False if redo stack is empty
         """
-        return self.history.redo(self)
+        redone = self.history.redo(self)
+        self._drop_selection_of_missing_objects()
+        return redone
+
+    def _drop_selection_of_missing_objects(self) -> None:
+        """Undo/redo may remove annotations; the selection must not keep referring to them."""
+        present = {id(obj) for objects in self._page_objects.values() for obj in objects}
+        selected = self._selected
+        if selected is not None and id(selected) not in present:
+            self._selected = None
+        self._selected_multiple = {obj for obj in self._selected_multiple if id(obj) in present}
+        if self._selected is None and self._selected_multiple:
+            self._selected = next(iter(self._selected_multiple))
+        self._invalidate_view()
 
     def can_undo(self) -> bool:
         """Check if there are actions to undo."""
@@ -407,8 +424,14 @@ class DocumentCanvas(QWidget):
         return self._register_object(obj)
 
     def _invalidate_display(self) -> None:
-        """Notify listeners the canvas content changed and schedule a repaint."""
+        """Notify listeners the annotations changed and schedule a repaint."""
         self.objectChanged.emit()
+        self.update()
+
+    def _invalidate_view(self) -> None:
+        """Notify listeners that only the view (zoom, page, selection) changed; the document
+        does not count as modified."""
+        self.viewChanged.emit()
         self.update()
 
     def _record_composite_action(self, actions: list) -> None:
@@ -422,6 +445,7 @@ class DocumentCanvas(QWidget):
         obj_id = self._register_object(obj)
 
         self._page_objects.setdefault(self._current_page, []).append(obj)
+        self._selected_multiple.clear()
         self._selected = obj
         self._invalidate_display()
 
@@ -454,6 +478,7 @@ class DocumentCanvas(QWidget):
                 action._deleted_index = obj_idx
                 self.history.record_action(action)
             self._selected = None
+            self._selected_multiple.clear()
             self._invalidate_display()
 
     def duplicate_selected(self) -> None:
@@ -497,7 +522,7 @@ class DocumentCanvas(QWidget):
                 # Keep _selected as primary for UI feedback
                 if self._selected is None:
                     self._selected = obj
-        self._invalidate_display()
+        self._invalidate_view()
 
     def _clear_selection_state(self) -> None:
         """Reset selection fields without emitting signals or repainting.
@@ -512,7 +537,7 @@ class DocumentCanvas(QWidget):
     def clear_selection(self) -> None:
         """Clear all selections."""
         self._clear_selection_state()
-        self._invalidate_display()
+        self._invalidate_view()
 
     def select_all_on_page(self) -> None:
         """Select all annotations on the current page."""
@@ -523,7 +548,7 @@ class DocumentCanvas(QWidget):
         self._selected_multiple.update(objs)
         if objs:
             self._selected = objs[0]  # Set first as primary
-        self._invalidate_display()
+        self._invalidate_view()
 
     def get_selected_annotations(self) -> list[CanvasObject]:
         """Return all selected annotations (sorted for consistency)."""
@@ -860,8 +885,8 @@ class DocumentCanvas(QWidget):
             return None
 
     def set_color_selected(self, color: QColor) -> None:
-        """Set color for all selected annotations."""
-        selected = self.get_selected_annotations()
+        """Set color for all selected annotations that have one (not images)."""
+        selected = [obj for obj in self.get_selected_annotations() if isinstance(obj, VectorAnnotation)]
         if not selected:
             return
 
@@ -1240,7 +1265,7 @@ class DocumentCanvas(QWidget):
         self._pan_y = 0.0
         self._recompute_fit()
         self.zoomChanged.emit(self._zoom)
-        self._invalidate_display()
+        self._invalidate_view()
 
     def _set_zoom(self, zoom: float, anchor: QPointF | None = None) -> None:
         if not self._pages:
@@ -1266,7 +1291,7 @@ class DocumentCanvas(QWidget):
         else:
             self._clamp_pan(previous_offsets)
         self.zoomChanged.emit(self._zoom)
-        self._invalidate_display()
+        self._invalidate_view()
 
     @property
     def zoom(self) -> float:
@@ -1651,6 +1676,7 @@ class DocumentCanvas(QWidget):
                 self._drag_endpoint_handles = True
                 self._drag_start_w = obj.scaled_width
                 self._drag_start_h = obj.scaled_height
+                self._drag_start_geometry = obj.geometry_state()
                 self._action_recorded_this_drag = False
                 return
 
@@ -1694,6 +1720,7 @@ class DocumentCanvas(QWidget):
         # Capture initial size for resize action recording
         self._drag_start_w = obj.scaled_width
         self._drag_start_h = obj.scaled_height
+        self._drag_start_geometry = obj.geometry_state()
         self._action_recorded_this_drag = False
 
     @staticmethod
@@ -1767,14 +1794,17 @@ class DocumentCanvas(QWidget):
             return
 
         if self._dragging and self._selected is not None:
+            record_drag = None
             if self._character_spacing_dragging:
                 self._apply_character_spacing_drag(pt)
             elif self._rotating:
                 self._apply_rotation_drag(pt, self._is_shift_pressed(event))
             elif self._drag_handle == -1:
                 self._handle_move_drag(pt)
+                record_drag = self._record_move_drag
             else:
                 self._handle_resize_drag(pt, event)
+                record_drag = self._record_resize_drag
 
             is_endpoint_drag = self._drag_endpoint_handles and self._selected.supports_endpoint_handles()
             if (
@@ -1785,6 +1815,8 @@ class DocumentCanvas(QWidget):
             ):
                 pw, ph = self.current_page_image.size
                 self._selected.clamp_to_page(pw, ph)
+            if record_drag is not None:
+                record_drag()  # after the clamping, so undo/redo see the position that is shown
             self._invalidate_display()
             return
 
@@ -1807,6 +1839,8 @@ class DocumentCanvas(QWidget):
         self._selected.x = doc_pt.x() - self._drag_doc_offset_x
         self._selected.y = doc_pt.y() - self._drag_doc_offset_y
 
+    def _record_move_drag(self) -> None:
+        """Record the current position of a move drag as a coalescing MoveAnnotationAction."""
         self._record_drag_action(
             MoveAnnotationAction,
             {
@@ -1828,15 +1862,23 @@ class DocumentCanvas(QWidget):
         else:
             self._apply_corner_edge_resize_drag(doc_pt, event)
 
+    def _record_resize_drag(self) -> None:
+        """Record the current geometry of a resize drag as a coalescing ResizeAnnotationAction.
+
+        A resize can also move the annotation and turn a line/arrow, so undo needs all of it.
+        """
+        obj = self._selected
         self._record_drag_action(
             ResizeAnnotationAction,
             {
                 "from_width": self._drag_start_w,
                 "from_height": self._drag_start_h,
-                "to_width": self._selected.scaled_width,
-                "to_height": self._selected.scaled_height,
+                "to_width": obj.scaled_width,
+                "to_height": obj.scaled_height,
+                "from_geometry": self._drag_start_geometry,
+                "to_geometry": obj.geometry_state(),
             },
-            {"width": self._selected.scaled_width, "height": self._selected.scaled_height},
+            {"width": obj.scaled_width, "height": obj.scaled_height, "geometry": obj.geometry_state()},
         )
 
     def _apply_endpoint_drag(self, doc_pt: QPointF, event) -> None:

@@ -295,9 +295,13 @@ class ResizeAnnotationAction(MergeableAction):
     
     Partial format: {type, object_id, width, height, handle (optional)}
     Full format: {type, object_id, from_width, from_height, to_width, to_height, handle (optional)}
-    
-    For endpoint-based shapes (arrows/lines) with handle 0 or 1, the non-dragged endpoint
-    is kept fixed at its original position.
+
+    A resize can also move the annotation (dragging a top or left handle), change the font
+    size of a text, and turn a line/arrow (dragging an endpoint). A live resize therefore also
+    records the complete geometry before and after (`from_geometry`/`to_geometry`, partial:
+    `geometry`, see `CanvasObject.geometry_state()`); undo and redo restore exactly that.
+    Without it (recorded fixtures), the non-dragged endpoint of an arrow/line resized with
+    handle 0 or 1 is kept fixed at its original position instead.
     """
 
     def __init__(
@@ -310,6 +314,9 @@ class ResizeAnnotationAction(MergeableAction):
         to_width: float | None = None,
         to_height: float | None = None,
         handle: int | None = None,
+        geometry: dict[str, Any] | None = None,
+        from_geometry: dict[str, Any] | None = None,
+        to_geometry: dict[str, Any] | None = None,
     ) -> None:
         """Initialize resize action."""
         data: dict[str, Any] = {"object_id": object_id}
@@ -317,9 +324,13 @@ class ResizeAnnotationAction(MergeableAction):
         if from_width is not None and from_height is not None and to_width is not None and to_height is not None:
             # Full format
             data.update({"from_width": from_width, "from_height": from_height, "to_width": to_width, "to_height": to_height})
+            if from_geometry is not None and to_geometry is not None:
+                data.update({"from_geometry": from_geometry, "to_geometry": to_geometry})
         elif width is not None and height is not None:
             # Partial format
             data.update({"width": width, "height": height})
+            if geometry is not None:
+                data["geometry"] = geometry
         else:
             raise ValueError("ResizeAnnotationAction requires either (width, height) or (from_width, from_height, to_width, to_height)")
         
@@ -360,7 +371,8 @@ class ResizeAnnotationAction(MergeableAction):
     def execute(self, canvas: Any) -> None:
         """Resize annotation to target size.
         
-        For endpoint-based shapes (arrows/lines), keeps the non-dragged endpoint fixed.
+        For endpoint-based shapes (arrows/lines) without a recorded position, keeps the
+        non-dragged endpoint fixed.
         """
         obj_id = self.data["object_id"]
         handle = self.data.get("handle")
@@ -371,7 +383,10 @@ class ResizeAnnotationAction(MergeableAction):
             canvas.objectChanged.emit()
             return
 
-        self._resize_to_size(obj, handle, target["width"], target["height"])
+        if "geometry" in target:
+            obj.restore_geometry_state(target["geometry"])
+        else:
+            self._resize_to_size(obj, handle, target["width"], target["height"])
         canvas.objectChanged.emit()
 
     def undo(self, canvas: Any) -> None:
@@ -389,24 +404,28 @@ class ResizeAnnotationAction(MergeableAction):
             canvas.objectChanged.emit()
             return
 
-        self._resize_to_size(obj, handle, from_w, from_h)
+        if "from_geometry" in self.data:
+            obj.restore_geometry_state(self.data["from_geometry"])
+        else:
+            self._resize_to_size(obj, handle, from_w, from_h)
         canvas.objectChanged.emit()
 
     def get_target_state(self) -> dict[str, Any]:
-        """Get target size (width, height)."""
-        if self.has_initial_state():
-            return {"width": self.data["to_width"], "height": self.data["to_height"]}
-        else:
-            return {"width": self.data["width"], "height": self.data["height"]}
+        """Get target size (width, height) and, when recorded, the complete target geometry."""
+        prefix = "to_" if self.has_initial_state() else ""
+        state = {"width": self.data[f"{prefix}width"], "height": self.data[f"{prefix}height"]}
+        geometry = self.data.get("to_geometry" if prefix else "geometry")
+        if geometry is not None:
+            state["geometry"] = geometry
+        return state
 
     def set_target_state(self, target: dict[str, Any]) -> None:
-        """Update target size."""
-        if self.has_initial_state():
-            self.data["to_width"] = target["width"]
-            self.data["to_height"] = target["height"]
-        else:
-            self.data["width"] = target["width"]
-            self.data["height"] = target["height"]
+        """Update the target size and, when recorded, the complete target geometry."""
+        prefix = "to_" if self.has_initial_state() else ""
+        self.data[f"{prefix}width"] = target["width"]
+        self.data[f"{prefix}height"] = target["height"]
+        if "geometry" in target and (not prefix or "from_geometry" in self.data):
+            self.data["to_geometry" if prefix else "geometry"] = target["geometry"]
 
     @classmethod
     def from_data(cls, data: dict[str, Any]) -> ResizeAnnotationAction:
@@ -420,6 +439,9 @@ class ResizeAnnotationAction(MergeableAction):
             to_width=data.get("to_width"),
             to_height=data.get("to_height"),
             handle=data.get("handle"),
+            geometry=data.get("geometry"),
+            from_geometry=data.get("from_geometry"),
+            to_geometry=data.get("to_geometry"),
         )
 
 
@@ -437,7 +459,17 @@ class AddAnnotationAction(Action):
         self._added_object = None  # Store reference to the object we added
 
     def execute(self, canvas: Any) -> None:
-        """Add annotation to the page named in the payload."""
+        """Add annotation to the page named in the payload (or put back the one it added before,
+        so that a redo after an undo brings back the same object that later actions refer to)."""
+        if self._added_object is not None:
+            obj = self._added_object
+            self.page_object_list(canvas, obj.page).append(obj)
+            obj_id = self.data.get("object_id")
+            if obj_id is not None and hasattr(canvas, "_object_map"):
+                canvas._object_map[obj_id] = obj
+            canvas.objectChanged.emit()
+            return
+
         from ..constants import (
             DEFAULT_COLOR,
             DEFAULT_FONT_FAMILY,
@@ -667,9 +699,11 @@ class DeleteAnnotationAction(Action):
     def execute(self, canvas: Any) -> None:
         """Delete annotation from its own page (used to redo a previously-undone delete)."""
         obj_id = self.data["object_id"]
-        obj = self._deleted_object
-        if obj is None and hasattr(canvas, "_object_map"):
+        obj = None
+        if hasattr(canvas, "_object_map"):
             obj = canvas._object_map.get(obj_id)
+        if obj is None:
+            obj = self._deleted_object
         objects = self._page_list_for_object(canvas, obj)
         if obj is None and 0 <= obj_id < len(objects):
             # Legacy fallback: object_id is an array index rather than a stable id.

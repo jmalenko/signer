@@ -5,7 +5,6 @@ import logging
 import math
 import random
 import re
-from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -422,6 +421,23 @@ class CanvasObject:
 
     # ------------------------------------------------------------------ serialization
 
+    def geometry_state(self) -> dict[str, Any]:
+        """Everything a resize can change, so that undo/redo can restore it exactly."""
+        return {
+            "x": self.x,
+            "y": self.y,
+            "base_width": self._base_width,
+            "base_height": self._base_height,
+            "scale": self.scale,
+        }
+
+    def restore_geometry_state(self, state: dict[str, Any]) -> None:
+        self.x = state["x"]
+        self.y = state["y"]
+        self._base_width = state["base_width"]
+        self._base_height = state["base_height"]
+        self.scale = state["scale"]
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize object to a dictionary."""
         return {
@@ -615,6 +631,23 @@ class VectorAnnotation(CanvasObject):
 
     def supports_endpoint_handles(self) -> bool:
         return self.ann_type in {AnnotationType.LINE, AnnotationType.ARROW}
+
+    def geometry_state(self) -> dict[str, Any]:
+        state = super().geometry_state()
+        state.update(
+            natural_width=self._natural_width,
+            natural_height=self._natural_height,
+            font_size_pt=self._font_size_pt,
+            angle=self._angle,
+        )
+        return state
+
+    def restore_geometry_state(self, state: dict[str, Any]) -> None:
+        super().restore_geometry_state(state)
+        self._natural_width = state["natural_width"]
+        self._natural_height = state["natural_height"]
+        self._font_size_pt = state["font_size_pt"]
+        self._angle = state["angle"]
 
     def character_spacing_handle_center_viewport(
         self,
@@ -1275,9 +1308,10 @@ class VectorAnnotation(CanvasObject):
         data["natural_height"] = self._natural_height
         if self._angle is not None:
             data["angle"] = self._angle
+        if self.supports_hand_drawn:
+            data["hand_drawn_seed"] = self.hand_drawn_seed
         if self._draws_hand_drawn:
             data["hand_drawn"] = True
-            data["hand_drawn_seed"] = self.hand_drawn_seed
         return data
 
     @classmethod
@@ -1346,19 +1380,14 @@ class ProjectFile:
     and JSON fixtures aligned to one schema.
     """
 
-    SCHEMA = "signer.project.v1"
     VERSION = 1
 
     @classmethod
     def validate(cls, project: dict[str, Any]) -> None:
-        if project.get("version") != cls.VERSION:
+        if project.get("version", cls.VERSION) != cls.VERSION:
             raise ValueError("Unsupported signer project file version")
         if not isinstance(project.get("document_path"), str) or not isinstance(project.get("annotations"), list):
             raise TypeError("Invalid signer project file")
-
-    @staticmethod
-    def _utc_now() -> str:
-        return datetime.now(timezone.utc).isoformat()
 
     @classmethod
     def from_annotations(
@@ -1407,9 +1436,10 @@ class ProjectFile:
                 data["natural_height"] = obj._natural_height
                 if obj._angle is not None:
                     data["angle"] = obj._angle
+                if obj.supports_hand_drawn:
+                    data["hand_drawn_seed"] = obj.hand_drawn_seed
                 if obj._draws_hand_drawn:
                     data["hand_drawn"] = True
-                    data["hand_drawn_seed"] = obj.hand_drawn_seed
             serialized_annotations.append(data)
 
         return {
