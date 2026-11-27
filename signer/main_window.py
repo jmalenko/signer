@@ -5,6 +5,7 @@ import locale
 import logging
 import os
 import re
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +18,13 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QDesktopServices,
+    QIcon,
     QIntValidator,
     QKeyEvent,
     QPageSize,
     QPainter,
+    QPalette,
+    QPen,
     QPixmap,
 )
 from PySide6.QtPrintSupport import QPrintDialog, QPrinter
@@ -66,7 +70,6 @@ from .compositor import (
     replace_placeholder_with_page_number,
     validate_placeholder_for_multipage_export,
 )
-from .export_quality_dialog import ExportQualityOptionsPanel
 from .constants import (
     DEFAULT_CHARACTER_SPACING_PT,
     DEFAULT_FONT_FAMILY,
@@ -74,6 +77,7 @@ from .constants import (
     DEFAULT_TEXT_FONT_PT,
     SUPPORTED_SIGNATURE_EXT,
 )
+from .export_quality_dialog import ExportQualityOptionsPanel
 from .notification import NotificationToast
 from .objects import (
     AnnotationType,
@@ -90,6 +94,35 @@ MAX_RECENT_ITEMS = 10
 
 # Qt's widget size ceiling; PySide6 doesn't re-export QWIDGETSIZE_MAX.
 QWIDGETSIZE_MAX = 16777215
+
+
+class _AddToolbarButton(QToolButton):
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.setIconSize(QSize(16, 16))
+        self._update_plus_icon()
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() in (QEvent.PaletteChange, QEvent.ApplicationPaletteChange):
+            self._update_plus_icon()
+
+    def _update_plus_icon(self) -> None:
+        icon = QIcon()
+        for group, mode in (
+            (QPalette.Active, QIcon.Normal),
+            (QPalette.Disabled, QIcon.Disabled),
+        ):
+            pixmap = QPixmap(64, 64)
+            pixmap.fill(Qt.transparent)
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(QPen(self.palette().color(group, QPalette.ButtonText), 8))
+            painter.drawLine(8, 32, 56, 32)
+            painter.drawLine(32, 8, 32, 56)
+            painter.end()
+            icon.addPixmap(pixmap, mode)
+        self.setIcon(icon)
 
 
 class _WholeNumberFriendlyDoubleSpinBox(QDoubleSpinBox):
@@ -588,8 +621,8 @@ class MainWindow(QMainWindow):
         tb.addWidget(open_doc_btn)
 
         # Annotation picker (2nd)
-        ann_btn = QToolButton(self)
-        ann_btn.setText("➕ Add")
+        ann_btn = _AddToolbarButton(self) if sys.platform == "darwin" else QToolButton(self)
+        ann_btn.setText("Add" if sys.platform == "darwin" else "➕ Add")
         ann_btn.setPopupMode(QToolButton.InstantPopup)
         ann_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         ann_menu = QMenu(ann_btn)
